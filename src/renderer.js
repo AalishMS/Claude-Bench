@@ -39,6 +39,7 @@ const ICONS = {
   power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>',
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>',
   chevron: '<polyline points="9 18 15 12 9 6"/>',
+  more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
   search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
   chart: '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
   pie: '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>',
@@ -72,14 +73,13 @@ const showMore = new Set(); // projects listing every session instead of the new
 let query = '';
 let lastActiveProject = null;
 let detailKind = null; // which footer popover is open: 'usage' | 'context' | 'state'
+let menuFor = null; // project path whose "…" menu is open
 const infoBy = new Map(); // tab id -> { model, effort, agents } for the bar under the terminal
 const seenOwned = new Set(); // servers/MCPs/browsers of our sessions already seen; a new one opens the panel
 
 const SESSIONS_SHOWN = 8;
 const CONTEXT_WINDOW = 200000; // not stored in transcripts: assume 200k, or 1M once a session has gone past it
 const CONTEXT_WINDOW_LARGE = 1000000;
-
-const KIND_LABEL = { claude: 'claude', shell: 'shell' };
 
 // Terminal typography. A light body weight with a clearly heavier bold, and generous line spacing, so
 // headings, prose, code and dim "thinking"/tool lines stay distinguishable. Size is user-adjustable (Ctrl +/-/0).
@@ -101,7 +101,7 @@ const XTERM_THEME = {
   selectionBackground: 'rgba(255, 255, 255, 0.22)',
   black: '#2a2a2a', red: '#e5736f', green: '#86c06c', yellow: '#e2b657',
   blue: '#6fa8dc', magenta: '#c490d1', cyan: '#6ec5c0', white: '#b0b0b0',
-  brightBlack: '#2c2c2c', brightRed: '#f0908c', brightGreen: '#a3d58b', brightYellow: '#efce7d',
+  brightBlack: '#333333', // the user's message bar: one step above --background (#171717) brightRed: '#f0908c', brightGreen: '#a3d58b', brightYellow: '#efce7d',
   brightBlue: '#8cc2f0', brightMagenta: '#d8aee3', brightCyan: '#92d9d4', brightWhite: '#ffffff',
 };
 
@@ -198,13 +198,12 @@ async function openSession(project, { kind = 'claude', args = [], resumeId = nul
     id, project, kind, args, term, fit, host,
     resumeId, sessionId: resumeId, startedAt: Date.now(), // sessionId of fresh tabs is matched later (assignSessions)
     status: 'starting', exitCode: null, title: '',
-    lastActive: 0, lastOutput: 0, attention: false, busy: false, busyTimer: null, tabEl: null,
+    lastActive: 0, lastOutput: 0, attention: false, busy: false, busyTimer: null,
   };
   tabs.set(id, tab);
   wireTerminal(tab);
   wireScrollbar(tab);
 
-  renderTabs();
   activate(id);
   fitTab(tab);
   await startPty(tab);
@@ -223,7 +222,6 @@ async function startPty(tab) {
     tab.status = 'exited';
     showOverlay(tab, `Could not start: ${res.error}`, true);
   }
-  renderTabs();
   renderSidebar(true);
   renderStatus();
 }
@@ -233,11 +231,11 @@ function wireTerminal(tab) {
 
   term.onData((d) => api.ptyWrite(tab.id, d));
   term.onResize(({ cols, rows }) => api.ptyResize(tab.id, cols, rows));
-  term.onTitleChange((t) => { tab.title = t; tab.tabEl?.setAttribute('title', `${tab.project.path}\n${t}`); });
+  term.onTitleChange((t) => { tab.title = t; });
   term.onBell(() => {
     if (tab.id === activeId && document.hasFocus()) return;
     tab.attention = true;
-    syncTabClasses(tab);
+    renderSidebar();
     api.flash();
   });
 
@@ -445,8 +443,6 @@ function activate(id) {
   tab.lastActive = Date.now();
   tab.attention = false;
   for (const t of tabs.values()) t.host.classList.toggle('active', t.id === id);
-  for (const t of tabs.values()) syncTabClasses(t);
-  tab.tabEl?.scrollIntoView({ inline: 'nearest' });
   requestAnimationFrame(() => {
     fitActive();
     tab.term.refresh(0, tab.term.rows - 1);
@@ -498,33 +494,11 @@ function focusProject(project) {
 
 // ------------------------------------------------------------- rendering ----
 
-function syncTabClasses(tab) {
-  const el = tab.tabEl;
-  if (!el) return;
-  el.classList.toggle('active', tab.id === activeId);
-  el.classList.toggle('running', tab.status === 'running');
-  el.classList.toggle('exited', tab.status === 'exited');
-  el.classList.toggle('busy', tab.busy && tab.id !== activeId);
-  el.classList.toggle('attention', tab.attention);
-}
-
-function renderTabs() {
-  const root = $('#tabs');
-  root.replaceChildren(...[...tabs.values()].map((tab) => {
-    const el = h('div', {
-      class: 'tab', role: 'tab', title: `${tab.project.path}\n${tab.title}`,
-      onclick: () => activate(tab.id),
-      onauxclick: (e) => { if (e.button === 1) closeTab(tab.id); },
-    },
-      h('span', { class: 'dot' }),
-      h('span', { class: 'label' }, tabLabel(tab)),
-      h('span', { class: 'kind' }, tab.kind === 'claude' && tab.args.length ? `claude ${tab.args[0].slice(2)}` : KIND_LABEL[tab.kind]),
-      h('button', { class: 'btn ghost icon sm close', title: 'Close (Ctrl+Shift+W)', onclick: (e) => { e.stopPropagation(); closeTab(tab.id); } }, ico('x')));
-    tab.tabEl = el;
-    syncTabClasses(tab);
-    return el;
-  }));
-  document.body.classList.toggle('no-tabs', tabs.size === 0);
+/** A tab's status dot: blue = needs attention (bell, or exited in the background), yellow = working, green = running. */
+function tabDot(t) {
+  if (t.attention) return 'attention';
+  if (t.status !== 'running') return '';
+  return isWorking(t) || (t.busy && t.id !== activeId) ? 'working' : 'running';
 }
 
 function gitPills(info) {
@@ -576,13 +550,6 @@ function toggleExpand(p) {
 
 const tabOfSession = (id) => [...tabs.values()].find((t) => t.sessionId === id);
 
-/** Dot next to a session: yellow while Claude works in its tab, green while its tab is running, none otherwise. */
-function sessionState(s) {
-  const t = tabOfSession(s.id);
-  if (!t) return '';
-  if (isWorking(t)) return 'working';
-  return t.status === 'running' ? 'running' : '';
-}
 
 /**
  * Tabs we started fresh (or with --continue) don't know their transcript yet. Match each to a session of its
@@ -609,42 +576,87 @@ function openSessionRow(project, s) {
   else openSession(project, { resumeId: s.id });
 }
 
+/** The dot slot of a session row (under the project's badge): empty unless the row's tab is live. */
+const dotMark = (state) => h('span', { class: 's-mark' }, state ? h('i', { class: `dot ${state}` }) : null);
+
+/** Rows backed by an open tab show × in place of their time on hover; middle-click closes too, as on the old tabs. */
+function closeButton(t) {
+  return h('button', {
+    class: 'btn ghost icon sm s-close', title: 'Close (Ctrl+Shift+W)',
+    onclick: (e) => { e.stopPropagation(); closeTab(t.id); },
+  }, ico('x'));
+}
+const auxClose = (t) => (e) => { if (t && e.button === 1) closeTab(t.id); };
+
 function sessionRow(p, s, activeSession) {
-  const state = sessionState(s);
+  const t = tabOfSession(s.id);
   return h('div', {
-    class: `session${s.id === activeSession ? ' active' : ''}`,
+    class: `session${s.id === activeSession ? ' active' : ''}${t ? ' has-tab' : ''}`,
     title: `${s.title}\n${new Date(s.mtime).toLocaleString()}`,
     onclick: () => openSessionRow(p, s),
+    onauxclick: auxClose(t),
   },
-    h('i', { class: `s-dot${state ? ' ' + state : ''}` }),
+    dotMark(t ? tabDot(t) : ''),
     h('span', { class: 's-title' }, s.title),
-    h('span', { class: 's-time' }, fmtAgo(s.mtime)));
+    h('span', { class: 's-time' }, fmtAgo(s.mtime)),
+    t ? closeButton(t) : null);
 }
 
-/** Claude tabs whose transcript isn't listed yet (it appears after the first reply): shown as a placeholder row. */
-const pendingTabs = (projectPath) => tabsOf(projectPath).filter((t) => t.kind === 'claude' && t.status !== 'exited'
-  && !(t.sessionId && (sessionsBy[projectPath] || []).some((s) => s.id === t.sessionId)));
+/**
+ * Open tabs that have no transcript row: Claude tabs before their first reply (placeholder title) and
+ * PowerShell tabs. Exited ones stay listed so they can still be focused and closed.
+ */
+const pendingTabs = (projectPath) => tabsOf(projectPath).filter((t) => t.kind === 'shell'
+  || !(t.sessionId && (sessionsBy[projectPath] || []).some((s) => s.id === t.sessionId)));
 
 function pendingRow(t) {
-  const state = isWorking(t) ? 'working' : t.status === 'running' ? 'running' : '';
+  const shells = tabsOf(t.project.path).filter((x) => x.kind === 'shell');
+  const title = t.kind === 'shell'
+    ? `PowerShell${shells.length > 1 ? ' ' + (shells.indexOf(t) + 1) : ''}`
+    : t.resumeId ? 'Resumed session' : t.args[0] === '--continue' ? 'Continued session' : 'New session';
   return h('div', {
-    class: `session pending${t.id === activeId ? ' active' : ''}`,
-    title: 'Its title appears after the first reply',
+    class: `session has-tab${t.kind === 'claude' ? ' pending' : ''}${t.id === activeId ? ' active' : ''}`,
+    title: t.kind === 'shell' ? `PowerShell in ${t.project.path}` : 'Its title appears after the first reply',
     onclick: () => activate(t.id),
+    onauxclick: auxClose(t),
   },
-    h('i', { class: `s-dot${state ? ' ' + state : ''}` }),
-    h('span', { class: 's-title' }, t.resumeId ? 'Resumed session' : t.args[0] === '--continue' ? 'Continued session' : 'New session'),
-    h('span', { class: 's-time' }, fmtAgo(t.startedAt)));
+    dotMark(tabDot(t)),
+    h('span', { class: 's-title' }, title),
+    h('span', { class: 's-time' }, fmtAgo(t.startedAt)),
+    closeButton(t));
+}
+
+/** ["main", "3 changed · ↑1"] for the project tooltip and the active project's sub-line. */
+function gitParts(info) {
+  if (info === undefined) return null;
+  if (info === null) return ['not a git repository', ''];
+  return [
+    info.detached ? `@${info.branch}` : info.branch,
+    [
+      info.conflicts ? `${info.conflicts} conflicts` : null,
+      info.dirty ? `${info.dirty} changed` : 'clean',
+      info.ahead ? `↑${info.ahead}` : null,
+      info.behind ? `↓${info.behind}` : null,
+    ].filter(Boolean).join(' · '),
+  ];
+}
+const gitSummary = (info) => gitParts(info)?.filter(Boolean).join(' · ') || null;
+
+/** The active project's one muted line: a long branch name truncates, the counts never do. */
+function gitSubLine(info) {
+  const [branch, rest] = gitParts(info);
+  return h('div', { class: 'p-sub' }, h('span', { class: 'p-branch' }, branch), rest ? h('span', {}, ` · ${rest}`) : null);
 }
 
 let lastSidebarKey = '';
 let sessionsVer = 0; // bumped when sessionsBy changes, so the render key stays cheap
 function renderSidebar(force = false) {
+  document.body.classList.toggle('no-tabs', tabs.size === 0);
   const tab = activeTab();
   const activeProject = tab?.project.path;
-  const key = JSON.stringify([projects, git, activeProject, tab?.sessionId, sessionsVer, [...expanded], [...showMore], query,
+  const key = JSON.stringify([projects, git, activeId, tab?.sessionId, sessionsVer, [...expanded], [...showMore], query,
     Math.floor(Date.now() / 60000),
-    [...tabs.values()].map((t) => [t.project.path, t.status, t.busy && t.id !== activeId, t.sessionId, isWorking(t)])]);
+    [...tabs.values()].map((t) => [t.id, t.project.path, t.kind, t.sessionId, tabDot(t)])]);
   if (!force && key === lastSidebarKey) return;
   lastSidebarKey = key;
 
@@ -654,12 +666,13 @@ function renderSidebar(force = false) {
     return;
   }
   const q = query.trim().toLowerCase();
-  const nodes = projects.flatMap((p) => {
+  const groups = projects.map((p) => {
     const loaded = sessionsBy[p.path];
     const matches = q ? (loaded || []).filter((s) => s.title.toLowerCase().includes(q)) : loaded || [];
-    if (q && !matches.length) return [];
+    if (q && !matches.length) return null;
     const isOpen = q ? true : expanded.has(p.path);
     const pending = q ? [] : pendingTabs(p.path);
+    const isActive = p.path === activeProject;
 
     let list = null;
     if (isOpen && (loaded || pending.length)) {
@@ -675,43 +688,74 @@ function renderSidebar(force = false) {
           ? h('div', { class: 's-more', onclick: () => { showMore.delete(p.path); renderSidebar(true); } }, 'Show less')
           : null);
     }
-    return [projectRow(p, activeProject, isOpen), list];
-  });
-  root.replaceChildren(...(nodes.some(Boolean) ? nodes.filter(Boolean)
+    return h('div', { class: 'group' },
+      projectRow(p, isActive, isOpen),
+      isActive && git[p.path] ? gitSubLine(git[p.path]) : null,
+      list);
+  }).filter(Boolean);
+  root.replaceChildren(...(groups.length ? groups
     : [h('div', { class: 'empty-note' }, `No sessions match "${query.trim()}"`)]));
 }
 
-function projectRow(p, activeProject, isOpen) {
-  const running = tabsOf(p.path).filter((t) => t.status === 'running');
-  const busy = running.some((t) => t.busy && t.id !== activeId);
+/** One line: chevron, folder icon, name, and a running dot (swapped for + and … on hover). */
+function projectRow(p, isActive, isOpen) {
+  const dots = tabsOf(p.path).map(tabDot);
+  const run = ['attention', 'working', 'running'].find((d) => dots.includes(d));
   return h('div', {
-    class: `project${p.path === activeProject ? ' active' : ''}`,
-    title: p.path,
-    onclick: () => (p.path === activeProject ? toggleExpand(p) : focusProject(p)), // a second click collapses
+    class: `project${isActive && !isOpen ? ' current' : ''}${menuFor === p.path ? ' menu-open' : ''}`,
+    title: [p.path, gitSummary(git[p.path])].filter(Boolean).join('\n'),
+    onclick: () => (isActive ? toggleExpand(p) : focusProject(p)), // a second click collapses
   },
-    h('div', { class: 'p-top' },
+    h('button', {
+      class: `chev${isOpen ? ' open' : ''}`, title: isOpen ? 'Hide sessions' : 'Show sessions',
+      onclick: (e) => { e.stopPropagation(); toggleExpand(p); },
+    }, ico('chevron')),
+    h('span', { class: 'p-icon' }, ico('folder')),
+    h('span', { class: 'p-name' }, p.name),
+    h('span', { class: 'p-run', title: run ? 'Something is running' : null }, run ? h('i', { class: `dot ${run}` }) : null),
+    h('div', { class: 'p-acts' },
+      rowButton('plus', 'New Claude session', () => openSession(p)),
       h('button', {
-        class: `btn ghost icon sm chev${isOpen ? ' open' : ''}`, title: isOpen ? 'Hide sessions' : 'Show sessions',
-        onclick: (e) => { e.stopPropagation(); toggleExpand(p); },
-      }, ico('chevron')),
-      h('span', { class: 'p-name' }, p.name),
-      h('div', { class: 'p-actions' },
-        rowButton('plus', 'New Claude session', () => openSession(p)),
-        rowButton('redo', 'Continue last conversation (claude --continue)', () => openSession(p, { args: ['--continue'] })),
-        rowButton('terminal', 'Open a PowerShell tab here', () => openSession(p, { kind: 'shell' })),
-        rowButton('folder', 'Show in Explorer', () => api.openFolder(p.path)),
-        rowButton('trash', 'Remove from list', () => removeProject(p), 'danger'))),
-    h('div', { class: 'p-path' }, h('bdi', {}, p.path)),
-    h('div', { class: 'p-meta' },
-      h('div', { class: 'p-git' }, gitPills(git[p.path])),
-      running.length
-        ? h('span', { class: `p-sessions${busy ? ' busy' : ''}`, title: 'Running sessions' }, h('i'), `${running.length} running`)
-        : null));
+        class: 'btn ghost icon sm p-more', title: 'More actions',
+        onclick: (e) => { e.stopPropagation(); toggleMenu(p, e.currentTarget); },
+      }, ico('more'))));
+}
+
+// ------------------------------------------------------------ "…" menu ----
+
+function toggleMenu(p, anchor) {
+  if (menuFor === p.path) { closeMenu(); return; }
+  const item = (icon, label, run, danger = false) => h('button', {
+    class: `menu-item${danger ? ' danger' : ''}`, role: 'menuitem',
+    onclick: () => { closeMenu(); run(); },
+  }, ico(icon), label);
+  const el = $('#menu');
+  el.replaceChildren(
+    item('redo', 'Continue last conversation', () => openSession(p, { args: ['--continue'] })),
+    item('terminal', 'Open PowerShell here', () => openSession(p, { kind: 'shell' })),
+    item('folder', 'Show in Explorer', () => api.openFolder(p.path)),
+    h('div', { class: 'menu-sep' }),
+    item('trash', 'Remove from list', () => removeProject(p), true));
+  el.hidden = false;
+  const r = anchor.getBoundingClientRect();
+  el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8))}px`;
+  const below = r.bottom + 4;
+  el.style.top = `${below + el.offsetHeight > window.innerHeight - 8 ? r.top - 4 - el.offsetHeight : below}px`;
+  menuFor = p.path;
+  anchor.closest('.project').classList.add('menu-open'); // keeps + and … visible; projectRow re-applies it on renders
+}
+
+// No re-render here: closing happens on mousedown, and rebuilding the rows then would swallow the click.
+function closeMenu() {
+  if (!menuFor) return;
+  menuFor = null;
+  $('#menu').hidden = true;
+  $('.project.menu-open')?.classList.remove('menu-open');
 }
 
 // ---------------------------------------------------------------- footer ----
-// Three small tiles under the project list: token usage, context of the active session, and what is running.
-// Each opens a details popover (`#detail`) above it.
+// One slim row under the project list: add-project on the left; compact plan usage, context of the active session
+// and what is running on the right. Each stat opens a details popover (`#detail`) above it.
 
 const fmtTok = (n) => (n < 1000 ? String(n)
   : n < 1e4 ? `${(n / 1e3).toFixed(1)}k`
@@ -746,13 +790,15 @@ function tabState(t) {
   return isWorking(t) ? 'working' : 'idle';
 }
 
-function tile(kind, icon, label, value) {
+function fstat(kind, title, ...value) {
   return h('button', {
-    class: `tile${detailKind === kind ? ' on' : ''}`, 'data-kind': kind,
-    title: { usage: 'Plan usage: session · weekly', context: 'Context window of this session', state: 'Running sessions' }[kind],
+    class: `fstat${detailKind === kind ? ' on' : ''}`, 'data-kind': kind, title,
     onclick: () => setDetail(detailKind === kind ? null : kind),
-  }, h('span', { class: 't-label' }, ico(icon), label), h('span', { class: 't-val' }, value));
+  }, value);
 }
+const pctText = (pct) => h('span', { class: levelOf(pct) || null }, `${pct}%`);
+/** Ring gauge (CSS conic-gradient): `pct` null = empty track. */
+const gauge = (pct) => h('span', { class: `gauge ${pct == null ? '' : levelOf(pct)}`.trim(), style: `--p:${pct ?? 0}` });
 
 let lastFootKey = '';
 function renderFoot(force = false) {
@@ -768,15 +814,20 @@ function renderFoot(force = false) {
   if (!force && key === lastFootKey) return;
   lastFootKey = key;
 
+  // Each stat is icon + value. The plan's current session limit gets the ring; weekly lives in the tooltip/popover.
+  const sessPct = sess ? limitPct(sess) : null;
+  const usageTip = sess
+    ? [`Session usage ${sessPct}% (${fmtReset(sess)})`, week && `Weekly ${limitPct(week)}%`].filter(Boolean).join('\n')
+    : 'Plan usage';
   $('#side-foot').replaceChildren(
-    tile('usage', 'chart', 'Usage', sess || week ? [sess && `${limitPct(sess)}%`, sess && week && ' · ', week && `${limitPct(week)}%`] : '—'),
-    tile('context', 'pie', 'Context', ctx?.pct != null
-      ? [h('span', { class: `meter ${levelOf(ctx.pct)}` }, h('i', { style: `width:${ctx.pct}%` })), `${ctx.pct}%`]
-      : '—'),
-    tile('state', 'activity', 'State', [
-      h('i', { class: `dot${working ? ' working' : live.length ? ' running' : ''}` }),
-      working ? `${working} working` : `${live.length} running`,
-    ]));
+    h('button', { class: 'btn ghost icon sm', title: 'Add a project folder', onclick: addProjects }, ico('folderPlus')),
+    h('div', { class: 'fstats' },
+      fstat('usage', usageTip, gauge(sessPct), sess ? pctText(sessPct) : '—'),
+      fstat('context', ctx?.pct != null ? `Context of this session: ${ctx.pct}% of ${fmtTok(ctx.win)}` : 'Context of this session',
+        ico('pie'), ctx?.pct != null ? pctText(ctx.pct) : '—'),
+      fstat('state', 'Open sessions',
+        h('i', { class: `dot${working ? ' working' : live.length ? ' running' : ''}` }),
+        working ? `${working} working` : `${live.length} running`)));
   if (detailKind) renderDetail();
 }
 
@@ -831,7 +882,7 @@ const DETAILS = {
 
 function renderDetail() {
   const el = $('#detail');
-  const anchor = detailKind && $(`#side-foot .tile[data-kind="${detailKind}"]`);
+  const anchor = detailKind && $(`#side-foot .fstat[data-kind="${detailKind}"]`);
   if (!anchor) { el.hidden = true; return; }
   el.replaceChildren(DETAILS[detailKind]());
   el.hidden = false;
@@ -966,8 +1017,8 @@ function revealNewOwned() {
   if (fresh.length && !ui.servers) setServers(true);
 }
 
-// --------------------------------------------------------------- info bar ----
-// Under the terminal of a Claude tab: model, effort, and the session's subagents (from its transcript folder).
+// --------------------------------------------------------------- session info ----
+// In the status bar for a Claude tab: model, effort, and the session's subagents (from its transcript folder).
 
 /** claude-opus-5-5 -> "Opus 5.5"; aliases ("opus") and display names pass through. */
 function prettyModel(m) {
@@ -981,13 +1032,12 @@ let lastInfoKey = '';
 function renderInfo() {
   const tab = activeTab();
   const show = !!tab && tab.kind === 'claude';
-  document.body.classList.toggle('has-info', show);
   const i = show ? infoBy.get(tab.id) : null;
   const key = JSON.stringify([show && tab.id, i]);
   if (key === lastInfoKey) return;
   lastInfoKey = key;
 
-  const bar = $('#infobar');
+  const bar = $('#status-info');
   if (!show) { bar.replaceChildren(); return; }
   const running = i ? i.agents.filter((a) => a.running) : [];
   const done = i ? i.agents.length - running.length : 0;
@@ -1021,7 +1071,6 @@ async function pollInfo() {
 }
 
 function renderAll() {
-  renderTabs();
   renderSidebar(true);
   renderWelcome();
   renderStatus();
@@ -1080,10 +1129,18 @@ function setFontSize(size) {
   requestAnimationFrame(fitActive);
 }
 
+/** Toggle + logo live in the sidebar's top row; while it is collapsed they move to the start of the top bar. */
+function placeBrand() {
+  document.body.classList.toggle('sidebar-collapsed', !ui.sidebar);
+  if (ui.sidebar) $('#sidebar').prepend($('#brand'));
+  else $('#topbar').prepend($('#brand'));
+}
+
 function setSidebar(open) {
   ui.sidebar = open;
   if (!open && detailKind) setDetail(null);
-  document.body.classList.toggle('sidebar-collapsed', !open);
+  if (!open) closeMenu();
+  placeBrand();
   api.setUi({ sidebar: open });
   requestAnimationFrame(fitActive);
 }
@@ -1214,9 +1271,9 @@ function wireGlobalEvents() {
     tab.term.write(data);
     tab.lastOutput = Date.now();
     if (id !== activeId) {
-      if (!tab.busy) { tab.busy = true; syncTabClasses(tab); }
+      if (!tab.busy) { tab.busy = true; renderSidebar(); }
       clearTimeout(tab.busyTimer);
-      tab.busyTimer = setTimeout(() => { tab.busy = false; syncTabClasses(tab); renderSidebar(); }, 1500);
+      tab.busyTimer = setTimeout(() => { tab.busy = false; renderSidebar(); }, 1500);
     }
   });
 
@@ -1228,7 +1285,6 @@ function wireGlobalEvents() {
     tab.busy = false;
     showOverlay(tab, code === 0 ? 'Session ended.' : `Session ended (exit code ${code}).`);
     if (id !== activeId) { tab.attention = true; api.flash(); }
-    renderTabs();
     renderSidebar(true);
     renderStatus();
     pollPorts();
@@ -1247,7 +1303,8 @@ function wireGlobalEvents() {
   // Shortcuts avoid keys Claude Code itself uses (Ctrl+B, Ctrl+T, Ctrl+W, ...).
   window.addEventListener('keydown', (e) => {
     let handled = true;
-    if (e.key === 'Escape' && detailKind) setDetail(null);
+    if (e.key === 'Escape' && menuFor) closeMenu();
+    else if (e.key === 'Escape' && detailKind) setDetail(null);
     else if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === '=' || e.key === '+')) setFontSize(ui.fontSize + 1);
     else if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === '-' || e.key === '_')) setFontSize(ui.fontSize - 1);
     else if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key === '0') setFontSize(FONT_SIZE.default);
@@ -1275,8 +1332,13 @@ function wireGlobalEvents() {
     if (!document.hidden) { pollGit(); pollPorts(); pollSessions(); pollUsage(); }
   });
   document.addEventListener('mousedown', (e) => {
-    if (detailKind && !e.target.closest('#detail, .tile')) setDetail(null);
+    if (detailKind && !e.target.closest('#detail, .fstat')) setDetail(null);
+    // the "…" button toggles the menu itself on click, so a mousedown on it must not close it first
+    if (menuFor && !e.target.closest('#menu, .project.menu-open .p-more')) closeMenu();
   });
+  window.addEventListener('blur', closeMenu);
+  window.addEventListener('resize', closeMenu);
+  $('#projects').addEventListener('scroll', closeMenu);
 
   const search = $('#session-search');
   let searchTimer = null;
@@ -1293,7 +1355,6 @@ function wireGlobalEvents() {
     activeTab()?.term.focus();
   });
 
-  $('#add-project').addEventListener('click', addProjects);
   $('#new-tab').addEventListener('click', newSessionHere);
   $('#toggle-sidebar').addEventListener('click', () => setSidebar(!ui.sidebar));
   $('#toggle-servers').addEventListener('click', () => setServers(!ui.servers));
@@ -1307,14 +1368,13 @@ async function init() {
   $('#toggle-sidebar').append(ico('sidebar'));
   $('#new-tab').append(ico('plus'));
   $('#servers-icon').append(ico('server'));
-  $('#add-project').append(ico('folderPlus'));
   $('#search-icon').append(ico('search'));
 
   const state = await api.getState();
   projects = state.projects;
   ui = state.ui;
   for (const p of ui.expanded || []) expanded.add(p);
-  document.body.classList.toggle('sidebar-collapsed', !ui.sidebar);
+  placeBrand();
   document.body.classList.toggle('servers-open', ui.servers);
   $('#toggle-servers').classList.toggle('on', ui.servers);
 

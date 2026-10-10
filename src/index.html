@@ -11,60 +11,59 @@
 </head>
 <body>
   <div id="app">
-    <header id="topbar">
+    <aside id="sidebar">
+      <!-- #brand moves to the top bar while the sidebar is collapsed (placeBrand in renderer.js) -->
       <div id="brand">
         <button id="toggle-sidebar" class="btn ghost icon" title="Toggle sidebar (Ctrl+Shift+B)"></button>
         <span class="logo" id="logo"></span>
         <span class="brand-name">Claude Bench</span>
       </div>
-      <div id="tabs" role="tablist"></div>
-      <button id="new-tab" class="btn ghost icon" title="New Claude session in current project (Ctrl+Shift+T)"></button>
-      <div class="spacer"></div>
-      <button id="toggle-servers" class="btn outline sm" title="Running servers, MCP servers and browsers (Ctrl+Shift+S)">
-        <span id="servers-icon"></span><span id="servers-count">0</span>
-      </button>
-    </header>
+      <label class="search" title="Search sessions (Ctrl+Shift+F)">
+        <span id="search-icon"></span>
+        <input id="session-search" type="text" placeholder="Search" spellcheck="false" autocomplete="off" />
+      </label>
+      <div id="projects"></div>
+      <div id="side-foot"></div>
+    </aside>
 
-    <div id="body">
-      <aside id="sidebar">
-        <div class="side-head">
-          <span class="section-title">Projects</span>
-          <button id="add-project" class="btn ghost icon" title="Add a project folder"></button>
-        </div>
-        <label class="search" title="Search sessions (Ctrl+Shift+F)">
-          <span id="search-icon"></span>
-          <input id="session-search" type="text" placeholder="Search sessions" spellcheck="false" autocomplete="off" />
-        </label>
-        <div id="projects"></div>
-        <div id="side-foot"></div>
-      </aside>
+    <div id="workspace">
+      <header id="topbar">
+        <button id="new-tab" class="btn ghost icon" title="New Claude session in current project (Ctrl+Shift+T)"></button>
+        <div class="spacer"></div>
+        <button id="toggle-servers" class="btn outline sm" title="Running servers, MCP servers and browsers (Ctrl+Shift+S)">
+          <span id="servers-icon"></span><span id="servers-count">0</span>
+        </button>
+      </header>
 
-      <main id="main">
-        <div id="terminals"></div>
-        <div id="infobar"></div>
-        <div id="welcome"></div>
-      </main>
+      <div id="body">
+        <main id="main">
+          <div id="terminals"></div>
+          <div id="welcome"></div>
+        </main>
 
-      <aside id="servers">
-        <div class="side-head">
-          <span class="section-title">Running</span>
-          <label class="toggle" title="Include system and unrelated listeners">
-            <input type="checkbox" id="show-all" /><span>Show all</span>
-          </label>
-        </div>
-        <div id="server-list"></div>
-      </aside>
+        <aside id="servers">
+          <div class="side-head">
+            <span class="section-title">Running</span>
+            <label class="toggle" title="Include system and unrelated listeners">
+              <input type="checkbox" id="show-all" /><span>Show all</span>
+            </label>
+          </div>
+          <div id="server-list"></div>
+        </aside>
+      </div>
+
+      <footer id="statusbar">
+        <div id="status-left"></div>
+        <div class="spacer"></div>
+        <div id="status-info"></div>
+        <div id="status-right"></div>
+      </footer>
     </div>
-
-    <footer id="statusbar">
-      <div id="status-left"></div>
-      <div class="spacer"></div>
-      <div id="status-right"></div>
-    </footer>
   </div>
 
   <div id="modal" hidden></div>
   <div id="detail" hidden></div>
+  <div id="menu" role="menu" hidden></div>
 
   <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
   <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>

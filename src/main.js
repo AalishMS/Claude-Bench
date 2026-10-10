@@ -624,11 +624,11 @@ function createWindow() {
     y: b?.y,
     minWidth: 900,
     minHeight: 560,
-    backgroundColor: '#0a0a0a', // = --background (DESIGN.md sync point)
+    backgroundColor: '#171717', // = --background (DESIGN.md sync point)
     title: 'Claude Bench',
     icon: ICON,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#0a0a0a', symbolColor: '#a1a1a1', height: 40 },
+    titleBarOverlay: { color: '#171717', symbolColor: '#a1a1a1', height: 40 }, // sits on the top bar (--background)
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

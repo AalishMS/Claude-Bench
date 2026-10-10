@@ -37,24 +37,24 @@ The UI follows **shadcn/ui** (dark theme, neutral base) with a few deliberate tw
 truth: read it before any UI change** and update it in the same change when a rule moves. shadcn is copied as CSS
 tokens and component recipes, never installed (no React/Tailwind/Radix).
 
-- Tokens use shadcn names (`--background #0a0a0a`, `--foreground`, `--muted`, `--accent` = neutral hover surface,
+- Tokens use shadcn names (`--background #171717`, `--sidebar #0a0a0a` = the darker frame, `--foreground`, `--muted`, `--accent` = neutral hover surface,
   `--border`, `--input`, `--ring`, `--sidebar`...) as CSS variables at the top of `src/styles.css`. Change tokens,
   not scattered values.
 - **`--primary` (royal blue `#2850a5`) is the single accent variable.** Hover and ring tints derive from it with
   `color-mix()`, so a future accent setting only sets `--primary`. Never hard-code the blue anywhere else.
 - Color otherwise only carries meaning (`--success` running, `--warning` dirty/busy, `--destructive`). No badges,
   gradients or decorative color. Git info is plain text.
-- Buttons are `.btn` + `primary|outline|ghost|destructive` + `sm|icon` (rounded-md, no pills). Tabs are a shadcn
-  segmented TabsList. Sidebar rows are inset rounded menu items.
+- Buttons are `.btn` + `primary|outline|ghost|destructive` + `sm|icon` (rounded-md, no pills). There is no tab
+  strip: sidebar session rows are the tabs. Sidebar rows are flat 32 px rounded rows with no borders or boxes.
 - Terminal typography and the ANSI palette rules are in DESIGN.md section 5. `XTERM_THEME.background` reads
-  `--background`; `titleBarOverlay` / `backgroundColor` in main.js are literals that must match it (`#0a0a0a`).
+  `--background`; `titleBarOverlay` / `backgroundColor` in main.js are literals that must match it (`#171717`).
 
 ## Architecture
 
 ```
 src/main.js      window, ptys, git status, port scan, persistence, IPC handlers
 src/preload.js   window.api bridge (contextIsolation on, sandbox on, no nodeIntegration)
-src/renderer.js  all UI: tabs, sidebar, servers panel, status bar, dialogs, polling
+src/renderer.js  all UI: tabs (as sidebar rows), sidebar, servers panel, status bar, dialogs, polling
 src/index.html   shell + CSP (script-src 'self'); src/styles.css (tokens on :root, see DESIGN.md)
 DESIGN.md        design system (shadcn/ui + tweaks): tokens, component recipes, terminal palette rules
 scripts/         make-icon.js, create-shortcut.ps1
@@ -79,11 +79,12 @@ scripts/         make-icon.js, create-shortcut.ps1
 - **Sessions and usage**: read-only from `~/.claude/projects/<cwd, non-alphanumerics -> "-">/<uuid>.jsonl`. The sidebar lists a
   project's sessions (title = last `ai-title`, else first prompt) under it; clicking one focuses its tab or opens
   `claude --resume <uuid>` (main accepts only a bare UUID as `resumeId`). Lists read just the file tail and cache by
-  mtime+size. The footer tiles show plan limits (session / weekly / per-model % and reset times, from `api.anthropic.com/api/oauth/usage`
+  mtime+size. The sidebar footer row shows plan limits (session / weekly / per-model % and reset times, from `api.anthropic.com/api/oauth/usage`
   using the token in `~/.claude/.credentials.json`, cached 60 s in main, never written), context fill of the active tab's
   session, and tab state. Fresh and `--continue` tabs are matched to their transcript heuristically (`assignSessions`).
-  Until a tab's transcript is listed (after the first reply) it shows as an italic "New session" placeholder row.
-- **Info bar** (under Claude terminals, `session:info`): model = last reply's model or `/model` output in the transcript tail,
+  Until a tab's transcript is listed (after the first reply) it shows as an italic "New session" placeholder row;
+  PowerShell tabs get a "PowerShell" row. Every open tab has a row (there is no tab strip).
+- **Session info** (right side of the status bar for Claude tabs, `session:info`): model = last reply's model or `/model` output in the transcript tail,
   effort = `/effort` / `/model` output, else `modelSettings[<id>].effortLevel` in `~/.claude/settings.json`. Subagents come from
   `<session>/subagents/agent-*.jsonl` + `.meta.json`; finished = tail has a `SubagentHandback` call or ends in a text-only reply.
 - **Scrollbar**: our own `.vbar` replaces xterm's. Normal buffer = real position. Claude's `"tui": "fullscreen"` uses the

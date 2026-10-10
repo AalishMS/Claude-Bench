@@ -15,10 +15,10 @@ a token, never a scattered value. Dark only: there is no light theme.
 
 | Token | Value | Used for |
 |---|---|---|
-| `--background` | `#0a0a0a` | terminal, top bar, status bar, dialogs, active tab chip |
+| `--background` | `#171717` | terminal, top bar, status bar, dialogs (one step lighter than `--sidebar`, a tweak) |
 | `--foreground` | `#fafafa` | body text |
-| `--card` | `#171717` | welcome project cards |
-| `--popover` | `#171717` | footer detail popover, exit overlay |
+| `--card` | `#171717` | welcome project cards (same as the background, so they read as outlined cards) |
+| `--popover` | `#171717` | footer detail popover, `…` menu, exit overlay |
 | `--primary` | `#2850a5` | **the one accent** (royal blue, a tweak: shadcn's own primary is near-white) |
 | `--primary-foreground` | `#fafafa` | text on primary |
 | `--secondary`, `--muted`, `--accent` | `#262626` | tab list, kbd, meter track, hover surfaces |
@@ -30,9 +30,10 @@ a token, never a scattered value. Dark only: there is no light theme.
 | `--destructive` | `#ff6467` | destructive actions, conflicts, critical meters |
 | `--success` | `#7fb77e` | running |
 | `--warning` | `#d6b25e` | uncommitted changes, background activity |
-| `--sidebar` | `#171717` | project sidebar, servers panel |
+| `--sidebar` | `#0a0a0a` | project sidebar, servers panel: the darkest surface, a quiet frame (tweak) |
 | `--sidebar-foreground` | `#fafafa` | |
-| `--sidebar-accent` | `#262626` | sidebar row hover and active |
+| `--sidebar-accent` | `#262626` | selected sidebar row |
+| `--sidebar-hover` | `color-mix(--sidebar-accent 50%, transparent)` | hovered sidebar row: a softer selected |
 | `--sidebar-border` | `rgb(255 255 255 / 10%)` | |
 | `--radius` | `10px` | base radius |
 | `--radius-sm` / `-md` / `-lg` / `-xl` | `6` / `8` / `10` / `14px` | shadcn's `rounded-sm/md/lg/xl` |
@@ -51,8 +52,8 @@ The `accent` name is a trap: in shadcn, `--accent` is the **neutral hover surfac
 So a future accent setting only has to call `document.documentElement.style.setProperty('--primary', value)`.
 Never hard-code the blue, or a tint of it, anywhere else (CSS, renderer, inline styles).
 
-Primary appears **only** on: primary buttons, focus rings, progress-meter fills, the checked checkbox, and the tab
-"needs attention" dot. Nothing else gets it.
+Primary appears **only** on: primary buttons, focus rings, progress-meter fills, the checked checkbox, and the
+"needs attention" status dot. Nothing else gets it.
 
 ### Status colors
 
@@ -88,23 +89,45 @@ Class names are short and composable. These recipes mirror shadcn's components.
 - `.on` = toggled state (bg `--accent`, `--foreground`).
 - **No pill buttons.** Pills were the old design.
 
-### Tabs (terminal tab strip): shadcn `Tabs`
-- `#tabs` is the TabsList: bg `--muted`, `rounded-lg`, padding 3, height 32, scrolls horizontally with no scrollbar.
-- `.tab` is the TabsTrigger: `rounded-md`, 1 px transparent border, `--muted-foreground`; hover `--foreground`.
-- `.tab.active`: bg `--background`, border `--input`, `--foreground`, `shadow-sm`.
-- The status dot inside: `--success` running, `--warning` pulsing busy, `--primary` pulsing attention, `--faint`
-  exited. The close button shows on hover or active.
+### No tab strip
+There is no horizontal tab strip: the sidebar's session rows are the tabs. Every open tab has a row (a transcript
+row, a "New session" placeholder until the first reply, or a "PowerShell" row). `Ctrl+Tab`, `Alt+1..9` and
+`Ctrl+Shift+W` still work on tab order.
 
-### Sidebar: shadcn `Sidebar`
-- Panels (`#sidebar`, `#servers`): bg `--sidebar`, 1 px `--sidebar-border` on the terminal side.
-- Header: 40 px, `SidebarGroupLabel` title on the left, ghost icon button on the right.
-- Rows (projects, sessions, servers) are **inset menu buttons**: margin `0 8px`, `rounded-md`, hover bg
-  `--sidebar-accent`. Active row = bg `--sidebar-accent` + weight 500. **No left accent bar.**
-- Row actions: small ghost icon buttons on the title line, shown on hover/active, absolutely sized so nothing wraps
-  or shifts.
-- Nested sessions: a `SidebarMenuSub`-style list indented under the project, a faint 1 px left guide line.
-- Footer tiles: a 3-up grid separated by `--sidebar-border`; each tile is a ghost button; `.on` = bg
-  `--sidebar-accent`.
+### Status dot
+6 px circle, only on things that are live: `--success` running, `--warning` pulsing working (Claude busy or
+background output), `--primary` pulsing needs attention (bell, or exited in the background). Nothing live = no dot
+(no grey placeholder).
+
+### Sidebar: shadcn `Sidebar`, lightened
+- `#sidebar` is a full-height column: bg `--sidebar` (the darkest surface), width 256. **No divider** on the
+  terminal side: the step to `--background` separates them. Nothing inside has its own box, card, tint or border.
+- Top row (40 px, draggable): sidebar toggle, logo, app name (`#brand`). While collapsed, `#brand` moves to the start
+  of the top bar so the toggle stays reachable.
+- Search: a plain 32 px row (search icon + "Search" placeholder), no border; hover/focus = `--sidebar-hover`.
+- Rows are flat, 32 px, `rounded-md`, side padding 8. 2 px between rows, 12 px between project groups.
+  Hover = `--sidebar-hover`, selected = `--sidebar-accent`. **No borders, no left accent bar.**
+- Project row: chevron (14 px, `--faint`), folder icon, name (500), and on the right one status dot when anything
+  in the project is live. On hover the dot is replaced by `+` (new session) and `…` (DropdownMenu: continue, open
+  PowerShell, show in Explorer, remove). Path and git info live in the tooltip; the **active** project adds one
+  11 px `--faint` line under it (`branch · 3 changed`, the branch truncates first). A collapsed active project gets
+  the selected background.
+- Folder icon: the same `folder` icon for every project, 16 px in an 18 px slot, `--muted-foreground`.
+- Session rows: no guide line. Columns line up: the status dot sits under the folder icon (slot at 28 px),
+  titles start at 52 px like the project name. Title 13 px with ellipsis; time 11 px `--faint` on the right. Rows
+  backed by an open tab show `×` in place of the time on hover (middle-click closes too). Active = weight 500.
+- Footer: one slim 44 px row. Ghost icon buttons left (add project); stats right, each **icon + value** in a
+  28 px `rounded-md` button (padding 0 8, gap 6, 2 px apart, 12 px tabular numbers): plan **session** usage as a ring
+  gauge + `10%`, context as the pie icon + `24%`, running as a status dot + `3 running`. Icons `--faint`, values
+  `--foreground`, colored only at warn/crit levels. Weekly usage lives in the tooltip and the popover. Each opens its
+  `#detail` popover; hover `--sidebar-hover`, `.on` = bg `--sidebar-accent`.
+- The servers panel uses the same `--sidebar` surface with a hairline `--sidebar-border` on its terminal side.
+
+### DropdownMenu: shadcn `DropdownMenu` (`#menu`)
+- On the Popover recipe: bg `--popover`, 1 px `--border`, `rounded-lg`, `shadow-md`, padding 4, min-width 210.
+- Items: h 30, padding 0 8, `rounded-sm`, 13 px, 14 px `--muted-foreground` icon; hover/focus bg `--accent`.
+  Destructive item = `--destructive` text and icon. Separator: 1 px `--border`, full bleed.
+- Closes on outside mousedown, Escape, window blur/resize and list scroll.
 
 ### Input: shadcn `Input` / `SidebarInput`
 - h 32, `rounded-md`, 1 px `--input` border, `bg color-mix(--input 30%)`, placeholder `--faint`.
@@ -127,6 +150,8 @@ Class names are short and composable. These recipes mirror shadcn's components.
 ### Progress (meters): shadcn `Progress`
 - Track `color-mix(--primary 20%, transparent)`, `rounded-full`; fill `--primary`.
 - `.warn` fill `--warning`, `.crit` fill `--destructive` (track stays neutral `--muted` then).
+- Ring gauge (`.gauge`, circular Progress): 16 px, 3 px stroke, pure CSS (`conic-gradient` masked to a ring,
+  `--p` = percent). Same fills; the track is always `--muted`, because a primary tint disappears on `--sidebar`.
 
 ### Kbd: shadcn `Kbd`
 - bg `--muted`, `rounded-sm`, h 20, padding 0 6, 11 px mono, `--muted-foreground`.
@@ -147,12 +172,17 @@ Class names are short and composable. These recipes mirror shadcn's components.
 ## 4. Layout and behavior (tweaks kept from before)
 
 - **Terminal first.** The terminal gets the space and the focus. The chrome around it stays quiet: the top bar and
-  status bar are `--background`, the sidebars are one step lighter (`--sidebar`), as in shadcn's sidebar layout.
-- Top bar 40 px (draggable; window controls on the right via `titleBarOverlay`), status bar 24 px, info bar 26 px.
+  status bar are `--background` like the terminal, and the sidebars are one step **darker** (`--sidebar`), a frame
+  around the work rather than a panel competing with it (a tweak: shadcn's sidebar is the lighter side).
+- Two columns: the full-height sidebar, then the workspace (top bar, terminal + servers panel, status bar). The top
+  bar and status bar never run under the sidebar.
+- Top bar 40 px (draggable; new-session `+` on the left, servers toggle and the window controls on the right via
+  `titleBarOverlay`). Status bar 24 px: git branch, changes and path on the left; the active Claude tab's model,
+  effort and subagents, then the running count, on the right. There is no separate info bar.
 - **No badges.** Git info is plain text (`main  2 changed`), colored only by meaning.
 - Lists are flat inset rows; nothing wraps or shifts on hover.
 - Tooltips are native `title` attributes. Details go in tooltips, not extra lines.
-- Shadows only on raised things: the active tab chip, outline buttons (barely visible), popovers, dialogs.
+- Shadows only on raised things: outline buttons (barely visible), popovers, menus, dialogs.
 
 ## 5. Terminal
 
@@ -165,13 +195,15 @@ Per-line font size is impossible in a terminal grid, and the app never re-parses
   secondary/meta text and rules, `white`+dim = diff context, `brightWhite` on `brightBlack` bg = the user's message bar,
   `brightBlue` = inline code, `brightGreen` = bullets and diff +, `brightRed` = diff -, bold = headings/strong, italic
   = emphasis/quotes, H1 = bold+italic+underline.
-- Keep `white` mid-grey (hierarchy) and `brightBlack` dark (a quiet message bar). `minimumContrastRatio: 3` keeps
+- Keep `white` mid-grey (hierarchy) and `brightBlack` dark (a quiet message bar): `#333333`, one step above
+  `--background`. If the background moves, move `brightBlack` with it so the bar stays visible but quiet. `minimumContrastRatio: 3` keeps
   PowerShell's brightBlack flags readable.
 - The terminal background **is** `--background`: `XTERM_THEME.background` and `cursorAccent` are read from the CSS
   variable at startup (`cssVar()` in renderer.js).
 
 ## 6. Sync points (literals that can't read CSS)
 
-- `src/main.js`: `backgroundColor` and `titleBarOverlay.color` = `#0a0a0a` (they paint before CSS loads).
-  Keep them equal to `--background`.
+- `src/main.js`: `backgroundColor` and `titleBarOverlay.color` = `#171717` (they paint before CSS loads; the
+  window controls sit on the top bar). Keep them equal to `--background`.
+- `XTERM_THEME.brightBlack` (renderer.js) is tuned against `--background` (see section 5).
 - `scripts/make-icon.js` ↔ `LOGO_SVG`.
