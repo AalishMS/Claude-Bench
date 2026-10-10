@@ -41,6 +41,11 @@ const ICONS = {
   chart: '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
   pie: '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>',
   activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+  cpu: '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>',
+  zap: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+  users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+  box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
 };
 const ico = (name) =>
   h('span', { class: 'ico', html: `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>` });
@@ -59,12 +64,14 @@ let git = {}; // projectPath -> info | null
 let ports = { ok: true, servers: [] };
 let showAll = false;
 let sessionsBy = {}; // projectPath -> [{ id, title, mtime, birth, model, ctx }], newest first
-let usage = null; // { ok, today, week } from ~/.claude transcripts
+let usage = null; // { ok, limits: [{ kind, label, percent, resetsAt }] } plan limits from Anthropic
 const expanded = new Set(); // project paths whose sessions are shown
 const showMore = new Set(); // projects listing every session instead of the newest few
 let query = '';
 let lastActiveProject = null;
 let detailKind = null; // which footer popover is open: 'usage' | 'context' | 'state'
+const infoBy = new Map(); // tab id -> { model, effort, agents } for the bar under the terminal
+const seenOwned = new Set(); // servers/MCPs/browsers of our sessions already seen; a new one opens the panel
 
 const SESSIONS_SHOWN = 8;
 const CONTEXT_WINDOW = 200000; // not stored in transcripts: assume 200k, or 1M once a session has gone past it
@@ -85,10 +92,10 @@ const TERM_FONT = {
 const FONT_SIZE = { min: 10, max: 24, default: 14 };
 
 const XTERM_THEME = {
-  background: '#101010',
+  background: '#090909',
   foreground: '#dcdcdc',
-  cursor: '#e4e4e4',
-  cursorAccent: '#101010',
+  cursor: '#eaeaea',
+  cursorAccent: '#090909',
   selectionBackground: 'rgba(255, 255, 255, 0.22)',
   black: '#2a2a2a', red: '#e5736f', green: '#86c06c', yellow: '#e2b657',
   blue: '#6fa8dc', magenta: '#c490d1', cyan: '#6ec5c0', white: '#b0b0b0',
@@ -193,10 +200,11 @@ async function openSession(project, { kind = 'claude', args = [], resumeId = nul
   };
   tabs.set(id, tab);
   wireTerminal(tab);
+  wireScrollbar(tab);
 
   renderTabs();
   activate(id);
-  try { fit.fit(); } catch { /* not measurable yet */ }
+  fitTab(tab);
   await startPty(tab);
   return tab;
 }
@@ -232,6 +240,11 @@ function wireTerminal(tab) {
   });
 
   term.attachCustomKeyEventHandler((e) => {
+    // xterm sends a plain \r for Ctrl/Shift+Enter; Claude Code reads \n (Ctrl+J) as "newline".
+    if (e.key === 'Enter' && (e.ctrlKey || e.shiftKey) && !e.altKey) {
+      if (e.type === 'keydown') { e.preventDefault(); api.ptyWrite(tab.id, '\n'); }
+      return false;
+    }
     if (e.type !== 'keydown' || !e.ctrlKey || e.altKey) return true;
     const k = e.key.toLowerCase();
     if (k === 'c' && (term.hasSelection() || e.shiftKey)) {
@@ -261,6 +274,108 @@ function wireTerminal(tab) {
     if (paths.length) term.paste(paths.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(' ') + ' ');
     term.focus();
   });
+}
+
+// A thin scrollbar of our own (xterm's is hidden). On the normal buffer (shells) it shows the real position.
+// Claude Code's fullscreen UI runs on the alternate screen, which has no scrollback: Claude scrolls its own view,
+// so there the strip forwards wheel input to it and the thumb rests in the middle (it can't know the position).
+const ALT_THUMB = 40;
+const DRAG_STEP = 14; // px of thumb drag per forwarded wheel notch on the alternate screen
+
+/** Forward wheel notches to xterm, which turns them into mouse reports (Claude) or viewport scrolling (shells). */
+function wheelInto(tab, notches) {
+  const screen = tab.term.element?.querySelector('.xterm-screen');
+  if (!screen) return;
+  const r = screen.getBoundingClientRect();
+  for (let i = 0; i < Math.abs(notches); i++) {
+    screen.dispatchEvent(new WheelEvent('wheel', {
+      deltaY: Math.sign(notches), deltaMode: WheelEvent.DOM_DELTA_LINE,
+      clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true,
+    }));
+  }
+}
+
+function wireScrollbar(tab) {
+  const { term, host } = tab;
+  const thumb = h('div', { class: 'vthumb' });
+  const bar = h('div', { class: 'vbar' }, thumb);
+  host.append(bar);
+  let drag = null; // { y, top, sent }
+  let queued = false;
+
+  const geometry = () => {
+    const buf = term.buffer.active;
+    const track = bar.clientHeight;
+    if (buf.type === 'alternate') return { alt: true, track, size: ALT_THUMB, top: (track - ALT_THUMB) / 2 };
+    const max = buf.baseY;
+    if (max <= 0) return null;
+    const size = Math.max(24, Math.round((track * term.rows) / buf.length));
+    return { alt: false, track, size, max, top: ((track - size) * buf.viewportY) / max };
+  };
+
+  const sync = () => {
+    queued = false;
+    const g = geometry();
+    bar.classList.toggle('alt', !!g?.alt);
+    bar.classList.toggle('empty', !g);
+    if (!g) return;
+    let top = g.top;
+    if (drag && g.alt) top = Math.min(g.track - g.size, Math.max(0, g.top + drag.dy));
+    thumb.style.height = `${g.size}px`;
+    thumb.style.transform = `translateY(${Math.round(top)}px)`;
+  };
+  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(sync); } };
+  tab.syncScrollbar = queue;
+  term.onScroll(queue);
+  term.onWriteParsed(queue);
+  term.onResize(queue);
+  term.buffer.onBufferChange(queue);
+
+  bar.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    wheelInto(tab, Math.sign(e.deltaY) * Math.max(1, Math.round(Math.abs(e.deltaY) / 100)));
+  });
+
+  // Clicking the track pages up/down; dragging the thumb scrolls.
+  bar.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); // keep focus in the terminal
+    const g = geometry();
+    if (!g) return;
+    const y = e.clientY - bar.getBoundingClientRect().top;
+    if (e.target !== thumb) {
+      const dir = y < g.top ? -1 : 1;
+      if (g.alt) wheelInto(tab, dir * Math.max(1, term.rows - 3));
+      else term.scrollPages(dir);
+      return;
+    }
+    drag = { y: e.clientY, top: g.top, dy: 0, sent: 0 };
+    bar.setPointerCapture(e.pointerId);
+    bar.classList.add('dragging');
+  });
+  bar.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    drag.dy = e.clientY - drag.y;
+    const g = geometry();
+    if (!g) return;
+    if (g.alt) {
+      const want = Math.trunc(drag.dy / DRAG_STEP);
+      wheelInto(tab, want - drag.sent);
+      drag.sent = want;
+    } else {
+      const ratio = Math.min(1, Math.max(0, (drag.top + drag.dy) / (g.track - g.size)));
+      term.scrollToLine(Math.round(ratio * g.max));
+    }
+    queue();
+  });
+  const end = () => {
+    if (!drag) return;
+    drag = null;
+    bar.classList.remove('dragging');
+    queue();
+  };
+  bar.addEventListener('pointerup', end);
+  bar.addEventListener('pointercancel', end);
+  queue();
 }
 
 function copySelection(tab) {
@@ -309,6 +424,7 @@ async function closeTab(id) {
   clearTimeout(tab.busyTimer);
   tab.term.dispose();
   tab.host.remove();
+  infoBy.delete(id);
   const order = [...tabs.keys()];
   const idx = order.indexOf(id);
   tabs.delete(id);
@@ -332,6 +448,7 @@ function activate(id) {
   requestAnimationFrame(() => {
     fitActive();
     tab.term.refresh(0, tab.term.rows - 1);
+    tab.syncScrollbar();
     tab.term.focus();
   });
   document.body.classList.toggle('no-tabs', tabs.size === 0);
@@ -342,13 +459,27 @@ function activate(id) {
   renderSidebar(true);
   renderStatus();
   renderFoot();
+  renderInfo();
   pollGit();
+  pollInfo();
+}
+
+/** Fit, then drop a row if the renderer's rounded cell height made the screen taller than its box (covers the status bar). */
+function fitTab(tab) {
+  try {
+    tab.fit.fit();
+    const box = tab.host.querySelector('.xterm');
+    const screen = tab.host.querySelector('.xterm-screen');
+    if (box && screen && tab.term.rows > 1 && screen.offsetHeight > box.clientHeight) {
+      tab.term.resize(tab.term.cols, tab.term.rows - 1);
+    }
+  } catch { /* not measurable yet */ }
 }
 
 function fitActive() {
   const tab = activeTab();
   if (!tab || !tab.host.offsetWidth) return;
-  try { tab.fit.fit(); } catch { /* ignore transient layout errors */ }
+  fitTab(tab);
 }
 
 function cycleTab(dir) {
@@ -488,6 +619,22 @@ function sessionRow(p, s, activeSession) {
     h('span', { class: 's-time' }, fmtAgo(s.mtime)));
 }
 
+/** Claude tabs whose transcript isn't listed yet (it appears after the first reply): shown as a placeholder row. */
+const pendingTabs = (projectPath) => tabsOf(projectPath).filter((t) => t.kind === 'claude' && t.status !== 'exited'
+  && !(t.sessionId && (sessionsBy[projectPath] || []).some((s) => s.id === t.sessionId)));
+
+function pendingRow(t) {
+  const state = isWorking(t) ? 'working' : t.status === 'running' ? 'running' : '';
+  return h('div', {
+    class: `session pending${t.id === activeId ? ' active' : ''}`,
+    title: 'Its title appears after the first reply',
+    onclick: () => activate(t.id),
+  },
+    h('i', { class: `s-dot${state ? ' ' + state : ''}` }),
+    h('span', { class: 's-title' }, t.resumeId ? 'Resumed session' : t.args[0] === '--continue' ? 'Continued session' : 'New session'),
+    h('span', { class: 's-time' }, fmtAgo(t.startedAt)));
+}
+
 let lastSidebarKey = '';
 let sessionsVer = 0; // bumped when sessionsBy changes, so the render key stays cheap
 function renderSidebar(force = false) {
@@ -510,15 +657,17 @@ function renderSidebar(force = false) {
     const matches = q ? (loaded || []).filter((s) => s.title.toLowerCase().includes(q)) : loaded || [];
     if (q && !matches.length) return [];
     const isOpen = q ? true : expanded.has(p.path);
+    const pending = q ? [] : pendingTabs(p.path);
 
     let list = null;
-    if (isOpen && loaded) {
+    if (isOpen && (loaded || pending.length)) {
       const all = q || showMore.has(p.path);
       const hidden = all ? 0 : Math.max(0, matches.length - SESSIONS_SHOWN);
       list = h('div', { class: 'sessions' },
+        pending.map(pendingRow),
         matches.length
           ? (all ? matches : matches.slice(0, SESSIONS_SHOWN)).map((s) => sessionRow(p, s, tab?.sessionId))
-          : h('div', { class: 's-note' }, 'No sessions yet'),
+          : pending.length ? null : h('div', { class: 's-note' }, 'No sessions yet'),
         hidden ? h('div', { class: 's-more', onclick: () => { showMore.add(p.path); renderSidebar(true); } }, `Show ${hidden} more`) : null,
         !q && showMore.has(p.path) && matches.length > SESSIONS_SHOWN
           ? h('div', { class: 's-more', onclick: () => { showMore.delete(p.path); renderSidebar(true); } }, 'Show less')
@@ -536,7 +685,7 @@ function projectRow(p, activeProject, isOpen) {
   return h('div', {
     class: `project${p.path === activeProject ? ' active' : ''}`,
     title: p.path,
-    onclick: () => focusProject(p),
+    onclick: () => (p.path === activeProject ? toggleExpand(p) : focusProject(p)), // a second click collapses
   },
     h('div', { class: 'p-top' },
       h('button', {
@@ -566,9 +715,16 @@ const fmtTok = (n) => (n < 1000 ? String(n)
   : n < 1e4 ? `${(n / 1e3).toFixed(1)}k`
   : n < 1e6 ? `${Math.round(n / 1e3)}k`
   : `${(n / 1e6).toFixed(1)}M`);
-const sumRows = (bucket) => Object.values(bucket || {}).reduce((a, r) => a.map((x, i) => x + r[i]), [0, 0, 0, 0]);
-const freshTokens = (r) => (r ? r[0] + r[1] + r[2] : 0); // input + output + cache write; cache reads dominate and are cheap
 const modelName = (m) => (m || 'unknown').replace(/^claude-/, '');
+/** A limit whose window already reset counts as 0% until the next window starts. */
+const limitPct = (l) => (l.resetsAt && l.resetsAt < Date.now() ? 0 : l.percent);
+function fmtReset(l) {
+  if (!l.resetsAt || l.resetsAt < Date.now()) return 'no active window';
+  const mins = Math.max(1, Math.round((l.resetsAt - Date.now()) / 60000));
+  if (mins < 60) return `resets in ${mins}m`;
+  if (mins < 24 * 60) return `resets in ${Math.floor(mins / 60)}h ${mins % 60}m`;
+  return `resets ${new Date(l.resetsAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
+}
 const levelOf = (pct) => (pct >= 90 ? 'crit' : pct >= 70 ? 'warn' : '');
 
 function contextInfo() {
@@ -591,7 +747,7 @@ function tabState(t) {
 function tile(kind, icon, label, value) {
   return h('button', {
     class: `tile${detailKind === kind ? ' on' : ''}`, 'data-kind': kind,
-    title: { usage: 'Token usage', context: 'Context window of this session', state: 'Running sessions' }[kind],
+    title: { usage: 'Plan usage: session · weekly', context: 'Context window of this session', state: 'Running sessions' }[kind],
     onclick: () => setDetail(detailKind === kind ? null : kind),
   }, h('span', { class: 't-label' }, ico(icon), label), h('span', { class: 't-val' }, value));
 }
@@ -601,15 +757,17 @@ function renderFoot(force = false) {
   const ctx = contextInfo();
   const live = liveTabs();
   const working = live.filter(isWorking).length;
-  const today = usage?.ok ? sumRows(usage.today) : null;
+  const lim = (kind) => usage?.ok && usage.limits.find((l) => l.kind === kind);
+  const sess = lim('session');
+  const week = lim('weekly_all');
 
-  const key = JSON.stringify([usage, ctx && [ctx.session?.id, ctx.session?.ctx, ctx.pct, ctx.tab.id], detailKind,
+  const key = JSON.stringify([usage, Math.floor(Date.now() / 60000), ctx && [ctx.session?.id, ctx.session?.ctx, ctx.pct, ctx.tab.id], detailKind,
     [...tabs.values()].map((t) => [t.id, tabLabel(t), tabState(t)]), sessionsVer]);
   if (!force && key === lastFootKey) return;
   lastFootKey = key;
 
   $('#side-foot').replaceChildren(
-    tile('usage', 'chart', 'Usage', today ? `${fmtTok(today[0] + today[1] + today[2])} today` : '—'),
+    tile('usage', 'chart', 'Usage', sess || week ? [sess && `${limitPct(sess)}%`, sess && week && ' · ', week && `${limitPct(week)}%`] : '—'),
     tile('context', 'pie', 'Context', ctx?.pct != null
       ? [h('span', { class: `meter ${levelOf(ctx.pct)}` }, h('i', { style: `width:${ctx.pct}%` })), `${ctx.pct}%`]
       : '—'),
@@ -625,21 +783,17 @@ const dRow = (k, ...vals) => h('div', { class: 'd-row' }, h('span', { class: 'd-
 
 const DETAILS = {
   usage() {
-    if (!usage) return h('div', {}, h('h4', {}, 'Token usage'), dNote('Reading transcripts…'));
-    if (!usage.ok) return h('div', {}, h('h4', {}, 'Token usage'), dNote(usage.error, 'err'));
-    const t = sumRows(usage.today);
-    const w = sumRows(usage.week);
-    const models = Object.keys(usage.week).sort((a, b) => freshTokens(usage.week[b]) - freshTokens(usage.week[a]));
+    if (!usage) return h('div', {}, h('h4', {}, 'Plan usage'), dNote('Loading…'));
+    if (!usage.ok) return h('div', {}, h('h4', {}, 'Plan usage'), dNote(usage.error, 'err'));
     return h('div', {},
-      h('h4', {}, 'Token usage'),
-      h('div', { class: 'd-row head' }, h('span', { class: 'd-k' }), h('span', { class: 'd-v' }, 'Today'), h('span', { class: 'd-v' }, '7 days')),
-      dRow('Input', fmtTok(t[0]), fmtTok(w[0])),
-      dRow('Output', fmtTok(t[1]), fmtTok(w[1])),
-      dRow('Cache write', fmtTok(t[2]), fmtTok(w[2])),
-      dRow('Cache read', fmtTok(t[3]), fmtTok(w[3])),
-      models.length ? h('div', { class: 'd-sep' }, 'By model (input + output + cache write)') : null,
-      models.map((m) => dRow(modelName(m), fmtTok(freshTokens(usage.today[m])), fmtTok(freshTokens(usage.week[m])))),
-      dNote('Counted from your local Claude transcripts. The tile excludes cache reads. Plan limits are only visible inside Claude Code: type /usage in a tab.'));
+      h('h4', {}, 'Plan usage'),
+      usage.limits.map((l) => {
+        const pct = limitPct(l);
+        return h('div', { class: 'lim' },
+          h('div', { class: 'd-row' }, h('span', { class: 'd-k' }, l.label), h('span', { class: 'd-v' }, `${pct}%`)),
+          h('span', { class: `meter big ${levelOf(pct)}` }, h('i', { style: `width:${pct}%` })),
+          h('div', { class: 'd-reset' }, fmtReset(l)));
+      }));
   },
 
   context() {
@@ -733,9 +887,44 @@ function renderStatus() {
     h('span', { class: 'stat' }, `${running} session${running === 1 ? '' : 's'} running`));
 }
 
+const sessionProcs = () => (ports.ok && ports.procs) || []; // MCP servers and browsers under our sessions
+
+/** Short display names: "@playwright/mcp" -> "playwright", node running vite -> "vite", chrome.exe -> "chrome". */
+function itemName(s) {
+  if (s.kind === 'mcp') {
+    const words = s.label.replace(/^@/, '').split(/[/-]/).filter((w) => w && !/^(mcp|server)$/i.test(w));
+    return [...new Set(words)].join('-') || s.label;
+  }
+  if (s.kind === 'browser') return s.label;
+  const pkg = /node_modules[\\/](?:\.bin[\\/])?((?:@[^\\/\s"]+[\\/])?[^\\/\s"]+)/i.exec(s.cmd || '')?.[1];
+  return pkg ? pkg.replace('\\', '/') : s.name.replace(/\.exe$/i, '');
+}
+
+function serverRow(s) {
+  const sessionTab = s.owner?.type === 'session' ? tabs.get(s.owner.sessionId) : null;
+  const kind = s.kind === 'mcp' ? 'MCP server' : s.kind === 'browser' ? (s.headless ? 'Headless browser' : 'Browser') : 'Server';
+  // Everything but the name lives in the tooltip.
+  const tip = [
+    `${kind}${s.port ? ` on :${s.port}` : ''}${s.debugPort ? ` (debug :${s.debugPort})` : ''}`,
+    s.exposed ? 'Listening on all network interfaces' : null,
+    sessionTab ? `Started in ${tabLabel(sessionTab)}` : null,
+    `pid ${s.pid}`,
+    s.cmd || null,
+  ].filter(Boolean).join('\n');
+  const meta = s.port ? `:${s.port}` : s.debugPort ? `:${s.debugPort}` : '';
+  return h('div', { class: 'srv', title: tip },
+    ico(s.kind === 'mcp' ? 'box' : s.kind === 'browser' ? 'globe' : 'server'),
+    h('span', { class: 'name' }, itemName(s)),
+    meta ? h('span', { class: `meta${s.exposed ? ' exposed' : ''}` }, meta) : null,
+    h('div', { class: 'acts' },
+      s.port ? h('button', { class: 'icon-btn', title: `Open http://localhost:${s.port}`, onclick: () => api.openExternal(`http://localhost:${s.port}`) }, ico('link')) : null,
+      h('button', { class: 'icon-btn danger', title: 'Stop', onclick: () => killServer(s) }, ico('power'))));
+}
+
 function renderServers() {
-  const visible = ports.servers.filter((s) => showAll || s.dev);
-  $('#servers-count').textContent = String(ports.servers.filter((s) => s.dev).length);
+  const procPids = new Set(sessionProcs().map((p) => p.pid)); // a browser's debug port is shown on its own row
+  const visible = [...ports.servers.filter((s) => (showAll || s.dev) && !procPids.has(s.pid)), ...sessionProcs()];
+  $('#servers-count').textContent = String(ports.servers.filter((s) => s.dev && !procPids.has(s.pid)).length + sessionProcs().length);
 
   const root = $('#server-list');
   if (!ports.ok) {
@@ -743,7 +932,8 @@ function renderServers() {
     return;
   }
   if (!visible.length) {
-    root.replaceChildren(h('div', { class: 'empty-note' }, 'No dev servers listening.', h('br'), 'Start one and it will show up here.'));
+    root.replaceChildren(h('div', { class: 'empty-note' }, 'Nothing running.', h('br'),
+      'Dev servers, MCP servers and browsers started from a session show up here.'));
     return;
   }
 
@@ -757,21 +947,75 @@ function renderServers() {
   const keys = [...groups.keys()].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)));
   for (const key of keys) {
     nodes.push(h('div', { class: 'group-title' }, ico(key ? 'folder' : 'server'), key ? baseName(key) : 'Other'));
-    for (const s of groups.get(key)) {
-      const sessionTab = s.owner?.type === 'session' ? tabs.get(s.owner.sessionId) : null;
-      const sub = sessionTab ? `started in ${tabLabel(sessionTab)} · pid ${s.pid}`
-        : `pid ${s.pid}${s.cmd ? ' · ' + s.cmd.replace(/^("[^"]+"|\S+)\s*/, '') : ''}`;
-      nodes.push(h('div', { class: 'srv', title: s.cmd || s.name },
-        h('span', { class: 'port' }, `:${s.port}`),
-        h('div', { class: 'info' },
-          h('div', { class: 'name' }, s.name, s.exposed ? h('span', { class: 'badge', title: 'Listening on all network interfaces' }, 'exposed') : null),
-          h('div', { class: 'sub' }, sub)),
-        h('div', { class: 'acts' },
-          h('button', { class: 'icon-btn', title: `Open http://localhost:${s.port}`, onclick: () => api.openExternal(`http://localhost:${s.port}`) }, ico('link')),
-          h('button', { class: 'icon-btn danger', title: 'Stop process', onclick: () => killServer(s) }, ico('power')))));
-    }
+    nodes.push(...groups.get(key).map(serverRow)); // ports first (sorted), then MCP servers and browsers
   }
   root.replaceChildren(...nodes);
+}
+
+/** Open the panel when one of our sessions starts something new (a server, MCP server or browser). */
+function revealNewOwned() {
+  if (!ports.ok) return;
+  const keys = [
+    ...ports.servers.filter((s) => s.owner?.type === 'session').map((s) => `port:${s.pid}:${s.port}`),
+    ...sessionProcs().map((p) => `${p.kind}:${p.pid}`),
+  ];
+  const fresh = keys.filter((k) => !seenOwned.has(k));
+  for (const k of fresh) seenOwned.add(k);
+  if (fresh.length && !ui.servers) setServers(true);
+}
+
+// --------------------------------------------------------------- info bar ----
+// Under the terminal of a Claude tab: model, effort, and the session's subagents (from its transcript folder).
+
+/** claude-opus-5-5 -> "Opus 5.5"; aliases ("opus") and display names pass through. */
+function prettyModel(m) {
+  const id = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?(\[1m\])?$/i.exec(m);
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  if (!id) return cap(m);
+  return `${cap(id[1])} ${id[2]}${id[3] ? '.' + id[3] : ''}${id[4] ? ' (1M)' : ''}`;
+}
+
+let lastInfoKey = '';
+function renderInfo() {
+  const tab = activeTab();
+  const show = !!tab && tab.kind === 'claude';
+  document.body.classList.toggle('has-info', show);
+  const i = show ? infoBy.get(tab.id) : null;
+  const key = JSON.stringify([show && tab.id, i]);
+  if (key === lastInfoKey) return;
+  lastInfoKey = key;
+
+  const bar = $('#infobar');
+  if (!show) { bar.replaceChildren(); return; }
+  const running = i ? i.agents.filter((a) => a.running) : [];
+  const done = i ? i.agents.length - running.length : 0;
+  const agentTip = i?.agents.map((a) => `${a.type}${a.description ? ': ' + a.description : ''} (${a.running ? 'running' : 'done'})`).join('\n');
+  bar.replaceChildren(...[
+    h('span', { class: 'i-item', title: 'Model' }, ico('cpu'), h('span', { class: 'i-main' }, i?.model ? prettyModel(i.model) : '—')),
+    h('span', { class: 'i-item', title: 'Effort level (/effort to change)' }, ico('zap'), i?.effort ? `${i.effort} effort` : '—'),
+    i?.agents.length
+      ? h('span', { class: 'i-item i-agents', title: agentTip },
+          ico('users'),
+          running.length ? [h('i', { class: 'dot working' }), `${running.length} running`,
+            h('span', { class: 'i-names' }, running.map((a) => a.type).join(', '))] : null,
+          done ? h('span', { class: 'i-done' }, `${done} subagent${done === 1 ? '' : 's'} done`) : null)
+      : null,
+  ].filter(Boolean));
+}
+
+let infoBusy = false;
+async function pollInfo() {
+  const tab = activeTab();
+  if (!tab || tab.kind !== 'claude') { renderInfo(); return; }
+  if (infoBusy || document.hidden) return;
+  infoBusy = true;
+  try {
+    const next = await api.sessionInfo(tab.project.path, tab.sessionId);
+    if (tabs.has(tab.id)) infoBy.set(tab.id, next);
+    renderInfo(); // key-diffed
+  } finally {
+    infoBusy = false;
+  }
 }
 
 function renderAll() {
@@ -781,6 +1025,7 @@ function renderAll() {
   renderStatus();
   renderServers();
   renderFoot();
+  renderInfo();
 }
 
 // --------------------------------------------------------------- actions ----
@@ -811,8 +1056,12 @@ async function removeProject(p) {
 
 async function killServer(s) {
   const ok = await confirmDialog({
-    title: `Stop ${s.name}?`,
-    message: `This force-stops process ${s.pid} (and its children) listening on port ${s.port}.`,
+    title: `Stop ${itemName(s)}?`,
+    message: s.kind === 'mcp'
+      ? `This force-stops MCP server process ${s.pid} (and its children). Claude loses its tools until you reconnect it with /mcp.`
+      : s.kind === 'browser'
+        ? `This force-stops browser process ${s.pid} (and its children).`
+        : `This force-stops process ${s.pid} (and its children) listening on port ${s.port}.`,
     okLabel: 'Stop process',
     danger: true,
   });
@@ -918,6 +1167,7 @@ async function pollSessions() {
     assignSessions();
     renderSidebar();
     renderFoot();
+    pollInfo();
   } finally {
     sessionsBusy = false;
   }
@@ -946,6 +1196,7 @@ async function pollPorts() {
     if (JSON.stringify(next) !== JSON.stringify(ports)) {
       ports = next;
       renderServers();
+      revealNewOwned();
     }
   } finally {
     portsBusy = false;

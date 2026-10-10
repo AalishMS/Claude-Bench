@@ -20,7 +20,7 @@
       <div id="tabs" role="tablist"></div>
       <button id="new-tab" class="icon-btn" title="New Claude session in current project (Ctrl+Shift+T)"></button>
       <div class="spacer"></div>
-      <button id="toggle-servers" class="chip-btn" title="Running servers (Ctrl+Shift+S)">
+      <button id="toggle-servers" class="chip-btn" title="Running servers, MCP servers and browsers (Ctrl+Shift+S)">
         <span id="servers-icon"></span><span id="servers-count">0</span>
       </button>
     </header>
@@ -41,12 +41,13 @@
 
       <main id="main">
         <div id="terminals"></div>
+        <div id="infobar"></div>
         <div id="welcome"></div>
       </main>
 
       <aside id="servers">
         <div class="side-head">
-          <span class="section-title">Running servers</span>
+          <span class="section-title">Running</span>
           <label class="toggle" title="Include system and unrelated listeners">
             <input type="checkbox" id="show-all" /><span>Show all</span>
           </label>

@@ -33,14 +33,21 @@ There is no test suite and no linter. Verify changes by running the app (see "Te
 
 ## Design rules
 
-The UI must not look like a generic AI-generated app. Current direction: **flat, neutral, mostly black and white.**
+The UI must not look like a generic AI-generated app. Current direction: **minimal dark developer workspace, nearly
+monochrome, compact controls, breathing room.** Hierarchy comes from size, weight and brightness, not color.
 
-- Palette is neutral greys (`--bg-0 #101010` terminal/top bar, `--bg-1 #151515` sidebars, `--bg-2/3` hover/active,
-  text `#e4e4e4`). **No brand/accent color.** Primary buttons are light grey with dark text.
-- Color only carries meaning: green = running, yellow = uncommitted changes / background activity, red =
+- Palette: `--bg-0 #090909` terminal/top bar, `--bg-1 #050505` sidebars/status bar, `--bg-2 #111111` input surface,
+  hover and panels, `--bg-3 #1a1a1a` active row, `--border #222222`, text `#eaeaea`, secondary `--dim #808080`.
+  The one accent is `--accent #2850a5` (royal blue, `--accent-hi` for hover): primary buttons, active-row bar,
+  focus rings, active tab line. Nothing else gets the accent.
+- Color otherwise only carries meaning: green = running, yellow = uncommitted changes / background activity, red =
   conflicts and destructive actions. Don't add decorative color.
-- **No pills/badges, gradients, glows, tinted cards, heavy rounded corners or drop shadows** (except modals).
-  Radii are small (4-6 px). Lists are flat rows, active row = slightly lighter bg + 2 px white left bar.
+- **Shapes**: rounded rectangular panels (`--r-panel` 10 px, dialogs 12 px), pill-shaped buttons (`--r-pill`: toolbar
+  chips, primary buttons, search, dialog buttons), thin outline icons, faint dividers. **No gradients, glows, tinted
+  cards or visible shadows** (except modals/popovers). No badges. Lists are flat rows, active row = `--bg-3` + 2 px
+  accent left bar.
+- UI font is Segoe UI Variable (clean sans): small labels, medium-weight (500) project names, one large heading
+  (welcome h1).
 - Git info is plain text (`main  2 changed`), not chips.
 - Row actions are small icon buttons on the same line as the title, shown on hover/active, with tooltips.
   Nothing should wrap or shift layout on hover.
@@ -57,7 +64,7 @@ The UI must not look like a generic AI-generated app. Current direction: **flat,
   saved in `ui.fontSize`).
 - All design tokens are CSS variables at the top of `src/styles.css`. Change tokens, not scattered values.
   The xterm theme (`XTERM_THEME` in renderer.js) and `titleBarOverlay` / `backgroundColor` in main.js
-  must match `--bg-0`.
+  must match `--bg-0` (`#090909`).
 
 ## Architecture
 
@@ -78,13 +85,26 @@ scripts/         make-icon.js, create-shortcut.ps1
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled every 4 s from the renderer.
 - **Servers panel**: one PowerShell call (`Get-NetTCPConnection` + `Get-CimInstance Win32_Process`) every 6 s.
   A listener belongs to a tab if a session's pty pid is an ancestor; otherwise it is matched to a project if
-  its command line contains the project path. Default view hides non-dev processes ("Show all" reveals them).
+  its command line contains the project path outside `--flag=` values (Antigravity's `agy.exe --add-dir=<project>` is no server).
+  Rows are one line (icon, short name, port); details are in the tooltip. Default view hides non-dev processes ("Show all" reveals them).
+  The same process list is walked from each session's pty pid for MCP servers (Claude tabs only: command line contains
+  "mcp", not under a bash/PowerShell tool shell; topmost of the chain) and browsers (chrome/msedge/... without `--type=`).
+  A new session-owned port, MCP server or browser opens the panel (`revealNewOwned`); since Claude starts its local MCP
+  servers at launch, every new Claude tab opens it once.
   Kill is restricted to PIDs from the last scan and uses `taskkill /T /F`.
 - **Sessions and usage**: read-only from `~/.claude/projects/<cwd, non-alphanumerics -> "-">/<uuid>.jsonl`. The sidebar lists a
   project's sessions (title = last `ai-title`, else first prompt) under it; clicking one focuses its tab or opens
   `claude --resume <uuid>` (main accepts only a bare UUID as `resumeId`). Lists read just the file tail and cache by
-  mtime+size. The footer tiles show token usage (today / 7 days, summed from transcripts), context fill of the active tab's
+  mtime+size. The footer tiles show plan limits (session / weekly / per-model % and reset times, from `api.anthropic.com/api/oauth/usage`
+  using the token in `~/.claude/.credentials.json`, cached 60 s in main, never written), context fill of the active tab's
   session, and tab state. Fresh and `--continue` tabs are matched to their transcript heuristically (`assignSessions`).
+  Until a tab's transcript is listed (after the first reply) it shows as an italic "New session" placeholder row.
+- **Info bar** (under Claude terminals, `session:info`): model = last reply's model or `/model` output in the transcript tail,
+  effort = `/effort` / `/model` output, else `modelSettings[<id>].effortLevel` in `~/.claude/settings.json`. Subagents come from
+  `<session>/subagents/agent-*.jsonl` + `.meta.json`; finished = tail has a `SubagentHandback` call or ends in a text-only reply.
+- **Scrollbar**: our own `.vbar` replaces xterm's. Normal buffer = real position. Claude's `"tui": "fullscreen"` uses the
+  alternate screen (no scrollback), so there the strip forwards synthetic wheel events to `.xterm-screen` (Claude has mouse
+  tracking on) and the thumb rests in the middle.
 - Renderer builds DOM with the `h()` helper. User/process text always goes in as text nodes. `html:` is only for
   static icon SVG.
 
@@ -105,9 +125,8 @@ scripts/         make-icon.js, create-shortcut.ps1
 - **Never kill processes by matching the app name in the path**: "Claude Bench" matches the user's real
   packaged `Claude Bench.exe`, and "Claude Terminal" matches this source folder.
   Match `node_modules\electron\dist` to stop only dev instances.
-- **Transcript usage repeats per `message.id`** (one line per content block, identical usage): dedupe by id or totals multiply.
-  The context window size is not in the transcript, so the Context tile assumes 200k (1M once a session exceeds it).
-  Plan-limit percentages are not on disk at all; don't promise them.
+- **Context tile**: the window size is not in the transcript, so the Context tile assumes 200k (1M once a session exceeds it).
+  Plan-limit percentages are not on disk; they come from the undocumented usage endpoint (may change).
 - A hidden window (`document.hidden`) skips all polling, so when driving a test instance over CDP, override `document.hidden`
   and call `pollSessions()` yourself. Start the test instance with PowerShell `Start-Process`; a plain bash `&` dies with the tool call.
 - Windows paths and quoting: PowerShell mangles inline JS with quotes. Put test scripts in files.

@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
 
   gitStatus: (paths) => ipcRenderer.invoke('git:status', paths),
   listSessions: (paths) => ipcRenderer.invoke('sessions:list', paths),
+  sessionInfo: (cwd, sessionId) => ipcRenderer.invoke('session:info', cwd, sessionId),
   getUsage: () => ipcRenderer.invoke('usage:get'),
   listPorts: () => ipcRenderer.invoke('ports:list'),
   killProcess: (pid) => ipcRenderer.invoke('ports:kill', pid),

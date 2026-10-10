@@ -213,6 +213,53 @@ $p = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, N
 @{ c = @($c); p = @($p) } | ConvertTo-Json -Compress -Depth 4
 `;
 
+// Session children shown next to the ports: MCP servers Claude starts, and browsers (Playwright, DevTools MCP...).
+const BROWSERS = new Set(['chrome.exe', 'msedge.exe', 'firefox.exe', 'chromium.exe', 'chrome-headless-shell.exe', 'brave.exe']);
+const SHELLS = new Set(['bash.exe', 'sh.exe', 'powershell.exe', 'pwsh.exe']); // tool commands, not MCP servers
+
+/** "cmd.exe /c npx -y @playwright/mcp@latest" -> "@playwright/mcp" */
+function mcpLabel(cmd) {
+  const tokens = (cmd.match(/"[^"]*"|\S+/g) || []).map((t) => t.replace(/[\^"]/g, '')); // cmd escapes quotes as ^"
+  const tok = tokens.find((t) => !t.startsWith('-') && /mcp/i.test(t));
+  if (!tok) return 'MCP server';
+  const name = /[\\/]/.test(tok) && !tok.startsWith('@')
+    ? tok.split(/[\\/]/).filter((seg) => /mcp/i.test(seg)).pop() || tok
+    : tok;
+  return name.replace(/(.)@[^/@]*$/, '$1').replace(/\.(js|cmd|exe|py)$/i, '');
+}
+
+function sessionProcesses(procs, sessionByPid) {
+  const children = new Map();
+  for (const p of procs.values()) {
+    if (!children.has(p.ParentProcessId)) children.set(p.ParentProcessId, []);
+    children.get(p.ParentProcessId).push(p);
+  }
+  const items = [];
+  const seen = new Set();
+  const walk = (pid, s, ctx) => {
+    for (const c of children.get(pid) || []) {
+      if (seen.has(c.ProcessId)) continue; // pid reuse can make cycles
+      seen.add(c.ProcessId);
+      const name = (c.Name || '').toLowerCase();
+      const cmd = c.CommandLine || '';
+      const next = { ...ctx, shell: ctx.shell || SHELLS.has(name) };
+      let item = null;
+      if (!ctx.browser && BROWSERS.has(name) && !cmd.includes('--type=')) {
+        const port = /--remote-debugging-port=(\d+)/.exec(cmd)?.[1];
+        item = { kind: 'browser', label: name.replace(/\.exe$/, ''), headless: /--headless/.test(cmd), debugPort: port ? +port : null };
+        next.browser = true;
+      } else if (s.kind === 'claude' && !ctx.mcp && !ctx.browser && !next.shell && /mcp/i.test(cmd)) {
+        item = { kind: 'mcp', label: mcpLabel(cmd) };
+        next.mcp = true;
+      }
+      if (item) items.push({ ...item, pid: c.ProcessId, cmd, owner: { type: 'session', sessionId: s.id, projectPath: s.cwd, kind: s.kind } });
+      walk(c.ProcessId, s, next);
+    }
+  };
+  for (const [pid, s] of sessionByPid) walk(pid, s, {});
+  return items;
+}
+
 let knownPortPids = new Set();
 let portScan = null;
 
@@ -250,8 +297,9 @@ async function scanPorts() {
       if (s) return { type: 'session', sessionId: s.id, projectPath: s.cwd, kind: s.kind };
       cur = procs.get(cur)?.ParentProcessId;
     }
-    // 2. Its command line points inside a known project folder.
-    const lower = (cmd || '').toLowerCase();
+    // 2. Its executable or a script argument points inside a known project folder. Paths in flags don't count:
+    //    editor helpers (e.g. Antigravity's `agy.exe --add-dir=<project>`) mention projects without serving them.
+    const lower = (cmd || '').toLowerCase().replace(/"--?[\w-]+=[^"]*"|(^|\s)--?[\w-]+=("[^"]*"|\S*)/g, ' ');
     for (const pr of projectsByLength) {
       if (lower.includes(pr.path.toLowerCase())) return { type: 'project', projectPath: pr.path };
     }
@@ -285,8 +333,9 @@ async function scanPorts() {
   }
 
   const servers = [...byKey.values()].sort((a, b) => a.port - b.port);
-  knownPortPids = new Set(servers.map((s) => s.pid));
-  return { ok: true, servers };
+  const children = sessionProcesses(procs, sessionByPid);
+  knownPortPids = new Set([...servers, ...children].map((s) => s.pid));
+  return { ok: true, servers, procs: children };
 }
 
 function listPorts() {
@@ -303,7 +352,6 @@ const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 const TAIL_BYTES = 64 * 1024;
 const WIDE_TAIL_BYTES = 1024 * 1024;
 const HEAD_BYTES = 16 * 1024;
-const DAY_MS = 86400000;
 
 const projectDir = (cwd) => path.join(PROJECTS_DIR, path.resolve(cwd).replace(/[^a-zA-Z0-9]/g, '-'));
 const oneLine = (s) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, 160);
@@ -387,7 +435,7 @@ async function readSession(file, st) {
       mtime: Math.round(st.mtimeMs),
       birth: Math.round(st.birthtimeMs),
       model: t.model,
-      ctx: u ? (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0) : 0,
+      ctx: u ? (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.output_tokens || 0) : 0,
     };
   }
   sessionCache.set(file, { sig, info });
@@ -411,85 +459,155 @@ async function listSessions(cwd) {
   return rows.filter(Boolean).sort((a, b) => b.mtime - a.mtime).slice(0, 200);
 }
 
-const pad2 = (n) => String(n).padStart(2, '0');
-const localDay = (ms) => {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-};
+// Model, effort and subagents of one session, for the bar under the terminal. Effort is only in the transcript as
+// /effort and /model output, so it falls back to the defaults in ~/.claude/settings.json. Subagents live in
+// <session>/subagents/agent-*.jsonl with an agent-*.meta.json (type, description) next to each.
+const SETTINGS_FILE = path.join(os.homedir(), '.claude', 'settings.json');
+const AGENT_STALE_MS = 10 * 60 * 1000; // an unfinished agent silent this long was cut off (session closed)
 
-const usageCache = new Map(); // file -> { sig, days: { day: { model: [in, out, cacheWrite, cacheRead] } } }
-
-async function fileUsage(file, st) {
-  const sig = `${st.mtimeMs}:${st.size}`;
-  const hit = usageCache.get(file);
-  if (hit?.sig === sig) return hit.days;
-
-  // The same assistant message is written on several lines (one per content block) with identical usage.
-  const byId = new Map();
-  for (const line of (await fs.promises.readFile(file, 'utf8')).split('\n')) {
-    if (!line.includes('"usage"') || !line.includes('"type":"assistant"')) continue;
-    try {
-      const j = JSON.parse(line);
-      const m = j.message;
-      if (j.type !== 'assistant' || !m?.usage || !m.model || m.model === '<synthetic>') continue;
-      const ms = Date.parse(j.timestamp);
-      if (ms) byId.set(m.id || j.uuid, { ms, model: m.model, u: m.usage });
-    } catch { /* truncated line */ }
+async function readJson(file) {
+  try {
+    return JSON.parse((await fs.promises.readFile(file, 'utf8')).replace(/^﻿/, ''));
+  } catch {
+    return null;
   }
-
-  const days = {};
-  for (const { ms, model, u } of byId.values()) {
-    const row = ((days[localDay(ms)] ||= {})[model] ||= [0, 0, 0, 0]);
-    row[0] += u.input_tokens || 0;
-    row[1] += u.output_tokens || 0;
-    row[2] += u.cache_creation_input_tokens || 0;
-    row[3] += u.cache_read_input_tokens || 0;
-  }
-  usageCache.set(file, { sig, days });
-  return days;
 }
 
-async function scanUsage() {
-  const now = Date.now();
-  const week = new Set(Array.from({ length: 7 }, (_, i) => localDay(now - i * DAY_MS)));
-  const today = localDay(now);
-  const out = { ok: true, today: {}, week: {} };
-  const seen = new Set();
-  try {
-    for (const d of await fs.promises.readdir(PROJECTS_DIR)) {
-      let names;
-      try { names = await fs.promises.readdir(path.join(PROJECTS_DIR, d)); } catch { continue; }
-      for (const n of names) {
-        if (!n.endsWith('.jsonl')) continue;
-        const file = path.join(PROJECTS_DIR, d, n);
-        try {
-          const st = await fs.promises.stat(file);
-          if (now - st.mtimeMs > 8 * DAY_MS) continue;
-          seen.add(file);
-          const days = await fileUsage(file, st);
-          for (const [day, models] of Object.entries(days)) {
-            if (!week.has(day)) continue;
-            for (const [model, v] of Object.entries(models)) {
-              for (const bucket of day === today ? [out.today, out.week] : [out.week]) {
-                const row = (bucket[model] ||= [0, 0, 0, 0]);
-                for (let i = 0; i < 4; i++) row[i] += v[i];
-              }
-            }
-          }
-        } catch { /* file vanished mid-scan */ }
+/** Effort for a model from settings: modelSettings by id ("Opus 5.5" -> claude-opus-5-5), else by family, else global. */
+function defaultEffort(settings, model) {
+  const per = settings?.modelSettings || {};
+  const m = String(model || '').toLowerCase();
+  const id = m.startsWith('claude-') ? m : `claude-${m.replace(/[\s.]+/g, '-')}`;
+  if (per[id]?.effortLevel) return per[id].effortLevel;
+  const fam = /opus|sonnet|haiku|fable/.exec(m)?.[0];
+  const keys = fam ? Object.keys(per).filter((k) => k.includes(fam) && per[k]?.effortLevel) : [];
+  return keys.length === 1 ? per[keys[0]].effortLevel : settings?.effortLevel || null;
+}
+
+/** Latest model (from replies or /model) and effort (from /effort or /model) in a transcript tail. */
+function parseModelEffort(text) {
+  const out = { model: null, effort: null };
+  for (const line of text.split('\n')) {
+    try {
+      if (line.includes('"type":"assistant"') && line.includes('"model"')) {
+        const m = JSON.parse(line).message?.model;
+        if (m && m !== '<synthetic>') out.model = m;
+      } else if (line.includes('local-command-stdout')) {
+        const c = JSON.parse(line).message?.content;
+        if (typeof c !== 'string') continue;
+        const model = /Set model to `([^`]+)`/.exec(c)?.[1] || /Set model to ([^\s(<]+(?: [\d.]+)?)/.exec(c)?.[1];
+        if (model) out.model = model;
+        const effort = /Set effort level to (\w+)/.exec(c)?.[1] || /with `?(\w+)`? effort/.exec(c)?.[1];
+        if (effort) out.effort = effort;
       }
-    }
-  } catch {
-    return { ok: false, error: 'Could not read Claude transcripts' };
+    } catch { /* partial or foreign line */ }
   }
-  for (const f of usageCache.keys()) if (!seen.has(f)) usageCache.delete(f);
   return out;
 }
 
-let usageScan = null;
-function getUsage() {
-  if (!usageScan) usageScan = scanUsage().finally(() => { usageScan = null; });
-  return usageScan;
+const modelCache = new Map(); // file -> { sig, value }
+async function readModelEffort(file) {
+  const st = await fs.promises.stat(file);
+  const sig = `${st.mtimeMs}:${st.size}`;
+  const hit = modelCache.get(file);
+  if (hit?.sig === sig) return hit.value;
+  const value = parseModelEffort(await readTail(file, st.size, TAIL_BYTES));
+  modelCache.set(file, { sig, value });
+  return value;
+}
+
+const agentCache = new Map(); // file -> { sig, agent }
+async function readAgent(dir, name) {
+  const file = path.join(dir, name);
+  const st = await fs.promises.stat(file);
+  const sig = `${st.mtimeMs}:${st.size}`;
+  const hit = agentCache.get(file);
+  if (hit?.sig === sig) return hit.agent;
+  const meta = (await readJson(file.replace(/\.jsonl$/, '.meta.json'))) || {};
+  const tail = await readTail(file, st.size, TAIL_BYTES);
+  const lines = tail.split('\n').filter(Boolean);
+  // Finished = it handed its report back, or its last line is a reply with text and no further tool call.
+  let done = tail.includes('"name":"SubagentHandback"');
+  if (!done) try {
+    const j = JSON.parse(lines[lines.length - 1]);
+    const c = j.type === 'assistant' && j.message?.content;
+    done = Array.isArray(c) && c.some((x) => x.type === 'text') && !c.some((x) => x.type === 'tool_use');
+  } catch { /* last line longer than the tail, or still being written: working */ }
+  const agent = {
+    id: name.slice(6, -6),
+    type: oneLine(meta.agentType) || 'agent',
+    description: oneLine(meta.description),
+    done,
+    start: Math.round(st.birthtimeMs),
+    mtime: Math.round(st.mtimeMs),
+  };
+  agentCache.set(file, { sig, agent });
+  return agent;
+}
+
+async function sessionInfo(cwd, sessionId) {
+  const settings = await readJson(SETTINGS_FILE);
+  let model = null;
+  let effort = null;
+  let agents = [];
+  if (typeof cwd === 'string' && typeof sessionId === 'string' && UUID_RE.test(sessionId)) {
+    try {
+      ({ model, effort } = await readModelEffort(path.join(projectDir(cwd), `${sessionId}.jsonl`)));
+    } catch { /* no transcript yet */ }
+    const dir = path.join(projectDir(cwd), sessionId, 'subagents');
+    try {
+      const names = (await fs.promises.readdir(dir)).filter((n) => /^agent-.+\.jsonl$/.test(n));
+      agents = await Promise.all(names.map((n) => readAgent(dir, n).catch(() => null)));
+    } catch { /* no subagents */ }
+  }
+  model = model || settings?.model || null;
+  effort = effort || defaultEffort(settings, model);
+  const now = Date.now();
+  agents = agents.filter(Boolean)
+    .map((a) => ({ ...a, running: !a.done && now - a.mtime < AGENT_STALE_MS }))
+    .sort((a, b) => b.start - a.start);
+  return { model, effort, agents };
+}
+
+// Plan limits (session, weekly, per-model weekly) come from the same endpoint Claude Code's /usage reads, using the
+// OAuth token Claude Code keeps in ~/.claude/.credentials.json. The token only goes to api.anthropic.com.
+// Claude Code refreshes the token while it runs; we never write the credentials file.
+const CREDENTIALS_FILE = path.join(os.homedir(), '.claude', '.credentials.json');
+let limitsCache = { at: 0, value: null };
+let limitsFetch = null;
+
+async function fetchLimits() {
+  let oauth;
+  try {
+    oauth = JSON.parse((await fs.promises.readFile(CREDENTIALS_FILE, 'utf8')).replace(/^﻿/, '')).claudeAiOauth;
+  } catch { /* handled below */ }
+  if (!oauth?.accessToken) return { ok: false, error: 'Not signed in. Run claude and log in.' };
+  if (oauth.expiresAt && oauth.expiresAt < Date.now()) return { ok: false, error: 'Login expired. Open a Claude tab to refresh it.' };
+  try {
+    const res = await fetch('https://api.anthropic.com/api/oauth/usage', {
+      headers: { Authorization: `Bearer ${oauth.accessToken}`, 'anthropic-beta': 'oauth-2025-04-20' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return { ok: false, error: `Usage request failed (${res.status})` };
+    const j = await res.json();
+    const limits = (j.limits || []).map((l) => ({
+      kind: l.kind,
+      label: l.kind === 'session' ? 'Session' : l.kind === 'weekly_all' ? 'Weekly' : l.scope?.model?.display_name || 'Weekly (model)',
+      percent: Math.round(l.percent),
+      resetsAt: Date.parse(l.resets_at) || null,
+    }));
+    return { ok: true, limits, fetchedAt: Date.now() };
+  } catch {
+    return { ok: false, error: 'Could not reach Anthropic (offline?)' };
+  }
+}
+
+function getLimits() { // cached for a minute; overlapping calls share one request
+  if (limitsCache.value?.ok && Date.now() - limitsCache.at < 60000) return Promise.resolve(limitsCache.value);
+  if (!limitsFetch) {
+    limitsFetch = fetchLimits().then((v) => { limitsCache = { at: Date.now(), value: v }; return v; }).finally(() => { limitsFetch = null; });
+  }
+  return limitsFetch;
 }
 
 // --------------------------------------------------------------- window ----
@@ -506,11 +624,11 @@ function createWindow() {
     y: b?.y,
     minWidth: 900,
     minHeight: 560,
-    backgroundColor: '#101010',
+    backgroundColor: '#090909',
     title: 'Claude Bench',
     icon: ICON,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#101010', symbolColor: '#c4c4c4', height: 40 },
+    titleBarOverlay: { color: '#090909', symbolColor: '#c4c4c4', height: 40 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -643,7 +761,8 @@ function registerIpc() {
     const entries = await Promise.all((paths || []).map(async (p) => [p, await listSessions(p)]));
     return Object.fromEntries(entries);
   });
-  ipcMain.handle('usage:get', () => getUsage());
+  ipcMain.handle('session:info', (_e, cwd, sessionId) => sessionInfo(cwd, sessionId));
+  ipcMain.handle('usage:get', () => getLimits());
 
   ipcMain.handle('ports:list', () => listPorts());
   ipcMain.handle('ports:kill', async (_e, pid) => {
