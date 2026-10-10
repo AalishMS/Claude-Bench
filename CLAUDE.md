@@ -27,7 +27,7 @@ There is no test suite and no linter. Verify changes by running the app (see "Te
   Terminal output is coalesced (6 ms) before IPC. Git/port polling skip overlapping runs. Only re-render DOM
   when data actually changed (`lastSidebarKey`, `JSON.stringify` diffs).
 - **Terminal first.** The terminal gets the space and the focus. Chrome around it stays quiet.
-- **Don't fight Claude Code.** Our shortcuts avoid keys it uses (`Ctrl+B/T/W/J`...). They are `Ctrl+Shift+T/W/B/S`,
+- **Don't fight Claude Code.** Our shortcuts mostly avoid keys it uses (`Ctrl+B/W/J`...); `Ctrl+T` (new session) and `Ctrl+S` (sidebar) are deliberate exceptions. They are `Ctrl+T`, `Ctrl+S`, `Ctrl+Shift+W/S` (close tab, servers),
   `Ctrl+Tab`, `Alt+1..9`.
 - Prefer the smallest change that works. No speculative settings screens, plugin systems or abstractions.
 

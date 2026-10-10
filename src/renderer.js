@@ -919,9 +919,9 @@ function renderWelcome() {
                 h('span', { class: 'proj-go' }, ico('arrowRight')))))
         : h('button', { class: 'btn primary', onclick: addProjects }, ico('folderPlus'), 'Add project'),
       h('div', { class: 'hint' },
-        h('span', {}, h('kbd', {}, 'Ctrl+Shift+T'), ' new session'),
+        h('span', {}, h('kbd', {}, 'Ctrl+T'), ' new session'),
         h('span', {}, h('kbd', {}, 'Ctrl+Tab'), ' switch'),
-        h('span', {}, h('kbd', {}, 'Ctrl+Shift+B'), ' sidebar'),
+        h('span', {}, h('kbd', {}, 'Ctrl+S'), ' sidebar'),
         h('span', {}, h('kbd', {}, 'Ctrl+Shift+S'), ' servers'))));
 }
 
@@ -1317,7 +1317,7 @@ function wireGlobalEvents() {
     if (project) focusProject(project);
   });
 
-  // Shortcuts avoid keys Claude Code itself uses (Ctrl+B, Ctrl+T, Ctrl+W, ...).
+  // Ctrl+T (new session) and Ctrl+S (sidebar) are taken from Claude Code on purpose; the rest avoid its keys.
   window.addEventListener('keydown', (e) => {
     let handled = true;
     if (e.key === 'Escape' && menuFor) closeMenu();
