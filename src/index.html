@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claude Terminal</title>
+  <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div id="brand">
+        <button id="toggle-sidebar" class="icon-btn" title="Toggle sidebar (Ctrl+Shift+B)"></button>
+        <span class="logo" id="logo"></span>
+        <span class="brand-name">Claude Terminal</span>
+      </div>
+      <div id="tabs" role="tablist"></div>
+      <button id="new-tab" class="icon-btn" title="New Claude session in current project (Ctrl+Shift+T)"></button>
+      <div class="spacer"></div>
+      <button id="toggle-servers" class="chip-btn" title="Running servers (Ctrl+Shift+S)">
+        <span id="servers-icon"></span><span id="servers-count">0</span>
+      </button>
+    </header>
+
+    <div id="body">
+      <aside id="sidebar">
+        <div class="side-head">
+          <span class="section-title">Projects</span>
+          <button id="add-project" class="icon-btn" title="Add a project folder"></button>
+        </div>
+        <label class="search" title="Search sessions (Ctrl+Shift+F)">
+          <span id="search-icon"></span>
+          <input id="session-search" type="text" placeholder="Search sessions" spellcheck="false" autocomplete="off" />
+        </label>
+        <div id="projects"></div>
+        <div id="side-foot"></div>
+      </aside>
+
+      <main id="main">
+        <div id="terminals"></div>
+        <div id="welcome"></div>
+      </main>
+
+      <aside id="servers">
+        <div class="side-head">
+          <span class="section-title">Running servers</span>
+          <label class="toggle" title="Include system and unrelated listeners">
+            <input type="checkbox" id="show-all" /><span>Show all</span>
+          </label>
+        </div>
+        <div id="server-list"></div>
+      </aside>
+    </div>
+
+    <footer id="statusbar">
+      <div id="status-left"></div>
+      <div class="spacer"></div>
+      <div id="status-right"></div>
+    </footer>
+  </div>
+
+  <div id="modal" hidden></div>
+  <div id="detail" hidden></div>
+
+  <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="../node_modules/@xterm/addon-web-links/lib/addon-web-links.js"></script>
+  <script src="../node_modules/@xterm/addon-webgl/lib/addon-webgl.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
