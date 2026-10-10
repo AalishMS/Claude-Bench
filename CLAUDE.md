@@ -33,38 +33,21 @@ There is no test suite and no linter. Verify changes by running the app (see "Te
 
 ## Design rules
 
-The UI must not look like a generic AI-generated app. Current direction: **minimal dark developer workspace, nearly
-monochrome, compact controls, breathing room.** Hierarchy comes from size, weight and brightness, not color.
+The UI follows **shadcn/ui** (dark theme, neutral base) with a few deliberate tweaks. **`DESIGN.md` is the source of
+truth: read it before any UI change** and update it in the same change when a rule moves. shadcn is copied as CSS
+tokens and component recipes, never installed (no React/Tailwind/Radix).
 
-- Palette: `--bg-0 #090909` terminal/top bar, `--bg-1 #050505` sidebars/status bar, `--bg-2 #111111` input surface,
-  hover and panels, `--bg-3 #1a1a1a` active row, `--border #222222`, text `#eaeaea`, secondary `--dim #808080`.
-  The one accent is `--accent #2850a5` (royal blue, `--accent-hi` for hover): primary buttons, active-row bar,
-  focus rings, active tab line. Nothing else gets the accent.
-- Color otherwise only carries meaning: green = running, yellow = uncommitted changes / background activity, red =
-  conflicts and destructive actions. Don't add decorative color.
-- **Shapes**: rounded rectangular panels (`--r-panel` 10 px, dialogs 12 px), pill-shaped buttons (`--r-pill`: toolbar
-  chips, primary buttons, search, dialog buttons), thin outline icons, faint dividers. **No gradients, glows, tinted
-  cards or visible shadows** (except modals/popovers). No badges. Lists are flat rows, active row = `--bg-3` + 2 px
-  accent left bar.
-- UI font is Segoe UI Variable (clean sans): small labels, medium-weight (500) project names, one large heading
-  (welcome h1).
-- Git info is plain text (`main  2 changed`), not chips.
-- Row actions are small icon buttons on the same line as the title, shown on hover/active, with tooltips.
-  Nothing should wrap or shift layout on hover.
-- Icons are inline Feather-style SVG paths in `ICONS` (renderer.js). Logo is a light tile with a dark `>_`
-  (`LOGO_SVG` in renderer.js and `scripts/make-icon.js` must stay in sync).
-- **Terminal typography** (`TERM_FONT` in renderer.js): Cascadia Mono, light body weight (300), bold 700, line
-  height 1.4, slight letter spacing. Claude Code emits the **ANSI 16-color palette** (measured from the xterm buffer:
-  default fg = body, `white` = secondary/meta text and rules, `white`+dim = diff context, `brightWhite` on
-  `brightBlack` bg = the user's message bar, `brightBlue` = inline code, `brightGreen` = bullets and diff +,
-  `brightRed` = diff -, bold = headings/strong, italic = emphasis/quotes, H1 = bold+italic+underline). So
-  `XTERM_THEME` is the real lever: keep `white` mid-grey (hierarchy) and `brightBlack` dark (quiet message bar;
-  `minimumContrastRatio: 3` keeps PowerShell's brightBlack flags readable). Per-line font size is impossible in a
-  terminal grid. Never try to re-parse its output into "blocks". Size is `Ctrl +` / `Ctrl -` / `Ctrl 0` (10-24,
-  saved in `ui.fontSize`).
-- All design tokens are CSS variables at the top of `src/styles.css`. Change tokens, not scattered values.
-  The xterm theme (`XTERM_THEME` in renderer.js) and `titleBarOverlay` / `backgroundColor` in main.js
-  must match `--bg-0` (`#090909`).
+- Tokens use shadcn names (`--background #0a0a0a`, `--foreground`, `--muted`, `--accent` = neutral hover surface,
+  `--border`, `--input`, `--ring`, `--sidebar`...) as CSS variables at the top of `src/styles.css`. Change tokens,
+  not scattered values.
+- **`--primary` (royal blue `#2850a5`) is the single accent variable.** Hover and ring tints derive from it with
+  `color-mix()`, so a future accent setting only sets `--primary`. Never hard-code the blue anywhere else.
+- Color otherwise only carries meaning (`--success` running, `--warning` dirty/busy, `--destructive`). No badges,
+  gradients or decorative color. Git info is plain text.
+- Buttons are `.btn` + `primary|outline|ghost|destructive` + `sm|icon` (rounded-md, no pills). Tabs are a shadcn
+  segmented TabsList. Sidebar rows are inset rounded menu items.
+- Terminal typography and the ANSI palette rules are in DESIGN.md section 5. `XTERM_THEME.background` reads
+  `--background`; `titleBarOverlay` / `backgroundColor` in main.js are literals that must match it (`#0a0a0a`).
 
 ## Architecture
 
@@ -72,7 +55,8 @@ monochrome, compact controls, breathing room.** Hierarchy comes from size, weigh
 src/main.js      window, ptys, git status, port scan, persistence, IPC handlers
 src/preload.js   window.api bridge (contextIsolation on, sandbox on, no nodeIntegration)
 src/renderer.js  all UI: tabs, sidebar, servers panel, status bar, dialogs, polling
-src/index.html   shell + CSP (script-src 'self'); src/styles.css
+src/index.html   shell + CSP (script-src 'self'); src/styles.css (tokens on :root, see DESIGN.md)
+DESIGN.md        design system (shadcn/ui + tweaks): tokens, component recipes, terminal palette rules
 scripts/         make-icon.js, create-shortcut.ps1
 ```
 

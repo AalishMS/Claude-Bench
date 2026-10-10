@@ -5,6 +5,8 @@
 // ------------------------------------------------------------- helpers ----
 
 const $ = (sel, root = document) => root.querySelector(sel);
+/** Read a CSS custom property from :root (styles.css is loaded before this script). */
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 /** Tiny DOM builder. Text is always added as text nodes; `html` is for static icons only. */
 function h(tag, props, ...children) {
@@ -92,10 +94,10 @@ const TERM_FONT = {
 const FONT_SIZE = { min: 10, max: 24, default: 14 };
 
 const XTERM_THEME = {
-  background: '#090909',
+  background: cssVar('--background'),
   foreground: '#dcdcdc',
   cursor: '#eaeaea',
-  cursorAccent: '#090909',
+  cursorAccent: cssVar('--background'),
   selectionBackground: 'rgba(255, 255, 255, 0.22)',
   black: '#2a2a2a', red: '#e5736f', green: '#86c06c', yellow: '#e2b657',
   blue: '#6fa8dc', magenta: '#c490d1', cyan: '#6ec5c0', white: '#b0b0b0',
@@ -126,7 +128,7 @@ function confirmDialog({ title, message, items = [], okLabel = 'OK', cancelLabel
       e.preventDefault();
       e.stopPropagation();
     };
-    const cancelBtn = h('button', { class: 'btn', onclick: () => done(false) }, cancelLabel);
+    const cancelBtn = h('button', { class: 'btn outline', onclick: () => done(false) }, cancelLabel);
     modal.replaceChildren(
       h('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true' },
         h('h3', {}, title),
@@ -137,7 +139,7 @@ function confirmDialog({ title, message, items = [], okLabel = 'OK', cancelLabel
           : null,
         h('div', { class: 'row' },
           cancelBtn,
-          h('button', { class: `btn ${danger ? 'danger' : 'primary'}`, onclick: () => done(true) }, okLabel))));
+          h('button', { class: `btn ${danger ? 'destructive' : 'primary'}`, onclick: () => done(true) }, okLabel))));
     modal.hidden = false;
     window.addEventListener('keydown', onKey, true);
     cancelBtn.focus();
@@ -394,8 +396,8 @@ function showOverlay(tab, message, isError = false) {
   tab.host.append(
     h('div', { class: `overlay${isError ? ' error' : ''}` },
       h('span', { class: 'msg' }, message),
-      h('button', { class: 'chip-btn', onclick: () => restartTab(tab) }, ico('redo'), 'Restart'),
-      h('button', { class: 'chip-btn', onclick: () => closeTab(tab.id) }, 'Close tab')));
+      h('button', { class: 'btn outline sm', onclick: () => restartTab(tab) }, ico('redo'), 'Restart'),
+      h('button', { class: 'btn outline sm', onclick: () => closeTab(tab.id) }, 'Close tab')));
 }
 
 async function restartTab(tab) {
@@ -517,7 +519,7 @@ function renderTabs() {
       h('span', { class: 'dot' }),
       h('span', { class: 'label' }, tabLabel(tab)),
       h('span', { class: 'kind' }, tab.kind === 'claude' && tab.args.length ? `claude ${tab.args[0].slice(2)}` : KIND_LABEL[tab.kind]),
-      h('button', { class: 'icon-btn close', title: 'Close (Ctrl+Shift+W)', onclick: (e) => { e.stopPropagation(); closeTab(tab.id); } }, ico('x')));
+      h('button', { class: 'btn ghost icon sm close', title: 'Close (Ctrl+Shift+W)', onclick: (e) => { e.stopPropagation(); closeTab(tab.id); } }, ico('x')));
     tab.tabEl = el;
     syncTabClasses(tab);
     return el;
@@ -549,7 +551,7 @@ function gitPills(info) {
 
 function rowButton(icon, title, onClick, extraClass = '') {
   return h('button', {
-    class: `icon-btn sm ${extraClass}`.trim(), title,
+    class: `btn ghost icon sm ${extraClass}`.trim(), title,
     onclick: (e) => { e.stopPropagation(); onClick(); },
   }, ico(icon));
 }
@@ -689,7 +691,7 @@ function projectRow(p, activeProject, isOpen) {
   },
     h('div', { class: 'p-top' },
       h('button', {
-        class: `icon-btn sm chev${isOpen ? ' open' : ''}`, title: isOpen ? 'Hide sessions' : 'Show sessions',
+        class: `btn ghost icon sm chev${isOpen ? ' open' : ''}`, title: isOpen ? 'Hide sessions' : 'Show sessions',
         onclick: (e) => { e.stopPropagation(); toggleExpand(p); },
       }, ico('chevron')),
       h('span', { class: 'p-name' }, p.name),
@@ -858,7 +860,7 @@ function renderWelcome() {
               h('div', { class: 'p-name' }, p.name),
               h('div', { class: 'p-path' }, h('bdi', {}, p.path)),
               h('div', { class: 'p-git' }, gitPills(git[p.path])))))
-        : h('button', { class: 'btn-primary', onclick: addProjects }, ico('folderPlus'), 'Add project'),
+        : h('button', { class: 'btn primary', onclick: addProjects }, ico('folderPlus'), 'Add project'),
       h('div', { class: 'hint' },
         h('div', {}, h('kbd', {}, 'Ctrl+Tab'), ' switch tabs   ', h('kbd', {}, 'Alt+1…9'), ' jump to tab'),
         h('div', {}, h('kbd', {}, 'Ctrl+Shift+T'), ' new session   ', h('kbd', {}, 'Ctrl+Shift+W'), ' close tab'),
@@ -917,8 +919,8 @@ function serverRow(s) {
     h('span', { class: 'name' }, itemName(s)),
     meta ? h('span', { class: `meta${s.exposed ? ' exposed' : ''}` }, meta) : null,
     h('div', { class: 'acts' },
-      s.port ? h('button', { class: 'icon-btn', title: `Open http://localhost:${s.port}`, onclick: () => api.openExternal(`http://localhost:${s.port}`) }, ico('link')) : null,
-      h('button', { class: 'icon-btn danger', title: 'Stop', onclick: () => killServer(s) }, ico('power'))));
+      s.port ? h('button', { class: 'btn ghost icon sm', title: `Open http://localhost:${s.port}`, onclick: () => api.openExternal(`http://localhost:${s.port}`) }, ico('link')) : null,
+      h('button', { class: 'btn ghost icon sm danger', title: 'Stop', onclick: () => killServer(s) }, ico('power'))));
 }
 
 function renderServers() {
