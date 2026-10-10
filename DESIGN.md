@@ -17,7 +17,7 @@ a token, never a scattered value. Dark only: there is no light theme.
 |---|---|---|
 | `--background` | `#171717` | terminal, top bar, status bar, dialogs (one step lighter than `--sidebar`, a tweak) |
 | `--foreground` | `#fafafa` | body text |
-| `--card` | `#171717` | welcome project cards (same as the background, so they read as outlined cards) |
+| `--card` | `#171717` | card surface (same as the background) |
 | `--popover` | `#171717` | footer detail popover, `…` menu, exit overlay |
 | `--primary` | `#2850a5` | **the one accent** (royal blue, a tweak: shadcn's own primary is near-white) |
 | `--primary-foreground` | `#fafafa` | text on primary |
@@ -133,9 +133,10 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - h 32, `rounded-md`, 1 px `--input` border, `bg color-mix(--input 30%)`, placeholder `--faint`.
 - `:focus-within`: border `--ring` + ring shadow.
 
-### Card: shadcn `Card`
-- bg `--card`, 1 px `--border`, `rounded-xl`, `shadow-sm`, padding 14/16. Hover: border `--input`, bg
-  `color-mix(--card, --accent 40%)`.
+### Welcome screen
+- Centered column (max 600), logo, "What should we build?" (30 px h1), one muted line, then a flat project list:
+  `.proj` rows (name + path left, git info right, arrow on hover), `rounded-lg`, hover bg `--accent`. No borders
+  or cards. Shortcuts are one quiet centered `kbd` line at the bottom.
 
 ### Popover: shadcn `Popover`
 - `#detail` and the exit `.overlay`: bg `--popover`, 1 px `--border`, `rounded-lg`, `shadow-md`, padding 12–16.

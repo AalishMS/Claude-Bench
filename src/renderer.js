@@ -33,7 +33,9 @@ const ICONS = {
   branch: '<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
   server: '<rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>',
   folderPlus: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>',
+  arrowRight: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
   folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
   link: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
   sidebar: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>',
   power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>',
@@ -903,20 +905,24 @@ function renderWelcome() {
   root.replaceChildren(
     h('div', { class: 'welcome-inner' },
       h('div', { class: 'big-logo', html: LOGO_SVG }),
-      h('h1', {}, 'Claude Bench'),
+      h('h1', {}, 'What should we build?'),
       h('p', {}, projects.length ? 'Pick a project to start a Claude session.' : 'Add a project folder to get started.'),
       projects.length
-        ? h('div', { class: 'card-grid' }, projects.map((p) =>
-            h('div', { class: 'card', onclick: () => focusProject(p) },
-              h('div', { class: 'p-name' }, p.name),
-              h('div', { class: 'p-path' }, h('bdi', {}, p.path)),
-              h('div', { class: 'p-git' }, gitPills(git[p.path])))))
+        ? h('div', { class: 'proj-list' },
+            h('div', { class: 'proj-label' }, 'Projects'),
+            projects.map((p) =>
+              h('div', { class: 'proj', onclick: () => focusProject(p) },
+                h('div', { class: 'proj-main' },
+                  h('div', { class: 'p-name' }, p.name),
+                  h('div', { class: 'p-path' }, h('bdi', {}, p.path))),
+                h('div', { class: 'p-git' }, gitPills(git[p.path])),
+                h('span', { class: 'proj-go' }, ico('arrowRight')))))
         : h('button', { class: 'btn primary', onclick: addProjects }, ico('folderPlus'), 'Add project'),
       h('div', { class: 'hint' },
-        h('div', {}, h('kbd', {}, 'Ctrl+Tab'), ' switch tabs   ', h('kbd', {}, 'Alt+1…9'), ' jump to tab'),
-        h('div', {}, h('kbd', {}, 'Ctrl+Shift+T'), ' new session   ', h('kbd', {}, 'Ctrl+Shift+W'), ' close tab'),
-        h('div', {}, h('kbd', {}, 'Ctrl+Shift+B'), ' sidebar   ', h('kbd', {}, 'Ctrl+Shift+S'), ' servers'),
-        h('div', {}, 'Drop files onto a terminal to paste their paths.'))));
+        h('span', {}, h('kbd', {}, 'Ctrl+Shift+T'), ' new session'),
+        h('span', {}, h('kbd', {}, 'Ctrl+Tab'), ' switch'),
+        h('span', {}, h('kbd', {}, 'Ctrl+Shift+B'), ' sidebar'),
+        h('span', {}, h('kbd', {}, 'Ctrl+Shift+S'), ' servers'))));
 }
 
 function renderStatus() {
@@ -1197,6 +1203,17 @@ function newSessionHere() {
   else addProjects();
 }
 
+/** The project the top bar's shortcuts act on: the active tab's, else the only one. */
+function currentProject() {
+  return activeTab()?.project || (projects.length === 1 ? projects[0] : null);
+}
+
+function projectAction(fn) {
+  const p = currentProject();
+  if (p) fn(p);
+  else if (!projects.length) addProjects();
+}
+
 // --------------------------------------------------------------- polling ----
 
 let gitBusy = false;
@@ -1356,6 +1373,9 @@ function wireGlobalEvents() {
   });
 
   $('#new-tab').addEventListener('click', newSessionHere);
+  $('#open-code').addEventListener('click', () => projectAction((p) => api.openInCode(p.path)));
+  $('#open-shell').addEventListener('click', () => projectAction((p) => openSession(p, { kind: 'shell' })));
+  $('#open-folder').addEventListener('click', () => projectAction((p) => api.openFolder(p.path)));
   $('#toggle-sidebar').addEventListener('click', () => setSidebar(!ui.sidebar));
   $('#toggle-servers').addEventListener('click', () => setServers(!ui.servers));
   $('#show-all').addEventListener('change', (e) => { showAll = e.target.checked; renderServers(); });
@@ -1367,6 +1387,9 @@ async function init() {
   $('#logo').innerHTML = LOGO_SVG;
   $('#toggle-sidebar').append(ico('sidebar'));
   $('#new-tab').append(ico('plus'));
+  $('#open-code').append(ico('code'));
+  $('#open-shell').append(ico('terminal'));
+  $('#open-folder').append(ico('folder'));
   $('#servers-icon').append(ico('server'));
   $('#search-icon').append(ico('search'));
 

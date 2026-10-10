@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('api', {
 
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   openFolder: (p) => ipcRenderer.invoke('shell:showInFolder', p),
+  openInCode: (p) => ipcRenderer.invoke('shell:openInCode', p),
   readClipboard: () => ipcRenderer.invoke('clipboard:read'),
   writeClipboard: (text) => ipcRenderer.send('clipboard:write', text),
   flash: () => ipcRenderer.send('win:flash'),

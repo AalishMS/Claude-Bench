@@ -4,7 +4,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, clipboard } = require('elect
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const pty = require('@lydell/node-pty');
 
 const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
@@ -777,6 +777,18 @@ function registerIpc() {
   });
   ipcMain.handle('shell:showInFolder', (_e, p) => {
     if (isDir(p)) return shell.openPath(p);
+  });
+
+  ipcMain.handle('shell:openInCode', (_e, p) => {
+    if (!isDir(p)) return { ok: false, error: 'Folder not found' };
+    return new Promise((resolve) => {
+      // `code` is a .cmd shim on PATH; fall back to the per-user install when PATH lacks it.
+      const exe = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code', 'Code.exe');
+      const [file, args] = fs.existsSync(exe) ? [exe, [p]] : ['cmd.exe', ['/d', '/c', 'code', p]];
+      const child = spawn(file, args, { detached: true, stdio: 'ignore', windowsHide: true });
+      child.on('error', () => resolve({ ok: false, error: 'Could not start VS Code' }));
+      child.on('spawn', () => { child.unref(); resolve({ ok: true }); });
+    });
   });
 
   ipcMain.handle('clipboard:read', () => clipboard.readText());
