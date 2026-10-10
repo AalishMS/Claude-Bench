@@ -1,5 +1,5 @@
 {
-  "name": "claude-terminal",
+  "name": "claude-bench",
   "version": "0.1.0",
   "description": "A desktop wrapper for Claude Code: project sidebar, tabs, git status and a running-servers panel.",
   "main": "src/main.js",
@@ -23,8 +23,8 @@
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "com.local.claudeterminal",
-    "productName": "Claude Terminal",
+    "appId": "com.local.claudebench",
+    "productName": "Claude Bench",
     "directories": { "output": "dist" },
     "files": ["src/**", "assets/**", "package.json"],
     "asarUnpack": ["node_modules/@lydell/**"],

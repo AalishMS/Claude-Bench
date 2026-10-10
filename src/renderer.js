@@ -696,7 +696,7 @@ function renderWelcome() {
   root.replaceChildren(
     h('div', { class: 'welcome-inner' },
       h('div', { class: 'big-logo', html: LOGO_SVG }),
-      h('h1', {}, 'Claude Terminal'),
+      h('h1', {}, 'Claude Bench'),
       h('p', {}, projects.length ? 'Pick a project to start a Claude session.' : 'Add a project folder to get started.'),
       projects.length
         ? h('div', { class: 'card-grid' }, projects.map((p) =>
@@ -869,7 +869,7 @@ async function onCloseRequest() {
       }),
     ];
     const ok = await confirmDialog({
-      title: 'Quit Claude Terminal?',
+      title: 'Quit Claude Bench?',
       message: 'Quitting will stop:',
       items,
       okLabel: 'Quit and stop',

@@ -9,7 +9,7 @@ const pty = require('@lydell/node-pty');
 
 const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
 
-app.setAppUserModelId('com.local.claudeterminal');
+app.setAppUserModelId('com.local.claudebench');
 
 // ---------------------------------------------------------------- state ----
 
@@ -21,10 +21,13 @@ const defaults = {
 };
 let state = structuredClone(defaults);
 const stateFile = () => path.join(app.getPath('userData'), 'state.json');
+// The app was called "Claude Terminal" (userData = %APPDATA%\claude-terminal); read that once if nothing is saved yet.
+const legacyStateFile = () => path.join(app.getPath('appData'), 'claude-terminal', 'state.json');
 
 function loadState() {
   try {
-    const saved = JSON.parse(fs.readFileSync(stateFile(), 'utf8').replace(/^﻿/, ''));
+    const file = fs.existsSync(stateFile()) ? stateFile() : legacyStateFile();
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, ''));
     state = { ...defaults, ...saved, ui: { ...defaults.ui, ...saved.ui } };
   } catch {
     /* first run or unreadable file: keep defaults */
@@ -98,7 +101,7 @@ function createSession({ id, cwd, kind, args, resumeId, cols, rows }) {
     return { ok: false, error: 'Invalid session id' };
   }
 
-  const env = { ...process.env, COLORTERM: 'truecolor', TERM_PROGRAM: 'ClaudeTerminal' };
+  const env = { ...process.env, COLORTERM: 'truecolor', TERM_PROGRAM: 'ClaudeBench' };
   for (const k of STRIP_ENV) delete env[k];
 
   let file;
@@ -504,7 +507,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 560,
     backgroundColor: '#101010',
-    title: 'Claude Terminal',
+    title: 'Claude Bench',
     icon: ICON,
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#101010', symbolColor: '#c4c4c4', height: 40 },
@@ -551,7 +554,7 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-// A folder passed on the command line: `claude-terminal.exe C:\some\project`.
+// A folder passed on the command line: `claude-bench.exe C:\some\project`.
 // In dev the app's own folder ("electron .") is also an argument, so skip that one.
 function pathFromArgv(argv) {
   const self = path.resolve(app.getAppPath()).toLowerCase();

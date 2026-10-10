@@ -1,4 +1,4 @@
-# Claude Terminal
+# Claude Bench
 
 Windows desktop wrapper around the real `claude` CLI. Electron + xterm.js + ConPTY (`@lydell/node-pty`).
 Each tab is a genuine Claude Code session, so never re-implement CLI features (slash commands, permissions,
@@ -11,7 +11,7 @@ Personal tool for one user on Windows 11. No macOS/Linux support, no auto-update
 
 ```
 npm start            # run from source (fastest loop)
-npm run package      # build dist\win-unpacked\Claude Terminal.exe (fails if that exe is running)
+npm run package      # build dist\win-unpacked\Claude Bench.exe (fails if that exe is running)
 npm run shortcut     # Desktop + Start menu shortcuts -> packaged exe
 npm run icon         # regenerate assets/icon.png + icon.ico (pure Node, no deps)
 ```
@@ -69,8 +69,9 @@ src/index.html   shell + CSP (script-src 'self'); src/styles.css
 scripts/         make-icon.js, create-shortcut.ps1
 ```
 
-- **State** lives in `%APPDATA%\claude-terminal\state.json` (projects, ui flags, window bounds). Written
-  synchronously via tmp file + rename.
+- **State** lives in `%APPDATA%\claude-bench\state.json` (projects, ui flags, window bounds). Written
+  synchronously via tmp file + rename. The app used to be "Claude Terminal": if no state exists yet, the loader
+  reads `%APPDATA%\claude-terminal\state.json` once (`legacyStateFile`).
 - **Sessions**: `cmd.exe /d /c claude [--continue|--resume]` for Claude tabs (resolves `claude.cmd` and
   `claude.exe`), `powershell.exe -NoLogo` for shell tabs. Exit shows a Restart / Close overlay.
   Claude args are allow-listed in main.js.
@@ -96,13 +97,14 @@ scripts/         make-icon.js, create-shortcut.ps1
 - `document.hidden` is true for an occluded window, so polling pauses; `visibilitychange` and `focus` resume it.
 - `state.json` may carry a BOM (PowerShell `Set-Content -Encoding utf8`); the loader strips it.
 - Dev run passes the app folder as an argv entry (`electron .`); `pathFromArgv` skips it. A real folder arg
-  (`Claude Terminal.exe C:\proj`) adds a project and opens a session.
+  (`Claude Bench.exe C:\proj`) adds a project and opens a session.
 - `electron-builder` needs `electron` in `devDependencies` and `@lydell/**` in `asarUnpack` (native pty).
   Electron's own install script is gated by npm `allow-scripts`; if `node_modules\electron\dist` is missing run
   `node node_modules\electron\install.js`.
 - The packaged exe is locked while the app runs, so close it before `npm run package`.
-- **Never kill processes by matching "Claude Terminal" in the path**: that also matches the user's real
-  packaged `Claude Terminal.exe`. Match `node_modules\electron\dist` to stop only dev instances.
+- **Never kill processes by matching the app name in the path**: "Claude Bench" matches the user's real
+  packaged `Claude Bench.exe`, and "Claude Terminal" matches this source folder.
+  Match `node_modules\electron\dist` to stop only dev instances.
 - **Transcript usage repeats per `message.id`** (one line per content block, identical usage): dedupe by id or totals multiply.
   The context window size is not in the transcript, so the Context tile assumes 200k (1M once a session exceeds it).
   Plan-limit percentages are not on disk at all; don't promise them.
@@ -125,6 +127,6 @@ scripts can open sessions, write to ptys (`api.ptyWrite`), and read xterm buffer
 
 ## Ideas not built yet
 
-Restore open tabs on relaunch, drag-to-reorder tabs, per-project quick commands, "Open in Claude Terminal"
+Restore open tabs on relaunch, drag-to-reorder tabs, per-project quick commands, "Open in Claude Bench"
 Explorer context menu, notifications when a background session needs input, auto-detect git worktrees.
 Only build these when asked.

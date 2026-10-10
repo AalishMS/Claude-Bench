@@ -1,4 +1,4 @@
-# Claude Terminal
+# Claude Bench
 
 A desktop wrapper around the real `claude` CLI (Electron + xterm.js + ConPTY). Each tab is a genuine
 Claude Code session, so slash commands, permissions and speed are unchanged.
@@ -15,11 +15,11 @@ Claude Code session, so slash commands, permissions and speed are unchanged.
 ```
 npm install
 npm start                # run from source
-npm run package          # build dist\win-unpacked\Claude Terminal.exe
+npm run package          # build dist\win-unpacked\Claude Bench.exe
 npm run shortcut         # Desktop + Start menu shortcuts (uses the packaged exe if present)
 ```
 
-`Claude Terminal.exe C:\some\folder` adds that folder as a project and opens a session in it.
+`Claude Bench.exe C:\some\folder` adds that folder as a project and opens a session in it.
 
 ## Shortcuts
 
@@ -36,7 +36,7 @@ Drop files onto a terminal to paste their paths. `F12` opens DevTools.
 
 ## Layout
 
-- `src/main.js`: window, ptys, git status, port scan (PowerShell), persistence in `%APPDATA%\claude-terminal\state.json`
+- `src/main.js`: window, ptys, git status, port scan (PowerShell), persistence in `%APPDATA%\claude-bench\state.json`
 - `src/preload.js`: the small `window.api` bridge (context isolation is on)
 - `src/renderer.js`, `index.html`, `styles.css`: the UI
 - `scripts/`: icon generator and shortcut creator
