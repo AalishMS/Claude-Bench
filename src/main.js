@@ -50,7 +50,7 @@ if (IS_MAC && !process.env.LANG) process.env.LANG = 'en_US.UTF-8'; // Finder lau
 
 const defaults = {
   projects: [], // [{ path, name }]
-  ui: { sidebar: true, servers: false, sidebarW: 232, rsideW: 300, fontSize: 14, expanded: [], collapsed: [] }, // expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut
+  ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, fontSize: 14, expanded: [], collapsed: [] }, // expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut
   bounds: null,
   maximized: false,
 };
@@ -64,6 +64,8 @@ function loadState() {
     const file = fs.existsSync(stateFile()) ? stateFile() : legacyStateFile();
     const saved = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, ''));
     state = { ...defaults, ...saved, ui: { ...defaults.ui, ...saved.ui } };
+    // The right sidebar used to default to closed, so a saved `false` is usually just that old default: reopen it once.
+    if (!saved.ui?.rsideMigrated) { state.ui.servers = true; state.ui.rsideMigrated = true; }
   } catch {
     /* first run or unreadable file: keep defaults */
   }
@@ -959,6 +961,16 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+/** Code.exe: the per-user or system install, else next to the `code.cmd` shim on PATH (it lives in <install>\bin). */
+function findVsCode() {
+  const dirs = [
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code'),
+    path.join(process.env.ProgramFiles || '', 'Microsoft VS Code'),
+    ...(process.env.PATH || '').split(';').filter((d) => d && fs.existsSync(path.join(d, 'code.cmd'))).map((d) => path.dirname(d)),
+  ];
+  return dirs.map((d) => path.join(d, 'Code.exe')).find((f) => fs.existsSync(f)) || null;
+}
+
 // A folder passed on the command line: `claude-bench.exe C:\some\project`.
 // In dev the app's own folder ("electron .") is also an argument, so skip that one.
 function pathFromArgv(argv) {
@@ -1077,11 +1089,12 @@ function registerIpc() {
         execFile('/usr/bin/open', ['-a', 'Visual Studio Code', p], (err) => resolve(err ? { ok: false, error: 'Could not start VS Code' } : { ok: true }));
       });
     }
+    const exe = findVsCode();
+    if (!exe) return { ok: false, error: 'VS Code not found' };
     return new Promise((resolve) => {
-      // `code` is a .cmd shim on PATH; fall back to the per-user install when PATH lacks it.
-      const exe = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code', 'Code.exe');
-      const [file, args] = fs.existsSync(exe) ? [exe, [p]] : ['cmd.exe', ['/d', '/c', 'code', p]];
-      const child = spawn(file, args, { detached: true, stdio: 'ignore', windowsHide: true });
+      // No windowsHide: it puts SW_HIDE in STARTUPINFO, and Windows applies that to VS Code's first window,
+      // so a cold start ran with no visible window at all.
+      const child = spawn(exe, [p], { detached: true, stdio: 'ignore' });
       child.on('error', () => resolve({ ok: false, error: 'Could not start VS Code' }));
       child.on('spawn', () => { child.unref(); resolve({ ok: true }); });
     });

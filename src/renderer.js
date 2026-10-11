@@ -91,7 +91,7 @@ const FILES_APP = IS_MAC ? 'Finder' : 'Explorer';
 // --------------------------------------------------------------- state ----
 
 let projects = [];
-let ui = { sidebar: true, servers: false, fontSize: 14, collapsed: [] }; // replaced by the saved state in init()
+let ui = { sidebar: true, servers: true, fontSize: 14, collapsed: [] }; // replaced by the saved state in init()
 const tabs = new Map(); // id -> tab
 let activeId = null;
 let split = null; // { ids: [tab id, 2-4 of them], cx, ry } side-by-side panes (runtime only); activeId is the focused pane
