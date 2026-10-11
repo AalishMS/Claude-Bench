@@ -1502,7 +1502,7 @@ function tabRow(t, showProject = false) {
 }
 
 /**
- * A split group's members in one tinted box, like a browser tab group: inside their project's list, or at the top of the
+ * A split group's members in one soft card, like a browser tab group: inside their project's list, or at the top of the
  * sidebar when they come from different projects (each row then names its project). Clicking the header shows the
  * group when it isn't on screen; its × unsplits it. With several groups each has its own color.
  */
@@ -1516,7 +1516,7 @@ function splitGroup(g, showProject) {
       onclick: () => { if (!live) activate(members[0].id); },
     },
       h('span', { class: 'sg-ico' }, ico(g.v ? 'rows' : 'columns')),
-      h('span', {}, 'Split view'),
+      h('span', { class: 'sg-label' }, 'Split view'),
       h('span', { class: 'sg-count' }, String(members.length)),
       h('button', {
         class: 'btn ghost icon sm', title: live ? tip('Back to one terminal', 'unsplit') : 'Unsplit',
