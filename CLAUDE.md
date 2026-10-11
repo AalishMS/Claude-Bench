@@ -226,6 +226,13 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
 - **A detached PowerShell dies at once**: Node's `detached: true` on Windows means no console, and powershell.exe 5.1
   exits without one. Start it through `cmd /d /s /c "start "title" powershell.exe ..."` (`windowsVerbatimArguments`),
   as `startExternalUpdate` does; it gets its own console and outlives the app.
+- **The updater must not run with its cwd inside `dist\win-unpacked`**: the shortcuts start the exe there, a child inherits
+  that working directory, and Windows won't delete a folder that is some process's cwd, so electron-builder failed with
+  `EBUSY ... rmdir dist\win-unpacked` and the old build reopened (the app then says "up to date", since `checkUpdate`
+  compares the checkout, not the build). `startExternalUpdate` spawns with `cwd: os.tmpdir()` and `update.ps1` calls
+  `[IO.Directory]::SetCurrentDirectory($env:TEMP)` (`Set-Location` only moves PowerShell's own location, not the process's).
+  `update.ps1` is copied to temp *before* `git pull`, so a fix to it only applies from the update after it lands.
+  macOS is not affected (cwd doesn't block deletion there).
 - `state.json` may carry a BOM (PowerShell `Set-Content -Encoding utf8`); the loader strips it.
 - Dev run passes the app folder as an argv entry (`electron .`); `pathFromArgv` skips it. A real folder arg
   (`Claude Bench.exe C:\proj`) adds a project and opens a session.
