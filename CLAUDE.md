@@ -74,7 +74,7 @@ scripts/         make-icon.js, create-shortcut.ps1
   synchronously via tmp file + rename. The app used to be "Claude Terminal": if no state exists yet, the loader
   reads `%APPDATA%\claude-terminal\state.json` once (`legacyStateFile`).
 - **Restore tabs**: `state.tabs` (`{ project, kind, sessionId }` in tab order) + `state.activeTab`, sent by the renderer's
-  `saveTabs` (key-diffed; called from `activate`, `closeTab`, `assignSessions`), never on a timer. Claude tabs
+  `saveTabs` (key-diffed; called from `activate`, `closeTab`, `assignSessions`, `moveTab`), never on a timer. Claude tabs
   without a transcript yet are not saved. At launch `state:get` returns `restore` = `restorableTabs()` (drops entries whose
   project is gone or whose `<uuid>.jsonl` is missing, one try/catch per entry); `restoreTabs` creates all tabs, starts the
   active one first, then the rest 400 ms apart (Claude tabs via `--resume <uuid>`, shells fresh). Split view is not saved.
@@ -98,6 +98,7 @@ scripts/         make-icon.js, create-shortcut.ps1
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
   - Notifications: plain Electron `Notification` (no registry step). An unsigned app may show as "Electron" from
     `npm start`; if the user denied permission nothing shows and `notify` swallows any error.
+  - Reorder: plain HTML5 drag events, no Mac branch.
   - Terminal: `macOptionIsMeta` (Claude's Option shortcuts), `rightClickSelectsWord: false` (right-click pastes);
     the custom Ctrl+C/V handler is skipped. Labels say "Shell" / "Finder"; tooltips go through `kbd()` (⌘ ⇧ ⌥).
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled every 4 s from the renderer.
@@ -119,6 +120,12 @@ scripts/         make-icon.js, create-shortcut.ps1
   Claude session resumed in a second pane, or another shell). On the home screen a drop just opens it. `renderSidebar` is paused while dragging. `autoRside` hides the right sidebar while a split pane is under 100 cols and
   restores it at 106+ (predicted from the current cols), without touching `ui.servers`; opening it by hand in a split sets
   `rsideForced` until the split's membership changes. `fitActive` fits every visible pane.
+- **Tab order** = insertion order of the `tabs` Map (Ctrl+Tab, Alt+1..9, saved order). Each project's list shows its open
+  tabs first in that order (`tabRow`; a session open twice gets a row per tab), then its other sessions by mtime.
+  Reorder (`wireReorder` on `#projects`): dropping an open tab's row on another open row of the same project inserts it
+  before/after (upper/lower half; `.drop-before` / `.drop-after` draw the line), via `moveTab`, which rebuilds the Map and
+  calls `saveTabs`. Rows carry `data-tab`; closed sessions and other projects' rows refuse the drop. The terminal
+  `#dropzone` is a separate area, so split drops are unaffected; `renderSidebar` stays paused until `endDrag`.
 - **Closing**: `Ctrl+W`, the top-bar `×` (`#close-tab`) and each pane header's `×` all call `closeTab`. It only asks "End this session?" when
   Claude is working in the tab (`isWorking`) or a dev server started from it is listening (`ports`, owner = this tab); idle tabs close silently.
 - **Notifications** (`trackTab` / `notifyTab` in renderer.js, `notify` in main.js): "<project>: Needs input" or

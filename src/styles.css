@@ -184,7 +184,11 @@ body.resizing .rz { pointer-events: auto; }
 .search input::placeholder { color: var(--faint); }
 
 /* sessions (and open PowerShell tabs) under a project: one 32px line each */
-.session { display: flex; align-items: center; gap: 6px; height: 32px; flex: none; padding: 0 4px 0 28px; border-radius: var(--radius-md); color: var(--muted-foreground); cursor: pointer; }
+.session { position: relative; display: flex; align-items: center; gap: 6px; height: 32px; flex: none; padding: 0 4px 0 28px; border-radius: var(--radius-md); color: var(--muted-foreground); cursor: pointer; }
+/* reorder: insertion line in the 2 px gap between rows, the same tint as the split drop preview's outline */
+.session.drop-before::before, .session.drop-after::after { content: ''; position: absolute; left: 28px; right: 4px; height: 2px; border-radius: 1px; background: color-mix(in srgb, var(--primary) 70%, transparent); pointer-events: none; }
+.session.drop-before::before { top: -2px; }
+.session.drop-after::after { bottom: -2px; }
 .session:hover { background: var(--sidebar-hover); color: var(--foreground); }
 .session.active { background: var(--sidebar-accent); color: var(--foreground); font-weight: 500; }
 .s-mark { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 18px; }

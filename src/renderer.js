@@ -818,6 +818,49 @@ function wireDropZone() {
   });
 }
 
+/** Move tab `id` just before (or after) tab `targetId` in the tab order, and remember it. */
+function moveTab(id, targetId, after) {
+  const ids = [...tabs.keys()];
+  const next = ids.filter((x) => x !== id);
+  next.splice(next.indexOf(targetId) + (after ? 1 : 0), 0, id);
+  if (next.join() === ids.join()) return;
+  const entries = next.map((x) => [x, tabs.get(x)]);
+  tabs.clear();
+  for (const [k, v] of entries) tabs.set(k, v);
+  saveTabs();
+}
+
+// Reorder: drop an open tab's row between the open rows of its own project. A thin line marks the insertion point.
+// The sidebar and the terminal drop zone never overlap, so the two targets can't be confused.
+function wireReorder() {
+  const root = $('#projects');
+  let mark = null; // { row, after }
+  const clear = () => { mark?.row.classList.remove('drop-before', 'drop-after'); mark = null; };
+  root.addEventListener('dragover', (e) => {
+    const src = dragSrc?.id && tabs.get(dragSrc.id);
+    const row = e.target.closest?.('.session[data-tab]');
+    const t = row && tabs.get(row.dataset.tab);
+    if (!src || !t || t === src || t.project.path !== src.project.path) { clear(); return; }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const r = row.getBoundingClientRect();
+    const after = e.clientY > r.top + r.height / 2;
+    if (mark?.row === row && mark.after === after) return;
+    clear();
+    mark = { row, after };
+    row.classList.add(after ? 'drop-after' : 'drop-before');
+  });
+  root.addEventListener('dragleave', (e) => { if (!root.contains(e.relatedTarget)) clear(); });
+  root.addEventListener('drop', (e) => {
+    if (!mark || !dragSrc?.id) return;
+    e.preventDefault();
+    const { row, after } = mark;
+    clear();
+    moveTab(dragSrc.id, row.dataset.tab, after);
+    endDrag(); // re-renders the held-back sidebar
+  });
+}
+
 function focusPane(dir) {
   const ids = visibleIds();
   if (ids.length < 2) return;
@@ -1064,12 +1107,14 @@ function closeButton(t) {
 }
 const auxClose = (t) => (e) => { if (t && e.button === 1) closeTab(t.id); };
 
-function sessionRow(p, s, activeSession) {
-  const t = tabOfSession(s.id);
+/** A transcript row; `t` is the open tab showing it (a session opened twice gets one row per tab). */
+function sessionRow(p, s, t = null) {
   return h('div', {
-    class: `session${s.id === activeSession ? ' active' : ''}${t ? ' has-tab' : ''}`,
+    class: `session${t ? (t.id === activeId ? ' active' : '') + ' has-tab' : ''}`,
+    'data-tab': t?.id,
     ...rowDrag({ id: t?.id || null, project: p, resumeId: s.id }),
-    title: `${s.title}\n${new Date(s.mtime).toLocaleString()}\nDrag onto the terminal (or ${IS_MAC ? '⌘' : 'Ctrl+'}click) to open beside the current session`,
+    title: `${s.title}\n${new Date(s.mtime).toLocaleString()}\nDrag onto the terminal (or ${IS_MAC ? '⌘' : 'Ctrl+'}click) to open beside the current session`
+      + (t ? '\nDrag between open sessions to reorder' : ''),
     onclick: (e) => (mod(e) && activeId
       ? besideRow(t, () => openSession(p, { resumeId: s.id, beside: true }))
       : openSessionRow(p, s)),
@@ -1081,16 +1126,17 @@ function sessionRow(p, s, activeSession) {
     t ? closeButton(t) : null);
 }
 
-/**
- * Open tabs that have no transcript row: Claude tabs before their first reply (placeholder title) and
- * PowerShell tabs. Exited ones stay listed so they can still be focused and closed.
- */
-const pendingTabs = (projectPath) => tabsOf(projectPath).filter((t) => t.kind === 'shell'
-  || !(t.sessionId && (sessionsBy[projectPath] || []).some((s) => s.id === t.sessionId)));
+/** An open tab's row: its transcript row once known, else a placeholder. Exited tabs stay listed so they can be closed. */
+function tabRow(t) {
+  const s = t.kind === 'claude' && t.sessionId && (sessionsBy[t.project.path] || []).find((x) => x.id === t.sessionId);
+  return s ? sessionRow(t.project, s, t) : pendingRow(t);
+}
 
+/** Claude tabs before their first reply (placeholder title) and shell tabs. */
 function pendingRow(t) {
   return h('div', {
     class: `session has-tab${t.kind === 'claude' ? ' pending' : ''}${t.id === activeId ? ' active' : ''}`,
+    'data-tab': t.id,
     ...rowDrag({ id: t.id, project: t.project, resumeId: null }),
     title: t.kind === 'shell' ? `${SHELL_LABEL} in ${t.project.path}` : 'Its title appears after the first reply',
     onclick: (e) => { if (mod(e) && activeId) besideRow(t, null); else activate(t.id); },
@@ -1149,20 +1195,23 @@ function renderSidebar(force = false) {
     const matches = q ? (loaded || []).filter((s) => s.title.toLowerCase().includes(q)) : loaded || [];
     if (q && !matches.length) return null;
     const isOpen = q ? true : expanded.has(p.path);
-    const pending = q ? [] : pendingTabs(p.path);
+    // Open tabs first, in tab order (drag to reorder), then the project's other sessions, newest first.
+    const open = q ? [] : tabsOf(p.path);
+    const openIds = new Set(open.map((t) => t.sessionId));
+    const rest = matches.filter((s) => !openIds.has(s.id));
     const isActive = p.path === activeProject;
 
     let list = null;
-    if (isOpen && (loaded || pending.length)) {
+    if (isOpen && (loaded || open.length)) {
       const all = q || showMore.has(p.path);
-      const hidden = all ? 0 : Math.max(0, matches.length - SESSIONS_SHOWN);
+      const hidden = all ? 0 : Math.max(0, rest.length - SESSIONS_SHOWN);
       list = h('div', { class: 'sessions' },
-        pending.map(pendingRow),
-        matches.length
-          ? (all ? matches : matches.slice(0, SESSIONS_SHOWN)).map((s) => sessionRow(p, s, tab?.sessionId))
-          : pending.length ? null : h('div', { class: 's-note' }, 'No sessions yet'),
+        open.map(tabRow),
+        rest.length
+          ? (all ? rest : rest.slice(0, SESSIONS_SHOWN)).map((s) => sessionRow(p, s, tabOfSession(s.id)))
+          : open.length ? null : h('div', { class: 's-note' }, 'No sessions yet'),
         hidden ? h('div', { class: 's-more', onclick: () => { showMore.add(p.path); renderSidebar(true); } }, `Show ${hidden} more`) : null,
-        !q && showMore.has(p.path) && matches.length > SESSIONS_SHOWN
+        !q && showMore.has(p.path) && rest.length > SESSIONS_SHOWN
           ? h('div', { class: 's-more', onclick: () => { showMore.delete(p.path); renderSidebar(true); } }, 'Show less')
           : null);
     }
@@ -2035,6 +2084,7 @@ function wireGlobalEvents() {
   $('#close-tab').addEventListener('click', () => { if (activeId) closeTab(activeId); });
   $('#split-tab').addEventListener('click', () => (split ? unsplit() : splitHere()));
   wireDropZone();
+  wireReorder();
   wireDivider($('#pz-v'), 'x');
   wireDivider($('#pz-h'), 'y');
 

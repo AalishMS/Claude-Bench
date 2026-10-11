@@ -52,8 +52,8 @@ The `accent` name is a trap: in shadcn, `--accent` is the **neutral hover surfac
 So a future accent setting only has to call `document.documentElement.style.setProperty('--primary', value)`.
 Never hard-code the blue, or a tint of it, anywhere else (CSS, renderer, inline styles).
 
-Primary appears **only** on: primary buttons, focus rings, progress-meter fills, the checked checkbox, and the
-"needs attention" status dot. Nothing else gets it.
+Primary appears **only** on: primary buttons, focus rings, progress-meter fills, the checked checkbox, the
+"needs attention" status dot, and drag-and-drop targets (split drop preview, reorder insertion line). Nothing else gets it.
 
 ### Status colors
 
@@ -123,6 +123,10 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   11 px `--faint` line under it (`branch · 3 changed`, the branch truncates first). A collapsed active project gets
   the selected background.
 - Folder icon: the same `folder` icon for every project, 16 px in an 18 px slot, `--muted-foreground`.
+- Session list order: the project's open tabs first, in tab order, then its other sessions newest first. Dragging an
+  open tab's row between the open rows of the same project reorders tabs: a 2 px `--primary` 70% line (the split drop
+  preview's outline tint) sits in the gap where it would land, from the status-dot column (28 px) to the row's right padding. Nothing else moves
+  while dragging.
 - Session rows: no guide line. Columns line up: the status dot sits under the folder icon (slot at 28 px),
   titles start at 52 px like the project name. Title 13 px with ellipsis; time 11 px `--faint` on the right. Rows
   backed by an open tab show `×` in place of the time on hover (middle-click closes too). Active = weight 500.
