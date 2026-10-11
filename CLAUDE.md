@@ -106,7 +106,8 @@ scripts/         make-icon.js, create-shortcut.ps1, update.ps1 / update.sh (rebu
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled every 4 s from the renderer.
 - **Update** (people install by cloning): `repoDir()` = the app folder for `npm start`, or the repo above `dist/` for a
   packaged build (walks up to a `.git` + `package.json` named `claude-bench`; a `.app` copied elsewhere finds none).
-  `checkUpdate` runs `git fetch` + `rev-list --count HEAD..@{u}` 10 s after start and every 30 min (skipped while
+  `checkUpdate` runs `git fetch` + `rev-list --count HEAD..@{u}` 10 s after start and every 30 min (and on demand via the refresh icon next to the app name, `#check-slot` / `checkNow`, which
+  reports "up to date" or git's error, `error` in the result, in `#update-pop`; skipped while
   hidden; `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never` so no credential prompt). If behind, `renderUpdate` shows the
   button in `#update-slot`, and `renderUpdatePop` opens `#update-pop` under it (the newest 5 subjects from
   `git log --format=%s HEAD..@{u}`; Later / Update…, the latter runs `runUpdate`). Dismissing records the `behind` count
@@ -168,7 +169,7 @@ scripts/         make-icon.js, create-shortcut.ps1, update.ps1 / update.sh (rebu
   project's sessions (title = last `ai-title`, else first prompt) under it; clicking one focuses its tab or opens
   `claude --resume <uuid>` (main accepts only a bare UUID as `resumeId`). Lists read just the file tail and cache by
   mtime+size. The sidebar footer row shows plan limits (session / weekly / per-model % and reset times, from `api.anthropic.com/api/oauth/usage`
-  using the token in `~/.claude/.credentials.json`, cached 60 s in main, never written), context fill of the active tab's
+  using the token in `~/.claude/.credentials.json`, cached 2 min in main, never written; a failure blocks requests for its `Retry-After` (429 default 5 min, max 15) and the last good numbers are served as `stale`, because retrying a 429 keeps the limit from clearing), context fill of the active tab's
   session, and tab state. Fresh and `--continue` tabs are matched to their transcript heuristically (`assignSessions`).
   Until a tab's transcript is listed (after the first reply) it shows as an italic "New session" placeholder row;
   PowerShell tabs get a "PowerShell" row. Every open tab has a row (there is no tab strip).

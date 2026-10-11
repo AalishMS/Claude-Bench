@@ -851,7 +851,14 @@ async function fetchLimits() {
       headers: { Authorization: `Bearer ${oauth.accessToken}`, 'anthropic-beta': 'oauth-2025-04-20' },
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return { ok: false, error: `Usage request failed (${res.status})` };
+    if (!res.ok) {
+      const ra = Number(res.headers.get('retry-after'));
+      const retryAfter = Math.min(15 * 60, Math.max(30, ra > 0 ? ra : res.status === 429 ? 300 : 60));
+      const error = res.status === 429
+        ? `Usage rate limited, retrying in ${Math.ceil(retryAfter / 60)} min`
+        : `Usage request failed (${res.status})`;
+      return { ok: false, status: res.status, error, retryAfter };
+    }
     const j = await res.json();
     const limits = (j.limits || []).map((l) => ({
       kind: l.kind,
@@ -861,14 +868,26 @@ async function fetchLimits() {
     }));
     return { ok: true, limits, fetchedAt: Date.now() };
   } catch {
-    return { ok: false, error: 'Could not reach Anthropic (offline?)' };
+    return { ok: false, error: 'Could not reach Anthropic (offline?)', retryAfter: 30 };
   }
 }
 
-function getLimits() { // cached for a minute; overlapping calls share one request
-  if (limitsCache.value?.ok && Date.now() - limitsCache.at < 60000) return Promise.resolve(limitsCache.value);
+// Cached for 2 min; overlapping calls share one request. A failure (429 above all) blocks new requests for its
+// Retry-After, otherwise our own retries keep the rate limit from ever clearing. Meanwhile the last good numbers are
+// served (stale) instead of an error.
+let limitsGood = null;
+let limitsBlockedUntil = 0;
+function getLimits() {
+  const now = Date.now();
+  if (limitsCache.value?.ok && now - limitsCache.at < 120000) return Promise.resolve(limitsCache.value);
+  if (now < limitsBlockedUntil) return Promise.resolve(limitsGood ? { ...limitsGood, stale: true } : limitsCache.value);
   if (!limitsFetch) {
-    limitsFetch = fetchLimits().then((v) => { limitsCache = { at: Date.now(), value: v }; return v; }).finally(() => { limitsFetch = null; });
+    limitsFetch = fetchLimits().then((v) => {
+      if (v.ok) { limitsGood = v; limitsBlockedUntil = 0; limitsCache = { at: Date.now(), value: v }; return v; }
+      if (v.retryAfter) limitsBlockedUntil = Date.now() + v.retryAfter * 1000;
+      limitsCache = { at: Date.now(), value: v };
+      return limitsGood ? { ...limitsGood, stale: true } : v;
+    }).finally(() => { limitsFetch = null; });
   }
   return limitsFetch;
 }
@@ -915,9 +934,10 @@ function checkUpdate() { // overlapping calls share one fetch
   if (updateCheck) return updateCheck;
   updateCheck = (async () => {
     const dir = repoDir();
-    if (!dir) return { available: false };
+    if (!dir) return { available: false, error: "This copy isn't a git clone, so it can't check for updates." };
     const env = gitEnv();
-    if (!(await runFull('git', ['-C', dir, 'fetch', '--quiet'], { env, timeout: 30000 })).ok) return { available: false };
+    const fetched = await runFull('git', ['-C', dir, 'fetch', '--quiet'], { env, timeout: 30000 });
+    if (!fetched.ok) return { available: false, error: (fetched.err || fetched.out || 'git fetch failed').trim().split('\n')[0].slice(0, 160) };
     const behind = parseInt((await runFull('git', ['-C', dir, 'rev-list', '--count', 'HEAD..@{u}'], { env })).out, 10) || 0;
     // What's new, for the popup: the newest few commit subjects.
     const log = behind ? (await runFull('git', ['-C', dir, 'log', '--format=%s', '-n', '5', 'HEAD..@{u}'], { env })).out : '';

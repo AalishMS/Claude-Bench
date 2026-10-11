@@ -107,6 +107,17 @@ Needs a new commit on `main` to show up.
 - [ ] Make a local commit in the repo that clashes with the update, then click Update in the `.app`: the log opens with
       git's message and the old app reopens unchanged.
 
+## Check for updates button
+
+- [ ] A refresh icon sits right after "Claude Bench" at the top of the sidebar (and stays next to the logo with the
+      sidebar hidden, ⌘S), whether or not an update exists.
+- [ ] Clicking it spins the icon while it checks. With no new commit, a popup under the icon says "You're up to date"
+      and closes by itself after about 5 seconds (or with OK). It doesn't cover the traffic lights.
+- [ ] With a new commit on `main`, clicking it opens the "Update available" popup, even if you chose Later before.
+- [ ] Offline (Wi-Fi off), clicking it shows "Couldn't check for updates" with a reason instead of "up to date".
+- [ ] Run from a copy that isn't a git clone (for example a `.app` copied elsewhere): the popup says it isn't a git
+      clone.
+
 ## Updating later
 
 - Running with `npm start`: use the Update button, or run `git pull` then `npm install`.

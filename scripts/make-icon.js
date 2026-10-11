@@ -1,5 +1,5 @@
 'use strict';
-// Renders assets/icon.png and assets/icon.ico (a light rounded tile with a dark ">_" prompt).
+// Renders assets/icon.png and assets/icon.ico (a dark rounded tile with a light "C3": the 3 is a mirrored B).
 // Pure Node, no dependencies: node scripts/make-icon.js
 
 const fs = require('fs');
@@ -14,6 +14,24 @@ function distToSegment(px, py, ax, ay, bx, by) {
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
+// Glyph in a 64-unit box, same shapes as LOGO_SVG in renderer.js. C = arc open to the right, 3 = two stacked right-hand bowls.
+function distToArc(px, py, cx, cy, r, keep) {
+  const a = Math.atan2(py - cy, px - cx);
+  if (keep(a)) return Math.abs(Math.hypot(px - cx, py - cy) - r);
+  return Infinity;
+}
+function glyphDist(x, y) {
+  const X = x * 64, Y = y * 64;
+  const rad = (d) => (d * Math.PI) / 180;
+  const c = distToArc(X, Y, 25.5, 32, 11, (a) => Math.abs(a) >= rad(45));
+  const cap1 = Math.hypot(X - (25.5 + 11 * Math.cos(rad(45))), Y - (32 - 11 * Math.sin(rad(45))));
+  const cap2 = Math.hypot(X - (25.5 + 11 * Math.cos(rad(45))), Y - (32 + 11 * Math.sin(rad(45))));
+  const b1 = distToArc(X, Y, 43.5, 26, 6, (a) => Math.abs(a) <= Math.PI / 2);
+  const b2 = distToArc(X, Y, 43.5, 38, 6, (a) => Math.abs(a) <= Math.PI / 2);
+  const bars = [[37.5, 20, 43.5, 20], [39.5, 32, 43.5, 32], [37.5, 44, 43.5, 44]].map(([ax, ay, bx, by]) => distToSegment(X, Y, ax, ay, bx, by));
+  return Math.min(c, cap1, cap2, b1, b2, ...bars) / 64;
+}
+
 function insideRoundRect(x, y, m, r) {
   const lo = m, hi = 1 - m;
   if (x < lo || x > hi || y < lo || y > hi) return false;
@@ -24,10 +42,7 @@ function insideRoundRect(x, y, m, r) {
 
 function render(size) {
   const px = Buffer.alloc(size * size * 4);
-  const stroke = 0.075;
-  const chevron = [[0.33, 0.33, 0.5, 0.5], [0.5, 0.5, 0.33, 0.67]];
-  const underscore = [[0.55, 0.67, 0.71, 0.67]];
-  const segs = [...chevron, ...underscore];
+  const stroke = 0.07;
 
   for (let j = 0; j < size; j++) {
     for (let i = 0; i < size; i++) {
@@ -39,16 +54,16 @@ function render(size) {
           if (!insideRoundRect(x, y, 0.04, 0.22)) continue;
           tile++;
           top += y;
-          if (segs.some(([ax, ay, bx, by]) => distToSegment(x, y, ax, ay, bx, by) <= stroke / 2)) glyph++;
+          if (glyphDist(x, y) <= stroke / 2) glyph++;
         }
       }
       const n = SS * SS;
       const o = (j * size + i) * 4;
       if (!tile) continue;
       const g = top / tile; // vertical gradient, light to dark
-      const shade = 240 - 24 * g; // light grey tile, slightly darker toward the bottom
+      const shade = 22 - 10 * g; // near-black tile, slightly darker toward the bottom
       const gl = glyph / tile;
-      for (let c = 0; c < 3; c++) px[o + c] = Math.round(shade * (1 - gl) + 17 * gl);
+      for (let c = 0; c < 3; c++) px[o + c] = Math.round(shade * (1 - gl) + 236 * gl);
       px[o + 3] = Math.round((tile / n) * 255);
     }
   }

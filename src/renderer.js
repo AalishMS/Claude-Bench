@@ -58,7 +58,7 @@ const ICONS = {
 const ico = (name) =>
   h('span', { class: 'ico', html: `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>` });
 
-const LOGO_SVG = `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="3" y="3" width="58" height="58" rx="14" fill="#ececec"/><path d="M22 22 L34 32 L22 42" fill="none" stroke="#111" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M38 43 H48" stroke="#111" stroke-width="5" stroke-linecap="round"/></svg>`;
+const LOGO_SVG = `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="2" y="2" width="60" height="60" rx="14" fill="#111" stroke="#333" stroke-width="1.5"/><g fill="none" stroke="#ececec" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><path d="M33.3 24.2 A11 11 0 1 0 33.3 39.8"/><path d="M37.5 20 H43.5 A6 6 0 0 1 43.5 32 H39.5 M43.5 32 A6 6 0 0 1 43.5 44 H37.5"/></g></svg>`;
 
 // The official VS Code logo in its own colors (the one exception to monochrome icons, see DESIGN.md).
 // stroke="none" on the outer group cancels the `.ico svg` outline styling.
@@ -1344,7 +1344,8 @@ function renderFoot(force = false) {
   // Each stat is icon + value. The plan's current session limit gets the ring; weekly lives in the tooltip/popover.
   const sessPct = sess ? limitPct(sess) : null;
   const usageTip = sess
-    ? [`Session usage ${sessPct}% (${fmtReset(sess)})`, week && `Weekly ${limitPct(week)}%`].filter(Boolean).join('\n')
+    ? [`Session usage ${sessPct}% (${fmtReset(sess)})`, week && `Weekly ${limitPct(week)}%`,
+      usage.stale && `Last updated ${Math.round((Date.now() - usage.fetchedAt) / 60000)} min ago`].filter(Boolean).join('\n')
     : usage && !usage.ok ? `Plan usage unavailable: ${usage.error}` : 'Plan usage';
   $('#side-foot').replaceChildren(
     h('div', { class: 'fstats' },
@@ -1830,6 +1831,7 @@ async function onCloseRequest() {
 /** Update button at the end of the brand row, only while the app's repo has new commits upstream. */
 function renderUpdate() {
   const n = update?.behind || 0;
+  renderCheck(); // its disabled state follows `updating`
   $('#update-slot').replaceChildren(...(update?.available ? [h('button', {
     class: `btn ghost icon sm update${updating ? ' busy' : ''}`,
     title: updating ? 'Updating…' : `Update available: ${n} new commit${n === 1 ? '' : 's'}`,
@@ -1846,6 +1848,15 @@ function renderUpdate() {
 let updateSeen = 0; // `behind` count the user has dismissed
 function renderUpdatePop() {
   const pop = $('#update-pop');
+  if (checkNote) { // result of a manual check with nothing to install: a short note, closes itself
+    pop.hidden = false;
+    pop.replaceChildren(
+      h('h4', {}, checkNote.error ? "Couldn't check for updates" : "You're up to date"),
+      h('p', { class: 'up-sub' }, checkNote.text),
+      h('div', { class: 'row' }, h('button', { class: 'btn outline sm', onclick: closeCheckNote }, 'OK')));
+    placeUpdatePop();
+    return;
+  }
   const show = !!update?.available && !updating && update.behind > updateSeen;
   pop.hidden = !show;
   if (!show) return;
@@ -1868,10 +1879,53 @@ function renderUpdatePop() {
 function placeUpdatePop() {
   const pop = $('#update-pop');
   if (pop.hidden) return;
-  const r = $('#update-slot').getBoundingClientRect();
-  const left = r.width ? r.right - pop.offsetWidth + 4 : 8;
+  const r = $(checkNote ? '#check-slot' : '#update-slot').getBoundingClientRect();
+  const left = !r.width ? 8 : checkNote ? r.left - 4 : r.right - pop.offsetWidth + 4;
   pop.style.left = `${Math.max(8, Math.min(left, window.innerWidth - pop.offsetWidth - 8))}px`;
   pop.style.top = `${(r.height ? r.bottom : 40) + 6}px`;
+}
+
+/** The always-visible refresh icon next to the app name: check for updates now (the periodic poll runs every 30 min). */
+let checking = false;
+let checkNote = null; // { text, error } shown in #update-pop after a manual check that found nothing to install
+let checkNoteTimer = 0;
+function renderCheck() {
+  $('#check-slot').replaceChildren(h('button', {
+    class: `btn ghost icon sm${checking ? ' busy' : ''}`,
+    title: checking ? 'Checking for updates…' : 'Check for updates',
+    disabled: checking || updating, onclick: checkNow,
+  }, ico('redo')));
+}
+
+function closeCheckNote() {
+  clearTimeout(checkNoteTimer);
+  checkNote = null;
+  renderUpdatePop();
+  activeTab()?.term.focus();
+}
+
+async function checkNow() {
+  if (checking || updating || updateBusy) return;
+  checking = true;
+  updateBusy = true; // keeps the periodic poll from overlapping
+  clearTimeout(checkNoteTimer);
+  checkNote = null;
+  renderCheck();
+  renderUpdatePop();
+  try {
+    const next = await api.checkUpdate();
+    update = next;
+    if (next?.available) updateSeen = 0; // reopen the "Update available" popover even if it was dismissed before
+    else checkNote = next?.error ? { text: next.error, error: true } : { text: 'Claude Bench is on the latest version.' };
+  } catch (e) {
+    checkNote = { text: String(e?.message || e).slice(0, 160), error: true };
+  } finally {
+    checking = false;
+    updateBusy = false;
+  }
+  renderCheck();
+  renderUpdate();
+  if (checkNote) checkNoteTimer = setTimeout(closeCheckNote, 5000);
 }
 
 /** Pull the app's own repo and restart (source runs), or close and let scripts/update.* rebuild a built copy. */
@@ -1965,8 +2019,9 @@ async function pollUsage() {
   try {
     const next = await api.getUsage();
     if (JSON.stringify(next) !== JSON.stringify(usage)) { usage = next; renderFoot(); }
-    // At launch the network or token may not be ready yet: retry soon instead of waiting for the 15 s poll.
-    if (!next.ok && ++usageRetries <= 5) setTimeout(pollUsage, 3000);
+    // At launch the network or token may not be ready yet: retry soon instead of waiting for the next poll.
+    // Not for HTTP failures (429 above all): main backs off by Retry-After, fast retries would only extend it.
+    if (!next.ok && !next.status && ++usageRetries <= 5) setTimeout(pollUsage, 3000);
     else if (next.ok) usageRetries = 0;
   } catch {
     if (++usageRetries <= 5) setTimeout(pollUsage, 3000);
@@ -2128,6 +2183,7 @@ function wireGlobalEvents() {
 async function init() {
   $('#logo').innerHTML = LOGO_SVG;
   $('#toggle-sidebar').append(ico('sidebar'));
+  renderCheck();
   $('#new-tab').append(ico('plus'));
   $('#close-tab').append(ico('x'));
   $('#split-tab').append(ico('columns'));
@@ -2168,7 +2224,7 @@ async function init() {
   setInterval(pollGit, 4000);
   setInterval(pollPorts, 6000);
   setInterval(pollSessions, 4000);
-  setInterval(pollUsage, 15000);
+  setInterval(pollUsage, 60000);
   setInterval(pollMcp, 30000);
   setTimeout(pollUpdate, 10000); // after startup settles; git fetch is network
   setInterval(pollUpdate, 30 * 60 * 1000);

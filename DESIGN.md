@@ -111,7 +111,10 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - `#sidebar` is a full-height column: bg `--sidebar` (the darkest surface), width 232 by default (resizable, see below), 1 px `--sidebar-border` on the
   terminal side. Nothing inside has its own box, card, tint or border.
 - Top row (40 px, draggable): sidebar toggle, logo, app name (`#brand`). While collapsed, `#brand` moves to the start
-  of the top bar so the toggle stays reachable. When the app's own repo has new commits, a ghost `download` icon button
+  of the top bar so the toggle stays reachable. A ghost `redo` (refresh) icon button, always visible right after the app name
+  (`#check-slot`), checks for updates now; it spins while the fetch runs. With nothing to install, the same popover opens
+  as a short note ("You're up to date" / "Couldn't check for updates" + the reason, one `OK` button, closes itself after 5 s).
+  When the app's own repo has new commits, a ghost `download` icon button
   sits at the row's right end (`#update-slot`), its icon tinted `color-mix(--primary 60%, --foreground)`; it pulses
   while updating. Nothing shows otherwise. (Not in the footer: the footer has no room at 232 px.)
   When an update is first seen, an **update popover** (`#update-pop`, the Popover recipe, 300 px) opens under the icon:
@@ -198,7 +201,7 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - One exception: the top bar's "Open in VS Code" button shows the official VS Code logo in its own blues
   (`VSCODE_SVG` in renderer.js), because it stands for that app. No other icon gets brand color; the Update
   button's `--primary` tint is the accent, not a brand color, and it only appears when there is something to do.
-- Logo: a light tile with a dark `>_`. `LOGO_SVG` in renderer.js and `scripts/make-icon.js` must stay in sync.
+- Logo: a dark tile with a light "C3" (C = Claude, the 3 is a mirrored B for Bench; styled after the T3 Code mark). `LOGO_SVG` in renderer.js and `scripts/make-icon.js` must stay in sync.
 
 ## 4. Layout and behavior (tweaks kept from before)
 
