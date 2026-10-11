@@ -178,6 +178,10 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   disabled / unknown `--muted-foreground`. Subagents: working = pulsing `--warning` dot, finished = `--success` check,
   idle = `--faint` dot. Running rows with a port copy `http://localhost:<port>` on click (meta flips to "Copied"),
   Shift+click opens it in the browser.
+  **Images** (between Subagents and Running): a grid of tiles (`.img-grid`, auto-fill, min 84 px, gap 8, 16 px inset). Tile =
+  4:3 thumbnail, `object-fit: cover`, 1 px `--border`, `rounded-sm`, `--muted` while loading or undecodable; hover border `--ring`;
+  under it an 11 px `--mono` `--faint` label (`#n` or file name, ellipsis). Click opens the lightbox: the wide dialog (same head as the
+  subagent popup: title, faint one-line path, `btn outline sm` "Show in Explorer/Finder" for files, ×), the image centered, contained.
 
 ### DropdownMenu: shadcn `DropdownMenu` (`#menu`)
 - On the Popover recipe: bg `--popover`, 1 px `--border`, `rounded-lg`, `shadow-md`, padding 4, min-width 210.

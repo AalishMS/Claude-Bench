@@ -108,6 +108,8 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   - File links: `openFileAt` tries `code -g` (after `shellEnvReady`), then `open -a "Visual Studio Code" <file>`, then `shell.openPath`.
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
+  - Images (right sidebar): no Mac branch. `nativeImage` decodes the thumbnails, `shell.showItemInFolder` backs "Show in Finder"
+    (label via `FILES_APP`); transcript paths are the same as on Windows.
   - Notifications: plain Electron `Notification` (no registry step). An unsigned app may show as "Electron" from
     `npm start`; if the user denied permission nothing shows and `notify` swallows any error.
   - Packaged update: `/bin/bash update.sh` detached with the login shell's PATH (after `shellEnvReady`); waits on the
@@ -185,7 +187,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   Windows caches the name at an ID's first toast: if one fired before the key existed, delete
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\com.local.claudebench` to reset it.
 - **Right sidebar** (`#rside`, toggled by the top-bar button or `Ctrl+Shift+S`, saved as `ui.servers`; `renderRside`): the active tab's
-  **Context** (`x / yk` + %, same numbers as the footer tile), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**.
+  **Context** (`x / yk` + %, same numbers as the footer tile), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Images**, **Running**.
   - MCPs: only connected ones are listed; the rest are behind a "Show N more" row (`mcpMore`, not persisted). `claude mcp list` run in the project folder (main `mcpList`, `cmd.exe /c claude mcp list`, cached 5 min (activating a tab of another project polls it), never overlapping;
     it health-checks every server, so it takes seconds). Output lines `name: target - ✔ Connected | ! Needs authentication | ...` map to
     connected (success) / failed + needs_client_registration (destructive) / needs_auth (warning) / disabled + unknown (muted).
@@ -195,6 +197,17 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     `#modal`, Esc / backdrop / × close): the definition's prompt (`agents:prompt`, body after the frontmatter) and the prompt each run of
     that type was given (first line of its `agent-*.jsonl`), each with its own Context bar (a subagent has a separate window; last reply's usage in its transcript, same assumed 200k/1M rule). `assignSessions` also re-points a running tab at a newer unclaimed
     transcript (`/clear` and `/resume` start a new session file in the same tab), otherwise the sidebar reads the old session's `subagents/`.
+  - Images: the active session's pasted images (label `#n` from the line's `imagePasteIds`, else block order 1..n; a
+    `[Attached image ... is saved at: <path>]` text gives the file) and images from the Read tool (the path comes from the earlier
+    `tool_use`, kept in a `pending` map capped at 50). MCP/browser screenshots and subagent transcripts are not shown. Main
+    (`scanImages`) reads the transcript incrementally by **byte** offset (Buffer `indexOf(0x0a)` on each new 1 MB chunk only; a line spanning chunks is joined once,
+    a line still being written waits for the next scan), `JSON.parse`s only lines with `"type":"base64"` or `"name":"Read"`, and keeps
+    an index of the newest 20 (`{ off, len, block, sub }` of the line), no pixels. `images:thumb` decodes on demand (`nativeImage`,
+    320 px on the longer side, JPEG or PNG when transparent; GIF/WebP stay a placeholder tile), LRU of 100 across sessions;
+    the index itself is kept for the 20 most recently used transcripts (`imageCache` LRU); `images:full` re-reads the
+    line for the lightbox (`imageDialog` via `openModal`, shared with `agentDialog`); `images:reveal` = Show in Explorer/Finder.
+    All take (project, session UUID, id), never a path. `pollImages` runs after `pollInfo`, only while the panel is shown and the
+    section is open; thumbnails are fetched only for new ids. Every Read of a file is its own tile (no de-duplication).
   - Running: dev listeners only, from one PowerShell call (`Get-NetTCPConnection` + `Get-CimInstance Win32_Process`) every 6 s, only while the right sidebar is shown (`closeTab` / `onCloseRequest` rescan when the last scan is over 10 s old). A listener
     belongs to a tab if a session's pty pid is an ancestor; otherwise it is matched to a project if its command line contains the project path
     outside `--flag=` values (Antigravity's `agy.exe --add-dir=<project>` is no server). Rows are status dot, short name, port; clicking a row

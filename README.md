@@ -18,6 +18,8 @@ genuine Claude Code session, so slash commands, permissions and speed are unchan
   in the project, and open in VS Code at that line (else in the default app).
 - **Fork a session**: right-click a session in the sidebar for "Fork session" (`claude --resume <id> --fork-session`), a
   copy under a new id to try another approach. Opening a session that is already on screen beside itself forks it too.
+- **Images**: the right sidebar shows the session's pasted images and the images Claude read, newest first; click one
+  to see it full size, with Show in Explorer for files.
 - **Resume after exit**: when a Claude tab exits, the overlay offers Resume (the same session) or New session.
 - **Projects**: drag a project row to reorder the list (or "Move to top" in its `…` menu). Two folders with the same
   name show their parent folder (`app (clients)`), also in tab labels and notifications.
@@ -56,6 +58,7 @@ npm run package:mac      # build dist/mac-*/Claude Bench.app (unsigned, for your
 - Open tabs are restored on relaunch as on Windows; restored Claude tabs wait for the login shell's PATH like new ones.
 - File links open with the `code` command if it is on your login shell's PATH (VS Code: "Shell Command: Install 'code'
   command in PATH"), at the line; otherwise VS Code opens the file without the line, or the default app.
+- Images in the right sidebar: "Show in Finder" reveals the file Claude read.
 - Notifications use macOS Notification Center; allow them for the app (or Electron, under `npm start`) when asked.
 - The macOS app icon uses `assets/icon-mac.png` (the tile padded to Apple's 824/1024 grid); Windows uses the multi-size ICO for its window and taskbar.
 - Plan limits in the footer read Claude Code's token from the Keychain; macOS may ask once for access.

@@ -209,6 +209,8 @@ let lastActiveProject = null;
 let detailKind = null; // which footer popover is open: 'usage' | 'context' | 'state'
 let menuFor = null; // project path whose "…" menu is open
 const infoBy = new Map(); // tab id -> { model, effort, agents } for the bar under the terminal
+const imagesBy = new Map(); // tab id -> { session, items: [{ id, kind, label, file, exists }] }, newest first
+const thumbsBy = new Map(); // tab id -> Map(image id -> data URL, or null when it can't be decoded)
 const mcpBy = new Map(); // project path -> { ok, servers: [{ name, status, label }] } from `claude mcp list`
 const definedBy = new Map(); // project path -> [{ name, model }] subagents defined in ~/.claude/agents and <project>/.claude/agents
 
@@ -264,6 +266,7 @@ const XTERM_THEME = {
 let cancelDialog = null; // the open confirmDialog's cancel: a new one first resolves the old one as cancelled
 function confirmDialog({ title, message, items = [], okLabel = 'OK', cancelLabel = 'Cancel', danger = false }) {
   cancelDialog?.();
+  closeModal?.();
   return new Promise((resolve) => {
     const modal = $('#modal');
     const done = (result) => {
@@ -302,10 +305,21 @@ function confirmDialog({ title, message, items = [], okLabel = 'OK', cancelLabel
   });
 }
 
-/** Read-only popup with a subagent's prompt: its definition's system prompt and/or what each run of it was given. */
-async function agentDialog(a, tab) {
+/**
+ * Read-only popup in #modal with a title row and a body: Esc, a click on the backdrop and × close it.
+ * Returns `isOpen()` for "closed while loading" checks. A new popup closes the previous one, and settles an open
+ * confirmDialog as cancelled.
+ */
+let closeModal = null;
+function openModal(title, extra, body) {
+  closeModal?.();
+  cancelDialog?.();
   const modal = $('#modal');
+  let open = true;
   const done = () => {
+    if (!open) return;
+    open = false;
+    closeModal = null;
     window.removeEventListener('keydown', onKey, true);
     modal.onclick = null;
     modal.hidden = true;
@@ -318,22 +332,28 @@ async function agentDialog(a, tab) {
     e.preventDefault();
     e.stopPropagation();
   };
-  const body = h('div', { class: 'ag-body' }, h('div', { class: 'rnote' }, 'Loading…'));
   modal.replaceChildren(
     h('div', { class: 'dialog wide', role: 'dialog', 'aria-modal': 'true', onclick: (e) => e.stopPropagation() },
       h('div', { class: 'ag-head' },
-        h('h3', {}, a.name),
-        a.model ? h('span', { class: 'ag-model mono' }, prettyModel(a.model)) : null,
+        h('h3', {}, title), extra,
         h('button', { class: 'btn ghost icon sm', title: 'Close (Esc)', onclick: done }, ico('x'))),
       body));
   modal.onclick = done; // click on the backdrop
   modal.hidden = false;
   window.addEventListener('keydown', onKey, true);
+  closeModal = done;
+  return { isOpen: () => open };
+}
+
+/** Read-only popup with a subagent's prompt: its definition's system prompt and/or what each run of it was given. */
+async function agentDialog(a, tab) {
+  const body = h('div', { class: 'ag-body' }, h('div', { class: 'rnote' }, 'Loading…'));
+  const dlg = openModal(a.name, h('span', { class: 'ag-model mono' }, a.model ? prettyModel(a.model) : ''), body);
 
   const sec = (label, text) => h('section', { class: 'ag-sec' }, h('div', { class: 'ag-label' }, label), h('pre', { class: 'ag-prompt' }, text));
   let res = null;
   try { res = await api.agentPrompt(tab?.project.path, tab?.sessionId, a.name); } catch { /* shown as empty below */ }
-  if (modal.hidden) return; // closed while loading
+  if (!dlg.isOpen()) return; // closed while loading
   const parts = [];
   if (res?.definition) parts.push(sec('Agent prompt', res.definition));
   const runs = res?.runs || [];
@@ -348,6 +368,20 @@ async function agentDialog(a, tab) {
   runs.slice(0, 5).forEach((r) => parts.push(h('div', {}, ctxLine(r), sec(runs.length > 1 || res?.definition ? `Prompt given${r.description ? `: ${r.description}` : ''}` : (r.description ? `Prompt given: ${r.description}` : 'Prompt given'), r.prompt || '(empty)'))));
   if (runs.length > 5) parts.push(h('div', { class: 'rnote' }, `${runs.length - 5} older runs not shown.`));
   body.replaceChildren(...(parts.length ? parts : [h('div', { class: 'rnote' }, 'No prompt found: this agent is not defined in a file and has not run in this session.')]));
+}
+
+/** Lightbox for an image from the session (Images section): full size is fetched only now. `session` is the transcript the
+ * image came from, which stays right after /clear re-points the tab. */
+async function imageDialog(tab, session, it) {
+  const body = h('div', { class: 'ag-body img-body' }, h('div', { class: 'rnote' }, 'Loading…'));
+  const reveal = it.exists
+    ? h('button', { class: 'btn outline sm', onclick: () => api.revealImage(tab.project.path, session, it.id) }, `Show in ${FILES_APP}`)
+    : null;
+  const dlg = openModal(it.label, [h('span', { class: 'ag-model mono', title: it.file || '' }, it.file || 'Pasted image'), reveal], body);
+  let url = null;
+  try { url = await api.imageFull(tab.project.path, session, it.id); } catch { /* shown below */ }
+  if (!dlg.isOpen()) return;
+  body.replaceChildren(url ? h('img', { class: 'img-full', src: url, alt: it.label }) : h('div', { class: 'rnote' }, 'Could not read this image.'));
 }
 
 // ----------------------------------------------------------------- tabs ----
@@ -874,6 +908,8 @@ async function closeTab(id) {
   tab.term.dispose();
   tab.host.remove();
   infoBy.delete(id);
+  imagesBy.delete(id);
+  thumbsBy.delete(id);
   hostObserver.unobserve(tab.host);
   const order = [...tabs.keys()];
   const idx = order.indexOf(id);
@@ -2118,6 +2154,15 @@ function toggleRsection(id) {
   ui.collapsed = [...set];
   api.setUi({ collapsed: ui.collapsed });
   renderRside(true);
+  if (id === 'images') pollImages();
+}
+
+/** One tile per image; the thumbnail arrives later (pollImages sets src on the tile already on screen). */
+function imageTile(tab, session, it) {
+  const url = thumbsBy.get(tab.id)?.get(it.id);
+  return h('button', { class: 'img-tile', 'data-id': it.id, title: it.file || `Pasted image ${it.label}`, onclick: () => imageDialog(tab, session, it) },
+    h('img', { alt: '', src: url || null }),
+    h('span', { class: 'img-label' }, it.label));
 }
 
 function copyServer(s) {
@@ -2150,8 +2195,10 @@ function renderRside(force = false) {
   const mcp = proj && mcpBy.get(proj.path);
   const agents = agentRows(proj, activeTab());
   const servers = ports.ok ? ports.servers.filter((s) => s.dev) : [];
+  const tab = activeTab();
+  const imgs = tab?.kind === 'claude' && tab.sessionId && imagesBy.get(tab.id)?.session === tab.sessionId ? imagesBy.get(tab.id).items : null;
 
-  const key = JSON.stringify([ctx && [ctx.session?.ctx, ctx.pct, ctx.win], proj?.path, mcp, agents, ports.ok && servers, ports.error, ui.collapsed, copiedPort, mcpMore]);
+  const key = JSON.stringify([ctx && [ctx.session?.ctx, ctx.pct, ctx.win], proj?.path, mcp, agents, ports.ok && servers, ports.error, ui.collapsed, copiedPort, mcpMore, tab?.id, imgs]);
   if (!force && key === lastRsideKey) return;
   lastRsideKey = key;
 
@@ -2208,10 +2255,16 @@ function renderRside(force = false) {
           h('span', { class: 'meta mono' }, copiedPort === s.port ? 'Copied' : s.port ? `:${s.port}` : ''));
       });
 
+  const imgBody = tab?.kind !== 'claude' ? h('div', { class: 'rnote' }, 'Open a Claude tab to see its images.')
+    : !imgs ? h('div', { class: 'rnote' }, tab.sessionId ? 'Loading…' : 'No images yet.')
+    : !imgs.length ? h('div', { class: 'rnote' }, 'No images in this session.')
+    : h('div', { class: 'img-grid' }, imgs.map((it) => imageTile(tab, tab.sessionId, it)));
+
   const working = agents.filter((a) => a.running).length;
   $('#rside').replaceChildren(head,
     rsection('mcp', 'MCPs', mcp?.ok ? `${mcp.servers.filter((m) => m.status === 'connected').length}/${mcp.servers.length}` : null, mcpBody),
     rsection('agents', 'Subagents', working ? `${working} working` : agents.length || null, agentBody),
+    rsection('images', 'Images', imgs?.length || null, imgBody),
     rsection('running', 'Running', servers.length || null, runBody));
 }
 
@@ -2287,6 +2340,36 @@ async function pollInfo() {
     renderRside();
   } finally {
     infoBusy.delete(tab.id);
+  }
+  pollImages();
+}
+
+/** Images of the active session: only while the panel is open and the section expanded. Thumbnails only for new ids. */
+const imagesBusy = new Set();
+async function pollImages() {
+  const tab = activeTab();
+  if (!tab || tab.kind !== 'claude' || !tab.sessionId || !rsideShown() || ui.collapsed.includes('images') || document.hidden || imagesBusy.has(tab.id)) return;
+  imagesBusy.add(tab.id);
+  try {
+    const session = tab.sessionId;
+    const next = await api.imagesList(tab.project.path, session);
+    if (!tabs.has(tab.id) || tab.sessionId !== session) return;
+    if (imagesBy.get(tab.id)?.session !== session) thumbsBy.set(tab.id, new Map());
+    const thumbs = thumbsBy.get(tab.id);
+    for (const id of thumbs.keys()) if (!next.items.some((i) => i.id === id)) thumbs.delete(id);
+    imagesBy.set(tab.id, { session, items: next.items });
+    renderRside();
+    for (const it of next.items) {
+      if (thumbs.has(it.id)) continue;
+      if (activeTab() !== tab) return; // left the tab: the rest load when it is active again
+      const url = await api.imageThumb(tab.project.path, session, it.id);
+      if (tab.sessionId !== session || thumbsBy.get(tab.id) !== thumbs) return;
+      thumbs.set(it.id, url);
+      const img = url && $(`#rside .img-tile[data-id="${CSS.escape(it.id)}"] img`);
+      if (img && activeTab() === tab) img.src = url;
+    }
+  } finally {
+    imagesBusy.delete(tab.id);
   }
 }
 

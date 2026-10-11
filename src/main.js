@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, Notification, ipcMain, dialog, shell, clipboard, screen } = require('electron');
+const { app, BrowserWindow, Menu, Notification, ipcMain, dialog, shell, clipboard, screen, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -886,6 +886,180 @@ async function agentPrompts(cwd, sessionId, name) {
   return out;
 }
 
+// Images in a session (right sidebar): pasted images and images Claude got from the Read tool. An image makes a line of
+// hundreds of KB, so the transcript is scanned incrementally by byte offset and only an index is kept (where each image's
+// line sits); thumbnails and full images are decoded from that byte range on demand. Subagent transcripts are not read.
+const IMAGE_KEEP = 20; // newest images indexed per session
+const PENDING_KEEP = 50; // Read calls waiting for their result (a failed Read never gets an image result)
+const THUMB_KEEP = 100; // thumbnails cached across all sessions (LRU)
+const SESSIONS_KEEP = 20; // transcripts whose image index is kept (LRU)
+const THUMB_W = 320;
+const SCAN_CHUNK = 1024 * 1024;
+const imageCache = new Map(); // transcript file -> { offset, sig, pending: Map(tool_use_id -> path), items, scan }
+const thumbCache = new Map(); // `${file}|${id}` -> data URL or null, oldest first
+
+const sessionFile = (cwd, sessionId) => (typeof cwd === 'string' && typeof sessionId === 'string' && UUID_RE.test(sessionId)
+  ? path.join(projectDir(cwd), `${sessionId}.jsonl`) : null);
+const isB64Image = (b) => b?.type === 'image' && b.source?.type === 'base64' && typeof b.source.data === 'string';
+
+function imagesFromLine(j, off, len, st) {
+  const c = j.message?.content;
+  if (!Array.isArray(c)) return;
+  if (j.type === 'assistant') {
+    for (const b of c) {
+      if (b?.type !== 'tool_use' || b.name !== 'Read' || typeof b.input?.file_path !== 'string') continue;
+      st.pending.set(b.id, b.input.file_path);
+      if (st.pending.size > PENDING_KEEP) st.pending.delete(st.pending.keys().next().value);
+    }
+    return;
+  }
+  if (j.type !== 'user') return;
+  // Pastes: "#n" from imagePasteIds (not always present: then block order 1..n). Some clients name the saved file in the text.
+  const ids = Array.isArray(j.imagePasteIds) ? j.imagePasteIds : [];
+  const text = c.filter((b) => b?.type === 'text' && typeof b.text === 'string').map((b) => b.text).join('\n');
+  const saved = [...text.matchAll(/\[Attached image "[^"\r\n]*" is saved at: ([^\]\r\n]+)\]/g)].map((m) => m[1].trim());
+  let n = 0;
+  c.forEach((b, block) => {
+    if (isB64Image(b)) {
+      const k = n++;
+      const label = `#${Number.isInteger(ids[k]) ? ids[k] : k + 1}`;
+      st.items.push({ id: `${off}:${block}`, kind: 'paste', label, file: saved[k] || null, off, len, block, sub: -1 });
+    } else if (b?.type === 'tool_result' && st.pending.has(b.tool_use_id)) {
+      const file = st.pending.get(b.tool_use_id);
+      st.pending.delete(b.tool_use_id);
+      if (!Array.isArray(b.content)) return;
+      b.content.forEach((x, sub) => {
+        if (isB64Image(x)) st.items.push({ id: `${off}:${block}:${sub}`, kind: 'file', label: path.basename(file), file, off, len, block, sub });
+      });
+    }
+  });
+}
+
+/** Reads what was appended since the last scan. Offsets are bytes; a line still being written is left for the next scan. */
+async function scanImages(file) {
+  let stat;
+  try { stat = await fs.promises.stat(file); } catch { imageCache.delete(file); return null; }
+  const sig = `${stat.mtimeMs}:${stat.size}`;
+  let st = imageCache.get(file);
+  if (st) { imageCache.delete(file); imageCache.set(file, st); } // most recently used last
+  if (st?.sig === sig) return st;
+  if (st?.scan) return st.scan;
+  if (!st || stat.size < st.offset) { // new, or the file was replaced
+    st = { offset: 0, sig: '', pending: new Map(), items: [], scan: null };
+    imageCache.set(file, st);
+    if (imageCache.size > SESSIONS_KEEP) imageCache.delete(imageCache.keys().next().value);
+  }
+  const cur = st;
+  cur.scan = (async () => {
+    const fh = await fs.promises.open(file, 'r');
+    try {
+      let pos = cur.offset;
+      // A pasted line can span many chunks: its pieces are collected and joined once, and only each new chunk is searched.
+      let parts = [];
+      let partStart = pos; // file offset of the collected line
+      while (pos < stat.size) {
+        const chunk = Buffer.alloc(Math.min(SCAN_CHUNK, stat.size - pos));
+        const { bytesRead } = await fh.read(chunk, 0, chunk.length, pos);
+        if (!bytesRead) break;
+        const buf = chunk.subarray(0, bytesRead);
+        const base = pos; // file offset of buf[0]
+        pos += bytesRead;
+        let a = 0;
+        for (let nl; (nl = buf.indexOf(0x0a, a)) !== -1; a = nl + 1) {
+          const piece = buf.subarray(a, nl);
+          const line = parts.length ? Buffer.concat([...parts, piece]) : piece;
+          const off = parts.length ? partStart : base + a;
+          parts = [];
+          cur.offset = base + nl + 1;
+          if (!line.includes('"type":"base64"') && !line.includes('"name":"Read"')) continue; // big text results stay unparsed
+          try { imagesFromLine(JSON.parse(line.toString('utf8')), off, line.length, cur); } catch { /* foreign line */ }
+        }
+        if (a < buf.length) {
+          if (!parts.length) partStart = base + a;
+          parts.push(buf.subarray(a));
+        }
+        if (cur.items.length > IMAGE_KEEP * 4) cur.items.splice(0, cur.items.length - IMAGE_KEEP);
+      }
+    } finally {
+      await fh.close();
+    }
+    if (cur.items.length > IMAGE_KEEP) cur.items.splice(0, cur.items.length - IMAGE_KEEP);
+    cur.sig = sig;
+    return cur;
+  })().finally(() => { cur.scan = null; });
+  return cur.scan;
+}
+
+async function imagesList(cwd, sessionId) {
+  const file = sessionFile(cwd, sessionId);
+  try {
+    const st = file && (await scanImages(file));
+    if (!st) return { items: [] };
+    const exists = (f) => (f ? fs.promises.stat(f).then(() => true, () => false) : false);
+    return { items: await Promise.all(st.items.slice().reverse().map(async ({ id, kind, label, file: f }) => ({ id, kind, label, file: f, exists: await exists(f) }))) };
+  } catch {
+    return { items: [] };
+  }
+}
+
+async function findImage(cwd, sessionId, id) {
+  const file = sessionFile(cwd, sessionId);
+  const st = file && (await scanImages(file));
+  const it = st?.items.find((i) => i.id === id);
+  return it ? { file, it } : null;
+}
+
+/** The image's { media_type, data }, re-read from its line's byte range. */
+async function imageSource(file, it) {
+  const b = JSON.parse(await readRange(file, it.off, it.len)).message.content[it.block];
+  const src = (it.sub >= 0 ? b.content[it.sub] : b).source;
+  return /^image\/[a-z0-9.+-]+$/i.test(src.media_type) ? src : null;
+}
+
+async function imageThumb(cwd, sessionId, id) {
+  const f = await findImage(cwd, sessionId, id).catch(() => null);
+  if (!f) return null;
+  const key = `${f.file}|${id}`;
+  if (thumbCache.has(key)) {
+    const v = thumbCache.get(key);
+    thumbCache.delete(key);
+    thumbCache.set(key, v);
+    return v;
+  }
+  let url = null; // GIF/WebP: nativeImage can't decode them, the tile stays a placeholder
+  try {
+    const src = await imageSource(f.file, f.it);
+    const img = src && nativeImage.createFromBuffer(Buffer.from(src.data, 'base64'));
+    if (img && !img.isEmpty()) {
+      const { width, height } = img.getSize(); // shrink by the longer side, so a tall full-page screenshot gets small too
+      const small = Math.max(width, height) <= THUMB_W ? img
+        : img.resize({ ...(width >= height ? { width: THUMB_W } : { height: THUMB_W }), quality: 'good' });
+      const px = small.toBitmap(); // BGRA: keep PNG when any pixel is transparent, JPEG would turn it black
+      let alpha = false;
+      for (let i = 3; i < px.length; i += 4) if (px[i] < 255) { alpha = true; break; }
+      url = alpha ? small.toDataURL() : `data:image/jpeg;base64,${small.toJPEG(80).toString('base64')}`;
+    }
+  } catch { /* unreadable or changed line */ }
+  thumbCache.set(key, url);
+  if (thumbCache.size > THUMB_KEEP) thumbCache.delete(thumbCache.keys().next().value);
+  return url;
+}
+
+async function imageFull(cwd, sessionId, id) {
+  try {
+    const f = await findImage(cwd, sessionId, id);
+    const src = f && (await imageSource(f.file, f.it));
+    return src ? `data:${src.media_type};base64,${src.data}` : null;
+  } catch {
+    return null;
+  }
+}
+
+async function revealImage(cwd, sessionId, id) {
+  const f = await findImage(cwd, sessionId, id).catch(() => null);
+  if (f?.it.file && (await fs.promises.stat(f.it.file).then(() => true, () => false))) shell.showItemInFolder(path.normalize(f.it.file));
+}
+
 // Plan limits (session, weekly, per-model weekly) come from the same endpoint Claude Code's /usage reads, using the
 // OAuth token Claude Code keeps in ~/.claude/.credentials.json. The token only goes to api.anthropic.com.
 // Claude Code refreshes the token while it runs; we never write the credentials file.
@@ -1361,6 +1535,10 @@ function registerIpc() {
   ipcMain.handle('mcp:list', (_e, cwd) => mcpList(cwd));
   ipcMain.handle('agents:defined', (_e, cwd) => definedAgents(cwd));
   ipcMain.handle('agents:prompt', (_e, cwd, sessionId, name) => agentPrompts(cwd, sessionId, name));
+  ipcMain.handle('images:list', (_e, cwd, sessionId) => imagesList(cwd, sessionId));
+  ipcMain.handle('images:thumb', (_e, cwd, sessionId, id) => imageThumb(cwd, sessionId, id));
+  ipcMain.handle('images:full', (_e, cwd, sessionId, id) => imageFull(cwd, sessionId, id));
+  ipcMain.handle('images:reveal', (_e, cwd, sessionId, id) => revealImage(cwd, sessionId, id));
   ipcMain.handle('usage:get', () => getLimits());
   ipcMain.handle('update:check', () => checkUpdate());
   ipcMain.handle('update:apply', () => applyUpdate());
