@@ -101,7 +101,7 @@ let git = {}; // projectPath -> info | null
 let ports = { ok: true, servers: [] };
 let sessionsBy = {}; // projectPath -> [{ id, title, mtime, birth, model, ctx }], newest first
 let usage = null; // { ok, limits: [{ kind, label, percent, resetsAt }] } plan limits from Anthropic
-let update = null; // { available, behind, canApply } new commits upstream of the app's own git checkout
+let update = null; // { available, behind, packaged, subjects } new commits upstream of the app's own git checkout
 let updating = false; // git pull / npm install running
 const expanded = new Set(); // project paths whose sessions are shown
 const showMore = new Set(); // projects listing every session instead of the newest few
@@ -1860,8 +1860,7 @@ function renderUpdatePop() {
       : null,
     h('div', { class: 'row' },
       h('button', { class: 'btn outline sm', onclick: later }, 'Later'),
-      h('button', { class: 'btn primary sm', onclick: () => { updateSeen = n; renderUpdatePop(); runUpdate(); } },
-        update.canApply ? 'Update…' : 'How to update')));
+      h('button', { class: 'btn primary sm', onclick: () => { updateSeen = n; renderUpdatePop(); runUpdate(); } }, 'Update…')));
   placeUpdatePop();
 }
 
@@ -1875,27 +1874,19 @@ function placeUpdatePop() {
   pop.style.top = `${(r.height ? r.bottom : 40) + 6}px`;
 }
 
-/** Pull the app's own repo and restart (source runs), or say how to update a built copy. */
+/** Pull the app's own repo and restart (source runs), or close and let scripts/update.* rebuild a built copy. */
 async function runUpdate() {
   if (!update?.available || updating) return;
   const what = `${update.behind} new commit${update.behind === 1 ? '' : 's'}`;
-  if (!update.canApply) {
-    const cmd = `git pull && ${IS_MAC ? 'npm run package:mac' : 'npm run package'}`;
-    if (await confirmDialog({
-      title: 'Update available',
-      message: `${what}. This is a built copy of the app, so it can't update itself. Close it, then run this in the repo folder:`,
-      items: [{ name: cmd, sub: '' }],
-      okLabel: 'Copy command',
-      cancelLabel: 'Close',
-    })) api.writeClipboard(cmd);
-    return;
-  }
+  const how = update.packaged
+    ? `The app closes, a separate ${IS_MAC ? 'process' : 'window'} pulls the update and rebuilds the app (a minute or two), then reopens it.`
+    : 'This pulls the update, runs npm install if dependencies changed, and restarts the app.';
   const working = [...tabs.values()].filter(isWorking);
   const live = liveTabs().length;
   const ok = await confirmDialog({
     title: 'Update Claude Bench?',
-    message: `${what}. This pulls the update, runs npm install if dependencies changed, and restarts the app.`
-      + (live ? ` Open sessions end (${live}), along with dev servers started from them.` : ''),
+    message: `${what}. ${how}`
+      + (live ? ` Open sessions end (${live}) and reopen afterwards; dev servers started from them stop.` : ''),
     items: working.map((t) => ({ name: tabLabel(t), sub: 'Claude is working' })),
     okLabel: 'Update and restart',
     danger: working.length > 0,

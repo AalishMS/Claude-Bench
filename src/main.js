@@ -875,8 +875,8 @@ function getLimits() { // cached for a minute; overlapping calls share one reque
 
 // ---------------------------------------------------------------- update ----
 // The app is installed by cloning the repo; there is no auto-update. The footer's Update button (shown when the
-// branch's upstream has new commits) pulls, runs npm install if dependencies changed, and restarts. Source runs only:
-// a packaged build is locked while it runs, so it is only told that an update exists.
+// branch's upstream has new commits) pulls, runs npm install if dependencies changed, and restarts. A packaged build
+// is locked while it runs, so it hands over to scripts/update.* and quits (startExternalUpdate).
 
 /** stdout and stderr of a command, never rejects. */
 function runFull(file, args, opts = {}) {
@@ -921,14 +921,46 @@ function checkUpdate() { // overlapping calls share one fetch
     const behind = parseInt((await runFull('git', ['-C', dir, 'rev-list', '--count', 'HEAD..@{u}'], { env })).out, 10) || 0;
     // What's new, for the popup: the newest few commit subjects.
     const log = behind ? (await runFull('git', ['-C', dir, 'log', '--format=%s', '-n', '5', 'HEAD..@{u}'], { env })).out : '';
-    return { available: behind > 0, behind, canApply: !app.isPackaged, subjects: log ? log.split('\n').map((s) => s.trim().slice(0, 120)).filter(Boolean) : [] };
+    return { available: behind > 0, behind, packaged: app.isPackaged, subjects: log ? log.split('\n').map((s) => s.trim().slice(0, 120)).filter(Boolean) : [] };
   })().finally(() => { updateCheck = null; });
   return updateCheck;
 }
 
+/**
+ * A built copy is locked while it runs, so scripts/update.ps1 (update.sh on macOS) does the work after we quit: it waits
+ * for the app to close, pulls, runs npm install if needed, rebuilds and reopens the app. Windows shows its console for
+ * progress and errors; macOS writes a log that opens in TextEdit on failure. The script runs from a temp copy because
+ * git pull may rewrite it.
+ */
+async function startExternalUpdate(dir) {
+  try {
+    const name = IS_MAC ? 'update.sh' : 'update.ps1';
+    const tmp = path.join(os.tmpdir(), `claude-bench-${name}`);
+    fs.copyFileSync(path.join(dir, 'scripts', name), tmp);
+    let child;
+    if (IS_MAC) {
+      await shellEnvReady; // git and npm from the login shell's PATH
+      const bundle = path.resolve(process.execPath, '..', '..', '..'); // .../Claude Bench.app/Contents/MacOS/Claude Bench
+      const log = path.join(app.getPath('userData'), 'update.log');
+      child = spawn('/bin/bash', [tmp, dir, String(process.pid), bundle, log], { detached: true, stdio: 'ignore', env: process.env });
+    } else {
+      child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tmp,
+        '-Repo', dir, '-AppPid', String(process.pid), '-Exe', process.execPath], { detached: true, stdio: 'ignore' });
+    }
+    await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+    child.unref();
+  } catch (err) {
+    return { ok: false, error: `Could not start the updater: ${err.message}\nClose the app and run git pull, then ${IS_MAC ? 'npm run package:mac' : 'npm run package'} in ${dir}.` };
+  }
+  forceClose = true;
+  app.quit(); // before-quit ends the sessions; the script reopens the app when it is done
+  return { ok: true };
+}
+
 async function applyUpdate() {
   const dir = repoDir();
-  if (!dir || app.isPackaged) return { ok: false, error: 'This copy cannot update itself. Run git pull and rebuild it.' };
+  if (!dir) return { ok: false, error: 'This copy is not inside a git checkout of Claude Bench, so it cannot update itself.' };
+  if (app.isPackaged) return startExternalUpdate(dir);
   await shellEnvReady; // macOS: npm on the login shell's PATH
   const env = gitEnv();
   const before = (await runFull('git', ['-C', dir, 'rev-parse', 'HEAD'], { env })).out;

@@ -101,10 +101,15 @@ Needs a new commit on `main` to show up.
       Update… buttons. It doesn't cover the traffic lights, and it sits right with the sidebar hidden (⌘S) too.
 - [ ] Later closes it and it stays closed. Update… opens the update confirmation.
 - [ ] Clicking it and confirming pulls the update and restarts the app.
-- [ ] In the built `.app`, clicking it shows a dialog that copies the update command instead.
+- [ ] In the built `.app`, Update… closes the app, and after a minute or two it reopens updated (with your tabs). If it
+      doesn't come back, look at `~/Library/Application Support/claude-bench/update.log` (it opens in TextEdit by
+      itself when a step fails).
+- [ ] Make a local commit in the repo that clashes with the update, then click Update in the `.app`: the log opens with
+      git's message and the old app reopens unchanged.
 
 ## Updating later
 
 - Running with `npm start`: use the Update button, or run `git pull` then `npm install`.
-- Running the built app: close it, run `git pull` then `npm run package:mac`, and open the new `.app`.
+- Running the built app: use the Update button, or close it, run `git pull` then `npm run package:mac`, and open the
+  new `.app`.
 - Projects and settings are stored outside the repo, so updating keeps them.

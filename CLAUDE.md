@@ -67,7 +67,7 @@ src/preload.js   window.api bridge (contextIsolation on, sandbox on, no nodeInte
 src/renderer.js  all UI: tabs (as sidebar rows), sidebar, servers panel, status bar, dialogs, polling
 src/index.html   shell + CSP (script-src 'self'); src/styles.css (tokens on :root, see DESIGN.md)
 DESIGN.md        design system (shadcn/ui + tweaks): tokens, component recipes, terminal palette rules
-scripts/         make-icon.js, create-shortcut.ps1
+scripts/         make-icon.js, create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged copy, see "Update")
 ```
 
 - **State** lives in `%APPDATA%\claude-bench\state.json`, on macOS in Electron's userData under `~/Library/Application Support` (projects, ui flags incl. sidebar widths, window bounds). Written
@@ -99,6 +99,8 @@ scripts/         make-icon.js, create-shortcut.ps1
   - Notifications: plain Electron `Notification` (no registry step). An unsigned app may show as "Electron" from
     `npm start`; if the user denied permission nothing shows and `notify` swallows any error.
   - Reorder: plain HTML5 drag events, no Mac branch.
+  - Packaged update: `/bin/bash update.sh` detached with the login shell's PATH (after `shellEnvReady`); waits on the
+    pid with `kill -0`; reopens the bundle (`execPath` three levels up) with `open`. No visible window, so the log is it.
   - Terminal: `macOptionIsMeta` (Claude's Option shortcuts), `rightClickSelectsWord: false` (right-click pastes);
     the custom Ctrl+C/V handler is skipped. Labels say "Shell" / "Finder"; tooltips go through `kbd()` (⌘ ⇧ ⌥).
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled every 4 s from the renderer.
@@ -111,7 +113,12 @@ scripts/         make-icon.js, create-shortcut.ps1
   (`updateSeen`, runtime only), so it returns only when more commits arrive or after a restart. Source runs: confirm (lists working tabs), then `applyUpdate` = `git pull --ff-only`,
   `npm install` only if `package.json`/`package-lock.json` changed, `app.relaunch()` + quit. Any failure (local edits,
   diverged branch, npm) shows git's/npm's message and keeps the app running. Packaged builds can't rebuild while running
-  (the exe is locked), so their dialog only copies `git pull && npm run package[:mac]`.
+  (the exe is locked), so `startExternalUpdate` copies `scripts/update.ps1` (`update.sh` on macOS) to the temp folder
+  (git pull may rewrite it), starts it detached and quits. The script waits for the app's pid and any process of the same
+  exe path to end, `git pull --ff-only`, `npm install` if `package(-lock).json` changed, `npm run package[:mac]`, then
+  reopens the exe/.app (tabs restore). Windows: a visible console; on failure it shows the error, waits for Enter and
+  reopens the old build. macOS: output in `<userData>/update.log`, opened in TextEdit on failure. Test it against a scratch
+  clone (junction its `node_modules`), never the real `dist\`.
 - **Split view** (runtime only, not saved): `split = { ids, cx, ry }` in renderer.js shows 2-4 tabs as a grid in `#terminals`
   (2 = A|B, 3 = A|(B over C), 4 = 2x2) with draggable dividers. `activeId` is the focused pane, so status bar, right sidebar and
   polling keep following one tab. `visibleIds()` = the split if the active tab is in it, else just the active tab (a non-member
