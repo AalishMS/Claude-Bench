@@ -37,9 +37,11 @@ There is no test suite and no linter. Verify changes by running the app (see "Te
   Terminal output is coalesced (6 ms) before IPC. Git/port polling skip overlapping runs. Only re-render DOM
   when data actually changed (`lastSidebarKey`, `JSON.stringify` diffs).
 - **Terminal first.** The terminal gets the space and the focus. Chrome around it stays quiet.
-- **Don't fight Claude Code.** Our shortcuts mostly avoid keys it uses (`Ctrl+B/W/J`...); `Ctrl+T` (new session), `Ctrl+S` (sidebar) and `Ctrl+W` (close session; costs Claude's delete-word) are deliberate exceptions. They are `Ctrl+T`, `Ctrl+S`, `Ctrl+W` (also `Ctrl+Shift+W`), `Ctrl+Shift+S` (servers),
-  `Ctrl+Tab`, `Alt+1..9`, and for split view `Ctrl+\` (new session beside), `Ctrl+Shift+\` (unsplit), `Ctrl+Alt+Left/Right` (move pane focus).
-  On macOS the same shortcuts use Cmd (`mod(e)`; `⌘1..9` for `Alt+1..9`), so Ctrl stays entirely Claude's; `Ctrl+Tab` stays.
+- **Don't fight Claude Code.** Our shortcuts mostly avoid keys it uses (`Ctrl+B/W/J`...); `Ctrl+T` (new session), `Ctrl+S` (sidebar) and `Ctrl+W` (close session; costs Claude's delete-word) are deliberate exceptions. The defaults are `Ctrl+T`, `Ctrl+S`, `Ctrl+W` (also `Ctrl+Shift+W`), `Ctrl+Shift+S` (servers),
+  `Ctrl+Tab`, `Alt+1..9`, `Ctrl+,` (settings), and for split view `Ctrl+\` (new session beside), `Ctrl+Alt+\` (new session below), `Ctrl+Shift+\` (unsplit),
+  `Alt+arrows` (move pane focus) and `Ctrl+Alt+arrows` (move the divider). The two arrow shortcuts only act while split; otherwise the keys reach the terminal.
+  On macOS the same shortcuts use Cmd (`⌘1..9` / `⌘arrows` for `Alt+1..9` / `Alt+arrows`), so Ctrl stays entirely Claude's; `Ctrl+Tab` stays.
+  All of them are editable on the settings page (see "Shortcuts"); never add a hard-coded app shortcut, add a `SHORTCUTS` entry.
 - Prefer the smallest change that works. No speculative settings screens, plugin systems or abstractions.
 
 ## Design rules
@@ -71,7 +73,7 @@ DESIGN.md        design system (shadcn/ui + tweaks): tokens, component recipes, 
 scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged copy, see "Update")
 ```
 
-- **State** lives in `%APPDATA%\claude-bench\state.json`, on macOS in Electron's userData under `~/Library/Application Support` (projects, ui flags incl. sidebar widths, window bounds). Written
+- **State** lives in `%APPDATA%\claude-bench\state.json`, on macOS in Electron's userData under `~/Library/Application Support` (projects, ui flags incl. sidebar widths and shortcut overrides, window bounds). Written
   synchronously via tmp file + rename. The app used to be "Claude Terminal": if no state exists yet, the loader
   reads `%APPDATA%\claude-terminal\state.json` once (`legacyStateFile`).
 - **Restore tabs**: `state.tabs` (`{ project, kind, sessionId }` in tab order) + `state.activeTab`, sent by the renderer's
@@ -103,6 +105,8 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   - Reorder: plain HTML5 drag events, no Mac branch.
   - Packaged update: `/bin/bash update.sh` detached with the login shell's PATH (after `shellEnvReady`); waits on the
     pid with `kill -0`; reopens the bundle (`execPath` three levels up) with `open`. No visible window, so the log is it.
+  - Shortcuts: the `SHORTCUTS` defaults use `M` = Cmd and `JUMP` = Cmd (Windows: Ctrl / Alt); `comboText` draws ⌃⌥⇧⌘,
+    and the recorder reads `e.code`, so Option's special characters don't matter. `Cmd+Alt+arrows` resizes panes.
   - Terminal: `macOptionIsMeta` (Claude's Option shortcuts), `rightClickSelectsWord: false` (right-click pastes);
     the custom Ctrl+C/V handler is skipped. Labels say "Shell" / "Finder"; tooltips go through `kbd()` (⌘ ⇧ ⌥).
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled every 4 s from the renderer.
@@ -122,8 +126,21 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   reopens the exe/.app (tabs restore). Windows: a visible console; on failure it shows the error, waits for Enter and
   reopens the old build. macOS: output in `<userData>/update.log`, opened in TextEdit on failure. Test it against a scratch
   clone (junction its `node_modules`), never the real `dist\`.
-- **Split view** (runtime only, not saved): `split = { ids, cx, ry }` in renderer.js shows 2-4 tabs as a grid in `#terminals`
-  (2 = A|B, 3 = A|(B over C), 4 = 2x2) with draggable dividers. `activeId` is the focused pane, so status bar, right sidebar and
+- **Shortcuts** (`SHORTCUTS` in renderer.js): each action has an id, a label, default combos and `run`. Combos name physical
+  keys (`KeyboardEvent.code`, canonical modifier order Ctrl, Alt, Shift, Cmd: `"Ctrl+Shift+KeyT"`), so Shift/Option never
+  change the key; `Digits` (1..9) and `Arrows` are patterns whose action gets the number / direction. `runShortcut` (the one
+  capture-phase keydown handler) prefers exact combos over patterns; a `run` returning `false` lets the key through. `ui.keys`
+  stores only actions that differ from the defaults (main sanitizes it). Tooltips and hints read the live bindings through
+  `tip()` / `keyText()`; `keysChanged()` redraws them.
+- **Settings page** (`#settings` over `#main`, gear at the left of the sidebar footer or `Ctrl+,`; `toggleSettings` /
+  `renderSettings`): for now only Shortcuts. Clicking a chip (or +) records the next combo with Ctrl/Alt/Cmd (or an F key);
+  a combo another action uses is moved over (`keysNote` says so). Esc cancels recording, then closes the page; activating
+  any tab closes it too.
+- **Split view** (runtime only, not saved): `split = { ids, cx, ry, v }` in renderer.js shows 2-4 tabs as a grid in `#terminals`
+  (2 = A|B, 3 = A|(B over C), 4 = 2x2; `v` = stacked, started by "New session below": 2 = A over B, 3 = A over (B|C), which
+  `paneCell` / `cellRect` get by transposing) with draggable dividers. `focusPane(dir)` picks the nearest pane that way,
+  `nudgeSplit(dir)` moves a divider by 5 %. The sidebar shows the members in a `.split-group` box (`splitGroup`): inside
+  their project's list, or at the top of `#projects` when they come from different projects (rows then show the project name). `activeId` is the focused pane, so status bar, right sidebar and
   polling keep following one tab. `visibleIds()` = the split if the active tab is in it, else just the active tab (a non-member
   shows alone and the split returns when a member is focused). Entry: top-bar button / `Ctrl+\` (`splitHere`, new session beside),
   Ctrl+click a sidebar row (`besideRow`), or drag a sidebar row onto the terminal area or the home screen: `#dropzone` (shown only while
@@ -186,6 +203,10 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
 
 ## Gotchas (learned the hard way)
 
+- **Resize a terminal once, and only when its size changes** (`fitTab`). The renderer rounds the cell height, so the fit
+  addon's row count can be one too many; `fit.fit()` followed by `rows - 1` resized every tab twice per switch, and each
+  pty resize makes Claude repaint its screen (the Ctrl+Tab jitter). `fitTab` computes the final size from
+  `proposeDimensions()` and calls `term.resize` at most once.
 - **`pty.pid` is 0 right after spawn** on ConPTY. Read `s.pty.pid` lazily at scan time; never cache it.
 - **Windows never clears `ParentProcessId`**: when a parent exits, its pid can be reused by an unrelated process, which then looks like
   the child's ancestor (Discord showed up as a dev server of a session this way). The port scan carries each process's creation time

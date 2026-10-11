@@ -68,7 +68,7 @@ if (IS_MAC && !process.env.LANG) process.env.LANG = 'en_US.UTF-8'; // Finder lau
 
 const defaults = {
   projects: [], // [{ path, name }]
-  ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, fontSize: 14, expanded: [], collapsed: [] }, // expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut
+  ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, fontSize: 14, expanded: [], collapsed: [], keys: {} }, // expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut; keys: shortcut overrides (action id -> combos)
   bounds: null,
   maximized: false,
   tabs: [], // open tabs in tab order, reopened at launch: [{ project: path, kind: 'claude' | 'shell', sessionId }]
@@ -1188,7 +1188,16 @@ function registerIpc() {
 
   ipcMain.handle('ui:set', (_e, patch) => {
     for (const k of Object.keys(defaults.ui)) {
-      if (k !== 'expanded' && k !== 'collapsed' && typeof patch?.[k] === typeof defaults.ui[k]) state.ui[k] = patch[k];
+      if (k !== 'expanded' && k !== 'collapsed' && k !== 'keys' && typeof patch?.[k] === typeof defaults.ui[k]) state.ui[k] = patch[k];
+    }
+    if (patch?.keys && typeof patch.keys === 'object' && !Array.isArray(patch.keys)) {
+      const keys = {};
+      for (const [id, list] of Object.entries(patch.keys).slice(0, 50)) {
+        if (/^[A-Za-z]{1,40}$/.test(id) && Array.isArray(list)) {
+          keys[id] = list.filter((c) => typeof c === 'string' && c.length <= 60).slice(0, 8);
+        }
+      }
+      state.ui.keys = keys;
     }
     if (Array.isArray(patch?.collapsed)) {
       state.ui.collapsed = patch.collapsed.filter((k) => typeof k === 'string').slice(0, 20);

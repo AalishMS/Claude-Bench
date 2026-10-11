@@ -51,6 +51,9 @@ const ICONS = {
   globe: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
   panelRight: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/>',
   columns: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>',
+  rows: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/>',
+  undo: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   check: '<polyline points="20 6 9 17 4 12"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
   box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
@@ -88,13 +91,102 @@ const kbd = (s) => (IS_MAC
 const SHELL_LABEL = IS_MAC ? 'Shell' : 'PowerShell';
 const FILES_APP = IS_MAC ? 'Finder' : 'Explorer';
 
+// ------------------------------------------------------------- shortcuts ----
+// Every app shortcut is an action with a list of key combos, editable on the settings page (ui.keys stores only the
+// actions that differ from these defaults). Combos name physical keys (KeyboardEvent.code), so Shift or Option never
+// change the key: "Ctrl+Shift+KeyT". `Digits` stands for 1..9 and `Arrows` for the four arrow keys (the action gets
+// the number or direction). An action that returns false didn't apply (pane keys without a split): the key then
+// reaches the terminal as usual.
+
+const M = IS_MAC ? 'Cmd' : 'Ctrl'; // macOS: Cmd, so Ctrl stays Claude's
+const JUMP = IS_MAC ? 'Cmd' : 'Alt'; // Alt+1..9 / Alt+arrows are Cmd+1..9 / Cmd+arrows on macOS
+const SHORTCUTS = [
+  { id: 'newSession', group: 'Sessions', label: 'New Claude session', keys: [`${M}+KeyT`, `${M}+Shift+KeyT`], run: () => newSessionHere() },
+  { id: 'closeSession', group: 'Sessions', label: 'Close session', keys: [`${M}+KeyW`, `${M}+Shift+KeyW`], run: () => { if (activeId) closeTab(activeId); } },
+  { id: 'nextSession', group: 'Sessions', label: 'Next session', keys: ['Ctrl+Tab'], run: () => cycleTab(1) },
+  { id: 'prevSession', group: 'Sessions', label: 'Previous session', keys: ['Ctrl+Shift+Tab'], run: () => cycleTab(-1) },
+  { id: 'gotoSession', group: 'Sessions', label: 'Go to session 1–9', pattern: 'Digits', keys: [`${JUMP}+Digits`],
+    run: (n) => { const id = [...tabs.keys()][n - 1]; if (id) activate(id); } },
+  { id: 'splitRight', group: 'Split view', label: 'New session beside', keys: [`${M}+Backslash`], run: () => splitHere(false) },
+  { id: 'splitDown', group: 'Split view', label: 'New session below', keys: [`${M}+Alt+Backslash`], run: () => splitHere(true) },
+  { id: 'unsplit', group: 'Split view', label: 'Back to one terminal', keys: [`${M}+Shift+Backslash`], run: () => unsplit() },
+  { id: 'focusPane', group: 'Split view', label: 'Move focus to the pane in that direction', hint: 'Only while split, otherwise the keys reach the terminal',
+    pattern: 'Arrows', keys: [`${JUMP}+Arrows`], run: (dir) => focusPane(dir) },
+  { id: 'resizePane', group: 'Split view', label: 'Resize panes', hint: 'Moves the divider in that direction, only while split',
+    pattern: 'Arrows', keys: [`${M}+Alt+Arrows`], run: (dir) => nudgeSplit(dir) },
+  { id: 'toggleSidebar', group: 'Window', label: 'Toggle sidebar', keys: [`${M}+KeyS`, `${M}+Shift+KeyB`], run: () => setSidebar(!ui.sidebar) },
+  { id: 'toggleRside', group: 'Window', label: 'Toggle right sidebar', keys: [`${M}+Shift+KeyS`], run: () => setServers(!rsideShown()) },
+  { id: 'search', group: 'Window', label: 'Search sessions', keys: [`${M}+Shift+KeyF`],
+    run: () => { setSidebar(true); $('#session-search').focus(); $('#session-search').select(); } },
+  { id: 'settings', group: 'Window', label: 'Settings', keys: [`${M}+Comma`], run: () => toggleSettings() },
+  { id: 'zoomIn', group: 'Terminal', label: 'Larger text', keys: [`${M}+Equal`, `${M}+NumpadAdd`], run: () => setFontSize(ui.fontSize + 1) },
+  { id: 'zoomOut', group: 'Terminal', label: 'Smaller text', keys: [`${M}+Minus`, `${M}+NumpadSubtract`], run: () => setFontSize(ui.fontSize - 1) },
+  { id: 'zoomReset', group: 'Terminal', label: 'Default text size', keys: [`${M}+Digit0`, `${M}+Numpad0`], run: () => setFontSize(FONT_SIZE.default) },
+];
+
+const MODS = ['Ctrl', 'Alt', 'Shift', 'Cmd']; // canonical order (macOS shows ⌃⌥⇧⌘)
+const normCombo = (c) => { const p = c.split('+'); const key = p.pop(); return [...MODS.filter((m) => p.includes(m)), key].join('+'); };
+const comboOf = (e, key = e.code) =>
+  [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Cmd', key].filter(Boolean).join('+');
+const defaultKeys = (s) => s.keys.map(normCombo);
+
+let keymap = {}; // action id -> [combo], the effective bindings
+
+function loadKeys(saved) {
+  keymap = {};
+  for (const s of SHORTCUTS) {
+    const own = saved && Array.isArray(saved[s.id]) ? saved[s.id].filter((c) => typeof c === 'string' && c) : null;
+    keymap[s.id] = own ? [...new Set(own.map(normCombo))] : defaultKeys(s);
+  }
+}
+
+const isCustom = (s) => keymap[s.id].join() !== defaultKeys(s).join();
+
+function saveKeys() {
+  const diff = {};
+  for (const s of SHORTCUTS) if (isCustom(s)) diff[s.id] = keymap[s.id];
+  api.setUi({ keys: diff });
+}
+
+/** Run the action bound to this key event. Exact combos win over Digits / Arrows patterns. Returns whether it was handled. */
+function runShortcut(e) {
+  const patterns = [];
+  if (/^Digit[1-9]$/.test(e.code)) patterns.push(comboOf(e, 'Digits'));
+  if (e.code.startsWith('Arrow')) patterns.push(comboOf(e, 'Arrows'));
+  const exact = comboOf(e);
+  const s = SHORTCUTS.find((x) => keymap[x.id].includes(exact))
+    || SHORTCUTS.find((x) => x.pattern && keymap[x.id].some((c) => patterns.includes(c)));
+  if (!s) return false;
+  const arg = s.pattern === 'Digits' ? Number(e.code.slice(5)) : s.pattern === 'Arrows' ? e.code.slice(5).toLowerCase() : undefined;
+  return s.run(arg) !== false;
+}
+
+const KEY_TEXT = {
+  Backslash: '\\', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',',
+  Period: '.', Slash: '/', Backquote: '`', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓',
+  Digits: '1…9', Arrows: '←↑→↓', Escape: 'Esc', NumpadAdd: 'Num+', NumpadSubtract: 'Num-',
+};
+const MAC_MOD = { Ctrl: '⌃', Alt: '⌥', Shift: '⇧', Cmd: '⌘' };
+
+/** "Ctrl+Shift+KeyT" -> "Ctrl+Shift+T" on Windows, "⇧⌘T" on macOS. */
+function comboText(c) {
+  const p = c.split('+');
+  const code = p.pop();
+  const key = KEY_TEXT[code] || code.replace(/^(Key|Digit)/, '').replace(/^Numpad/, 'Num');
+  return IS_MAC ? p.map((m) => MAC_MOD[m]).join('') + key : [...p.map((m) => (m === 'Cmd' ? 'Win' : m)), key].join('+');
+}
+/** The first combo of an action as text ('' when unbound), and a tooltip with it: "Close session (Ctrl+W)". */
+const keyText = (id) => (keymap[id]?.[0] ? comboText(keymap[id][0]) : '');
+const tip = (label, id) => (keyText(id) ? `${label} (${keyText(id)})` : label);
+
 // --------------------------------------------------------------- state ----
 
 let projects = [];
 let ui = { sidebar: true, servers: true, fontSize: 14, collapsed: [] }; // replaced by the saved state in init()
 const tabs = new Map(); // id -> tab
 let activeId = null;
-let split = null; // { ids: [tab id, 2-4 of them], cx, ry } side-by-side panes (runtime only); activeId is the focused pane
+let split = null; // { ids: [tab id, 2-4 of them], cx, ry, v } side-by-side panes (runtime only); activeId is the focused pane; v = stacked
+let settingsOpen = false; // the settings page covers the terminal area
 let rsideAuto = false; // the right sidebar was hidden by autoRside (ui.servers still holds the user's choice)
 let rsideForced = false; // the user reopened it by hand in a cramped split: leave it alone until the split changes
 let git = {}; // projectPath -> info | null
@@ -262,9 +354,9 @@ function tabLabel(tab) {
   return same.length > 1 ? `${tab.project.name} ${n}` : tab.project.name;
 }
 
-async function openSession(project, { kind = 'claude', args = [], resumeId = null, beside = false, at } = {}) {
+async function openSession(project, { kind = 'claude', args = [], resumeId = null, beside = false, below = false, at } = {}) {
   const tab = createTab(project, { kind, args, resumeId });
-  if (beside) addToSplit(tab.id, at);
+  if (beside) addToSplit(tab.id, at, below);
   activate(tab.id);
   fitTab(tab);
   await startPty(tab);
@@ -617,6 +709,7 @@ async function closeTab(id) {
 function activate(id) {
   const tab = tabs.get(id);
   if (!tab) return;
+  if (settingsOpen) toggleSettings(false);
   activeId = id;
   tab.lastActive = Date.now();
   tab.attention = false;
@@ -639,15 +732,22 @@ function activate(id) {
   saveTabs();
 }
 
-/** Fit, then drop a row if the renderer's rounded cell height made the screen taller than its box (covers the status bar). */
+/**
+ * Fit the terminal to its box, one row short if the renderer's rounded cell height would make the screen taller than
+ * the box (it would cover the status bar). Resizes once, straight to the final size, and only when it changed: every
+ * resize makes the pty redraw (Claude repaints its whole screen), so fitting to N rows and then dropping to N-1 on each
+ * tab switch made the terminal jitter.
+ */
 function fitTab(tab) {
   try {
-    tab.fit.fit();
+    const dims = tab.fit.proposeDimensions();
+    if (!dims || !Number.isFinite(dims.cols) || !Number.isFinite(dims.rows)) return;
+    let { cols, rows } = dims;
     const box = tab.host.querySelector('.xterm');
     const screen = tab.host.querySelector('.xterm-screen');
-    if (box && screen && tab.term.rows > 1 && screen.offsetHeight > box.clientHeight) {
-      tab.term.resize(tab.term.cols, tab.term.rows - 1);
-    }
+    const rowH = screen && tab.term.rows ? screen.offsetHeight / tab.term.rows : 0;
+    if (box && rowH && rows > 1 && rows * rowH > box.clientHeight) rows--;
+    if (cols !== tab.term.cols || rows !== tab.term.rows) tab.term.resize(cols, rows);
   } catch { /* not measurable yet */ }
 }
 
@@ -661,6 +761,7 @@ function fitActive() {
 
 // ---------------------------------------------------------------- split ----
 // Up to 4 tabs side by side. 2 = A|B, 3 = A|(B over C), 4 = (A B)/(C D). cx / ry are the column and row ratios.
+// A stacked split (v, started with "New session below") is the same layout transposed: 2 = A over B, 3 = A over (B|C).
 // A tab outside the split shows alone and the split returns when one of its members is focused again.
 
 const SPLIT_MAX = 4;
@@ -671,13 +772,17 @@ const RSIDE_BACK_COLS = RSIDE_MIN_COLS + 6; // ...and returns only with this muc
 
 const visibleIds = () => (split && split.ids.includes(activeId) ? split.ids : activeId ? [activeId] : []);
 
-/** Put a tab that is not on screen yet into the split at position `at` (default: last), next to the visible panes. */
-function addToSplit(id, at) {
+/**
+ * Put a tab that is not on screen yet into the split at position `at` (default: last), next to the visible panes.
+ * `below` stacks a new split; a split that is already on screen keeps its orientation.
+ */
+function addToSplit(id, at, below = false) {
   if (!activeId || !tabs.has(id)) return;
   const base = [...visibleIds()];
   if (base.includes(id) || base.length >= SPLIT_MAX) return;
+  const fresh = base.length < 2;
   base.splice(at ?? base.length, 0, id);
-  split = { ids: base, cx: split?.cx ?? 0.5, ry: split?.ry ?? 0.5 };
+  split = { ids: base, cx: split?.cx ?? 0.5, ry: split?.ry ?? 0.5, v: fresh ? below : split.v };
   rsideForced = false;
 }
 
@@ -695,6 +800,7 @@ function unsplit() {
   split = null;
   rsideForced = false;
   syncVisible();
+  renderSidebar(true); // drops the split group
 }
 
 /** Show exactly the visible tabs (all split members, or just the active one), then refit them. */
@@ -713,11 +819,12 @@ function syncVisible() {
   });
 }
 
-function splitHere() {
+/** A new session of the active tab's project beside it (`below`: under it, for a new split). */
+function splitHere(below = false) {
   const tab = activeTab();
   if (!tab) return newSessionHere();
   if (split?.ids.includes(tab.id) && split.ids.length >= SPLIT_MAX) return;
-  openSession(tab.project, { beside: true });
+  openSession(tab.project, { beside: true, below });
 }
 
 /** Another copy of what a tab runs, opened beside: the same Claude session resumed (once it has a transcript), or a fresh shell. */
@@ -741,9 +848,10 @@ function besideRow(open, openNew) {
 let dragSrc = null; // { id: tab id | null, project, resumeId } while a session row is being dragged
 let dropAt = null; // the slot under the pointer, or null when nothing can be dropped
 
-/** Pixel rect of pane `i` in an `n`-pane layout inside a W x H area. */
-function cellRect(n, i, cx, ry, W, H) {
+/** Pixel rect of pane `i` in an `n`-pane layout inside a W x H area (`v`: stacked, the 2/3 layouts transposed). */
+function cellRect(n, i, cx, ry, W, H, v = false) {
   if (n === 1) return { x: 0, y: 0, w: W, h: H };
+  if (v && n < 4) { const c = cellRect(n, i, ry, cx, H, W); return { x: c.y, y: c.x, w: c.h, h: c.w }; }
   const col = n === 2 ? i : n === 3 ? (i === 0 ? 0 : 1) : i % 2;
   const row = n === 2 || (n === 3 && i === 0) ? -1 : n === 3 ? i - 1 : i >> 1;
   return {
@@ -786,10 +894,10 @@ function wireDropZone() {
     e.dataTransfer.dropEffect = 'move';
     const r = box.getBoundingClientRect();
     const n = base.length + 1;
-    const cx = split?.cx ?? 0.5, ry = split?.ry ?? 0.5;
+    const cx = split?.cx ?? 0.5, ry = split?.ry ?? 0.5, v = base.length > 1 && split.v;
     let best = null;
     for (let k = 0; k < n; k++) {
-      const c = cellRect(n, k, cx, ry, r.width, r.height);
+      const c = cellRect(n, k, cx, ry, r.width, r.height, v);
       const d = Math.hypot(e.clientX - r.left - (c.x + c.w / 2), e.clientY - r.top - (c.y + c.h / 2));
       if (!best || d < best.d) best = { k, c, d };
     }
@@ -861,14 +969,44 @@ function wireReorder() {
   });
 }
 
+/**
+ * Focus the pane next to the focused one in a direction ('left' | 'right' | 'up' | 'down'): the nearest pane whose
+ * centre lies that way, preferring one in line. Returns false without a split, so the keys reach the terminal.
+ */
 function focusPane(dir) {
   const ids = visibleIds();
-  if (ids.length < 2) return;
-  activate(ids[(ids.indexOf(activeId) + dir + ids.length) % ids.length]);
+  if (ids.length < 2) return false;
+  const centre = (id) => { const r = tabs.get(id).host.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+  const [ax, ay] = centre(activeId);
+  let best = null;
+  for (const id of ids) {
+    if (id === activeId) continue;
+    const [x, y] = centre(id);
+    const horiz = dir === 'left' || dir === 'right';
+    const along = horiz ? (dir === 'right' ? x - ax : ax - x) : (dir === 'down' ? y - ay : ay - y);
+    if (along <= 1) continue;
+    const score = along + 2 * Math.abs(horiz ? y - ay : x - ax);
+    if (!best || score < best.score) best = { id, score };
+  }
+  if (best) activate(best.id);
+  return true;
 }
 
-/** [grid-column, grid-row] of pane `i` in an `n`-pane split. */
-function paneCell(n, i) {
+const RESIZE_STEP = 0.05; // of the terminal area per key press
+
+/** Keyboard resize: move the divider that runs across `dir` (Left/Right the vertical one, Up/Down the horizontal one). */
+function nudgeSplit(dir) {
+  if (visibleIds().length < 2) return false;
+  const axis = dir === 'left' || dir === 'right' ? 'x' : 'y';
+  if ($(axis === 'x' ? '#pz-v' : '#pz-h').hidden) return true; // this layout has no divider that way
+  const step = dir === 'left' || dir === 'up' ? -RESIZE_STEP : RESIZE_STEP;
+  setSplitRatio(axis, (axis === 'x' ? split.cx : split.ry) + step);
+  return true;
+}
+
+/** [grid-column, grid-row] of pane `i` in an `n`-pane split (`v`: stacked, the 2/3 layouts transposed). */
+function paneCell(n, i, v = false) {
+  if (v && n < 4) { const [c, r] = paneCell(n, i); return [r, c]; }
   if (n === 2) return [String(i + 1), '1'];
   if (n === 3) return i === 0 ? ['1', '1 / span 2'] : ['2', String(i)];
   return [String((i % 2) + 1), String(Math.floor(i / 2) + 1)];
@@ -879,29 +1017,33 @@ function renderSplit() {
   const box = $('#terminals');
   const ids = split && split.ids.includes(activeId) ? split.ids : [];
   const n = ids.length;
+  const v = n > 1 && split.v;
   box.classList.toggle('split', n > 1);
   $('#split-tab').classList.toggle('on', !!split);
-  $('#split-tab').title = kbd(split ? 'Back to one terminal (Ctrl+Shift+\\)' : 'New session beside this one (Ctrl+\\)');
+  $('#split-tab').title = split ? tip('Back to one terminal', 'unsplit') : tip('New session beside this one', 'splitRight');
 
   for (const t of tabs.values()) {
     const i = ids.indexOf(t.id);
     t.host.classList.toggle('pane', i >= 0);
     t.host.classList.toggle('focus', i >= 0 && t.id === activeId);
-    const [col, row] = i < 0 ? ['', ''] : paneCell(n, i);
+    const [col, row] = i < 0 ? ['', ''] : paneCell(n, i, v);
     t.host.style.gridColumn = col;
     t.host.style.gridRow = row;
   }
 
+  // The vertical divider (at cx) and the horizontal one (at ry); a 3-pane layout's second divider spans only its half.
   const vz = $('#pz-v'), hz = $('#pz-h');
-  vz.hidden = n < 2;
-  hz.hidden = n < 3;
+  vz.hidden = n < (v ? 3 : 2);
+  hz.hidden = n < (v ? 2 : 3);
   if (n > 1) {
     const { cx, ry } = split;
-    box.style.gridTemplateColumns = `${cx}fr ${1 - cx}fr`;
-    box.style.gridTemplateRows = n === 2 ? '1fr' : `${ry}fr ${1 - ry}fr`;
+    const cols = `${cx}fr ${1 - cx}fr`, rows = `${ry}fr ${1 - ry}fr`;
+    box.style.gridTemplateColumns = v && n === 2 ? '1fr' : cols;
+    box.style.gridTemplateRows = !v && n === 2 ? '1fr' : rows;
     vz.style.left = `calc(${cx * 100}% - 2px)`;
+    vz.style.top = v && n === 3 ? `${ry * 100}%` : '0';
     hz.style.top = `calc(${ry * 100}% - 2px)`;
-    hz.style.left = n === 3 ? `${cx * 100}%` : '0';
+    hz.style.left = !v && n === 3 ? `${cx * 100}%` : '0';
   } else {
     box.style.gridTemplateColumns = box.style.gridTemplateRows = '';
   }
@@ -922,7 +1064,7 @@ function renderPanes() {
       h('span', { class: 's-mark' }, tabDot(t) ? h('i', { class: `dot ${tabDot(t)}` }) : null),
       h('span', { class: 'ph-title' }, paneTitle(t)),
       h('button', {
-        class: 'btn ghost icon sm', title: kbd('Close session (Ctrl+W)'),
+        class: 'btn ghost icon sm', title: tip('Close session', 'closeSession'),
         onclick: (e) => { e.stopPropagation(); closeTab(id); },
       }, ico('x')));
   }
@@ -965,15 +1107,18 @@ function autoRside() {
   });
 }
 
+/** Set the column (x) or row (y) ratio of the split, keeping every pane at least SPLIT_MIN_W x SPLIT_MIN_H. */
+function setSplitRatio(axis, v) {
+  const r = $('#terminals').getBoundingClientRect();
+  if (axis === 'x') split.cx = Math.min(1 - SPLIT_MIN_W / r.width, Math.max(SPLIT_MIN_W / r.width, v));
+  else split.ry = Math.min(1 - SPLIT_MIN_H / r.height, Math.max(SPLIT_MIN_H / r.height, v));
+  renderSplit();
+}
+
 /** Dividers: drag to resize (ratio of the grid), double-click to reset. */
 function wireDivider(el, axis) {
   const box = $('#terminals');
-  const apply = (v) => {
-    const r = box.getBoundingClientRect();
-    if (axis === 'x') split.cx = Math.min(1 - SPLIT_MIN_W / r.width, Math.max(SPLIT_MIN_W / r.width, v));
-    else split.ry = Math.min(1 - SPLIT_MIN_H / r.height, Math.max(SPLIT_MIN_H / r.height, v));
-    renderSplit();
-  };
+  const apply = (v) => setSplitRatio(axis, v);
   el.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     el.setPointerCapture(e.pointerId);
@@ -1101,14 +1246,17 @@ const dotMark = (state) => h('span', { class: 's-mark' }, state ? h('i', { class
 /** Rows backed by an open tab show × in place of their time on hover; middle-click closes too, as on the old tabs. */
 function closeButton(t) {
   return h('button', {
-    class: 'btn ghost icon sm s-close', title: kbd('Close (Ctrl+W)'),
+    class: 'btn ghost icon sm s-close', title: tip('Close', 'closeSession'),
     onclick: (e) => { e.stopPropagation(); closeTab(t.id); },
   }, ico('x'));
 }
 const auxClose = (t) => (e) => { if (t && e.button === 1) closeTab(t.id); };
 
+/** Project name on rows of a split group that mixes projects, in place of the time. */
+const projTag = (t, show) => (show ? h('span', { class: 's-proj' }, t.project.name) : null);
+
 /** A transcript row; `t` is the open tab showing it (a session opened twice gets one row per tab). */
-function sessionRow(p, s, t = null) {
+function sessionRow(p, s, t = null, showProject = false) {
   return h('div', {
     class: `session${t ? (t.id === activeId ? ' active' : '') + ' has-tab' : ''}`,
     'data-tab': t?.id,
@@ -1122,18 +1270,40 @@ function sessionRow(p, s, t = null) {
   },
     dotMark(t ? tabDot(t) : ''),
     h('span', { class: 's-title' }, s.title),
-    h('span', { class: 's-time' }, fmtAgo(s.mtime)),
+    showProject ? projTag(t, true) : h('span', { class: 's-time' }, fmtAgo(s.mtime)),
     t ? closeButton(t) : null);
 }
 
 /** An open tab's row: its transcript row once known, else a placeholder. Exited tabs stay listed so they can be closed. */
-function tabRow(t) {
+function tabRow(t, showProject = false) {
   const s = t.kind === 'claude' && t.sessionId && (sessionsBy[t.project.path] || []).find((x) => x.id === t.sessionId);
-  return s ? sessionRow(t.project, s, t) : pendingRow(t);
+  return s ? sessionRow(t.project, s, t, showProject) : pendingRow(t, showProject);
+}
+
+/**
+ * The split's members in one tinted box, like a browser tab group: inside their project's list, or at the top of the
+ * sidebar when they come from different projects (each row then names its project). Clicking the header brings the
+ * split back when a tab outside it is showing; its × unsplits.
+ */
+function splitGroup(members, showProject) {
+  const live = members.some((t) => t.id === activeId);
+  return h('div', { class: `split-group${live ? '' : ' idle'}` },
+    h('div', {
+      class: 'sg-head', title: live ? 'On screen side by side' : 'Click to show these side by side again',
+      onclick: () => { if (!live) activate(members[0].id); },
+    },
+      h('span', { class: 'sg-ico' }, ico(split.v ? 'rows' : 'columns')),
+      h('span', {}, 'Split view'),
+      h('span', { class: 'sg-count' }, String(members.length)),
+      h('button', {
+        class: 'btn ghost icon sm', title: tip('Back to one terminal', 'unsplit'),
+        onclick: (e) => { e.stopPropagation(); unsplit(); },
+      }, ico('x'))),
+    members.map((t) => tabRow(t, showProject)));
 }
 
 /** Claude tabs before their first reply (placeholder title) and shell tabs. */
-function pendingRow(t) {
+function pendingRow(t, showProject = false) {
   return h('div', {
     class: `session has-tab${t.kind === 'claude' ? ' pending' : ''}${t.id === activeId ? ' active' : ''}`,
     'data-tab': t.id,
@@ -1144,7 +1314,7 @@ function pendingRow(t) {
   },
     dotMark(tabDot(t)),
     h('span', { class: 's-title' }, paneTitle(t)),
-    h('span', { class: 's-time' }, fmtAgo(t.startedAt)),
+    showProject ? projTag(t, true) : h('span', { class: 's-time' }, fmtAgo(t.startedAt)),
     closeButton(t));
 }
 
@@ -1178,7 +1348,7 @@ function renderSidebar(force = false) {
   const tab = activeTab();
   const activeProject = tab?.project.path;
   const key = JSON.stringify([projects, git, activeId, tab?.sessionId, sessionsVer, [...expanded], [...showMore], query,
-    Math.floor(Date.now() / 60000),
+    Math.floor(Date.now() / 60000), split && [split.ids, split.v],
     [...tabs.values()].map((t) => [t.id, t.project.path, t.kind, t.sessionId, tabDot(t)])]);
   if (!force && key === lastSidebarKey) return;
   lastSidebarKey = key;
@@ -1190,6 +1360,10 @@ function renderSidebar(force = false) {
     return;
   }
   const q = query.trim().toLowerCase();
+  // Split members are grouped: in their project when they share one, else in a group of their own at the top.
+  const members = !q && split ? split.ids.map((id) => tabs.get(id)).filter(Boolean) : [];
+  const inSplit = new Set(members.length > 1 ? members.map((t) => t.id) : []);
+  const groupHome = inSplit.size && members.every((t) => t.project.path === members[0].project.path) ? members[0].project.path : null;
   const groups = projects.map((p) => {
     const loaded = sessionsBy[p.path];
     const matches = q ? (loaded || []).filter((s) => s.title.toLowerCase().includes(q)) : loaded || [];
@@ -1206,7 +1380,8 @@ function renderSidebar(force = false) {
       const all = q || showMore.has(p.path);
       const hidden = all ? 0 : Math.max(0, rest.length - SESSIONS_SHOWN);
       list = h('div', { class: 'sessions' },
-        open.map(tabRow),
+        groupHome === p.path ? splitGroup(members, false) : null,
+        open.filter((t) => !inSplit.has(t.id)).map((t) => tabRow(t)),
         rest.length
           ? (all ? rest : rest.slice(0, SESSIONS_SHOWN)).map((s) => sessionRow(p, s, tabOfSession(s.id)))
           : open.length ? null : h('div', { class: 's-note' }, 'No sessions yet'),
@@ -1220,6 +1395,7 @@ function renderSidebar(force = false) {
       isActive && git[p.path] ? gitSubLine(git[p.path]) : null,
       list);
   }).filter(Boolean);
+  if (inSplit.size && !groupHome) groups.unshift(h('div', { class: 'group' }, splitGroup(members, true)));
   root.replaceChildren(...(groups.length ? groups
     : [h('div', { class: 'empty-note' }, `No sessions match "${query.trim()}"`)]));
 }
@@ -1337,7 +1513,7 @@ function renderFoot(force = false) {
   const week = lim('weekly_all');
 
   const key = JSON.stringify([usage, Math.floor(Date.now() / 60000), ctx && [ctx.session?.id, ctx.session?.ctx, ctx.pct, ctx.tab.id], detailKind,
-    [...tabs.values()].map((t) => [t.id, tabLabel(t), tabState(t)]), sessionsVer]);
+    [...tabs.values()].map((t) => [t.id, tabLabel(t), tabState(t)]), sessionsVer, settingsOpen, keyText('settings')]);
   if (!force && key === lastFootKey) return;
   lastFootKey = key;
 
@@ -1348,6 +1524,9 @@ function renderFoot(force = false) {
       usage.stale && `Last updated ${Math.round((Date.now() - usage.fetchedAt) / 60000)} min ago`].filter(Boolean).join('\n')
     : usage && !usage.ok ? `Plan usage unavailable: ${usage.error}` : 'Plan usage';
   $('#side-foot').replaceChildren(
+    h('button', {
+      class: `btn ghost icon sm${settingsOpen ? ' on' : ''}`, title: tip('Settings', 'settings'), onclick: () => toggleSettings(),
+    }, ico('settings')),
     h('div', { class: 'fstats' },
       fstat('usage', usageTip, gauge(sessPct), sess ? pctText(sessPct) : '—'),
       fstat('context', ctx?.pct != null ? `Context of this session: ${ctx.pct}% of ${fmtTok(ctx.win)}` : 'Context of this session',
@@ -1444,10 +1623,142 @@ function renderWelcome() {
                 h('span', { class: 'proj-go' }, ico('arrowRight')))))
         : h('button', { class: 'btn primary', onclick: addProjects }, ico('folderPlus'), 'Add project'),
       h('div', { class: 'hint' },
-        h('span', {}, h('kbd', {}, kbd('Ctrl+T')), ' new session'),
-        h('span', {}, h('kbd', {}, 'Ctrl+Tab'), ' switch'),
-        h('span', {}, h('kbd', {}, kbd('Ctrl+S')), ' sidebar'),
-        h('span', {}, h('kbd', {}, kbd('Ctrl+Shift+S')), ' side panel'))));
+        [['newSession', 'new session'], ['nextSession', 'switch'], ['toggleSidebar', 'sidebar'], ['toggleRside', 'side panel'], ['settings', 'settings']]
+          .map(([id, label]) => (keyText(id) ? h('span', {}, h('kbd', {}, keyText(id)), ` ${label}`) : null)))));
+}
+
+// -------------------------------------------------------------- settings ----
+// A page over the terminal area (gear in the sidebar footer). For now one section: the shortcuts, each editable.
+// Recording a combo another action uses takes it from that action.
+
+let recording = null; // { id, index } while waiting for keys: index of the combo to replace, or -1 to add one
+let keysNote = null; // { text, err } under the section header after the last change
+
+function toggleSettings(open = !settingsOpen) {
+  if (open === settingsOpen) return;
+  settingsOpen = open;
+  recording = keysNote = null;
+  document.body.classList.toggle('settings-open', open);
+  if (open) {
+    setDetail(null);
+    closeMenu();
+    renderSettings();
+    $('#settings').scrollTop = 0;
+    $('#settings').focus();
+  } else {
+    $('#settings').replaceChildren();
+    activeTab()?.term.focus();
+  }
+  renderFoot(true);
+}
+
+function renderSettings() {
+  if (!settingsOpen) return;
+  const groups = [...new Set(SHORTCUTS.map((s) => s.group))];
+  const anyCustom = SHORTCUTS.some(isCustom);
+  $('#settings').replaceChildren(h('div', { class: 'set-inner' },
+    h('div', { class: 'set-head' },
+      h('h1', {}, 'Settings'),
+      h('button', { class: 'btn ghost icon', title: 'Close (Esc)', onclick: () => toggleSettings(false) }, ico('x'))),
+    h('section', {},
+      h('div', { class: 'set-sec-head' },
+        h('div', {},
+          h('h2', {}, 'Shortcuts'),
+          h('p', {}, 'Click a shortcut to change it, or + to add another. Esc cancels.')),
+        anyCustom ? h('button', { class: 'btn outline sm', onclick: resetAllKeys }, 'Reset all') : null),
+      keysNote ? h('div', { class: `set-note${keysNote.err ? ' err' : ''}` }, keysNote.text) : null,
+      groups.map((g) => h('div', { class: 'set-group' },
+        h('div', { class: 'set-label' }, g),
+        SHORTCUTS.filter((s) => s.group === g).map(shortcutRow))))));
+}
+
+function shortcutRow(s) {
+  const rec = recording?.id === s.id ? recording : null;
+  const recChip = () => h('span', { class: 'chip rec' }, 'Press keys…');
+  const chip = (c, i) => (rec?.index === i ? recChip() : h('span', { class: 'chip' },
+    h('button', { class: 'chip-key', title: 'Click, then press the new keys', onclick: () => startRecording(s.id, i) }, comboText(c)),
+    h('button', { class: 'chip-x', title: 'Remove', onclick: () => setKeys(s.id, keymap[s.id].filter((_, j) => j !== i)) }, ico('x'))));
+  return h('div', { class: `set-row${rec ? ' recording' : ''}` },
+    h('div', { class: 'set-text' },
+      h('div', { class: 'set-name' }, s.label),
+      s.hint ? h('div', { class: 'set-hint' }, s.hint) : null),
+    h('div', { class: 'set-keys' },
+      keymap[s.id].map(chip),
+      rec?.index === -1 ? recChip() : null,
+      !keymap[s.id].length && !rec ? h('span', { class: 'set-none' }, 'Not set') : null,
+      h('button', { class: 'btn ghost icon sm', title: 'Add a shortcut', onclick: () => startRecording(s.id, -1) }, ico('plus')),
+      isCustom(s)
+        ? h('button', { class: 'btn ghost icon sm', title: 'Reset to default', onclick: () => setKeys(s.id, defaultKeys(s)) }, ico('undo'))
+        : h('span', { class: 'set-pad' })));
+}
+
+function startRecording(id, index) {
+  recording = { id, index };
+  keysNote = null;
+  renderSettings();
+}
+
+function setKeys(id, list, note = null) {
+  keymap[id] = list;
+  keysNote = note;
+  saveKeys();
+  keysChanged();
+}
+
+function resetAllKeys() {
+  loadKeys(null);
+  keysNote = null;
+  saveKeys();
+  keysChanged();
+}
+
+/** Tooltips, hints and the settings page show the bindings: redraw them all. */
+function keysChanged() {
+  applyKeyTitles();
+  renderWelcome();
+  renderSplit();
+  lastPanesKey = '';
+  renderPanes();
+  renderSidebar(true);
+  renderFoot(true);
+  renderSettings();
+}
+
+function applyKeyTitles() {
+  $('#toggle-sidebar').title = tip('Toggle sidebar', 'toggleSidebar');
+  $('.search').title = tip('Search sessions', 'search');
+  $('#new-tab').title = tip('New Claude session in current project', 'newSession');
+  $('#close-tab').title = tip('Close session', 'closeSession');
+  $('#toggle-rside').title = tip('Context, MCPs, subagents and running servers', 'toggleRside');
+}
+
+/** While recording, every keydown comes here first. Needs a real key with Ctrl, Alt or Cmd/Win (or an F key). */
+function recordKey(e) {
+  if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph'].includes(e.key)) return; // wait for the key itself
+  const s = SHORTCUTS.find((x) => x.id === recording.id);
+  const plain = !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
+  if (e.key === 'Escape' && plain) { recording = null; keysNote = null; renderSettings(); return; }
+  const fail = (text) => { keysNote = { text, err: true }; renderSettings(); };
+  let key = e.code;
+  if (s.pattern === 'Digits') {
+    if (!/^Digit[1-9]$/.test(e.code)) return fail('This one needs a number key, e.g. ' + comboText(`${JUMP}+Digit1`) + '.');
+    key = 'Digits';
+  } else if (s.pattern === 'Arrows') {
+    if (!e.code.startsWith('Arrow')) return fail('This one needs an arrow key, e.g. ' + comboText(`${JUMP}+ArrowLeft`) + '.');
+    key = 'Arrows';
+  }
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && !/^F\d+$/.test(e.code)) {
+    return fail(`Hold ${IS_MAC ? '⌘, ⌥ or ⌃' : 'Ctrl or Alt'} with the key, so typing in the terminal still works.`);
+  }
+  const c = comboOf(e, key);
+  const from = SHORTCUTS.filter((x) => x.id !== s.id && keymap[x.id].includes(c));
+  for (const x of from) keymap[x.id] = keymap[x.id].filter((k) => k !== c);
+  const list = [...keymap[s.id]];
+  if (recording.index >= 0) list[recording.index] = c;
+  else list.push(c);
+  recording = null;
+  setKeys(s.id, [...new Set(list)],
+    from.length ? { text: `${comboText(c)} now runs "${s.label}" instead of "${from.map((x) => x.label).join('", "')}".` } : null);
 }
 
 function renderStatus() {
@@ -1674,7 +1985,7 @@ async function pollInfo() {
   try {
     const next = await api.sessionInfo(tab.project.path, tab.sessionId);
     if (tabs.has(tab.id)) infoBy.set(tab.id, next);
-    renderInfo(); // key-diffed
+    renderInfo(); // key-diffed, shows whichever tab is active now
     renderRside();
   } finally {
     infoBusy.delete(tab.id);
@@ -2098,40 +2409,22 @@ function wireGlobalEvents() {
     if (project) focusProject(project);
   });
 
-  // Ctrl+T (new session) and Ctrl+S (sidebar) are taken from Claude Code on purpose; the rest avoid its keys.
-  // mod(e) is Ctrl on Windows and Cmd on macOS (see IS_MAC).
+  // App shortcuts (SHORTCUTS, editable in settings). The defaults take Ctrl+T/S/W from Claude Code on purpose and
+  // otherwise avoid its keys; on macOS they use Cmd. Capture phase, so the terminal never sees a handled key.
   window.addEventListener('keydown', (e) => {
+    if (recording) { e.preventDefault(); e.stopPropagation(); recordKey(e); return; }
     let handled = true;
     if (e.key === 'Escape' && menuFor) closeMenu();
     else if (e.key === 'Escape' && detailKind) setDetail(null);
-    else if (mod(e) && !e.altKey && !e.shiftKey && (e.key === '=' || e.key === '+')) setFontSize(ui.fontSize + 1);
-    else if (mod(e) && !e.altKey && !e.shiftKey && (e.key === '-' || e.key === '_')) setFontSize(ui.fontSize - 1);
-    else if (mod(e) && !e.altKey && !e.shiftKey && e.key === '0') setFontSize(FONT_SIZE.default);
-    else if (e.ctrlKey && !e.altKey && e.key === 'Tab') cycleTab(e.shiftKey ? -1 : 1);
-    else if (mod(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'w') { if (activeId) closeTab(activeId); }
-    else if (mod(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 't') newSessionHere();
-    else if (mod(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's') setSidebar(!ui.sidebar);
-    else if (mod(e) && !e.altKey && !e.shiftKey && e.key === '\\') splitHere();
-    else if (mod(e) && !e.altKey && e.shiftKey && (e.key === '|' || e.key === '\\')) unsplit();
-    else if (mod(e) && e.altKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) focusPane(e.key === 'ArrowRight' ? 1 : -1);
-    else if ((IS_MAC ? e.metaKey && !e.altKey : e.altKey && !e.ctrlKey) && !e.shiftKey && /^[1-9]$/.test(e.key)) {
-      const id = [...tabs.keys()][Number(e.key) - 1];
-      if (id) activate(id);
-    } else if (mod(e) && e.shiftKey && !e.altKey) {
-      const k = e.key.toLowerCase();
-      if (k === 't') newSessionHere();
-      else if (k === 'w') { if (activeId) closeTab(activeId); }
-      else if (k === 'b') setSidebar(!ui.sidebar);
-      else if (k === 's') setServers(!rsideShown());
-      else if (k === 'f') { setSidebar(true); $('#session-search').focus(); $('#session-search').select(); }
-      else handled = false;
-    } else handled = false;
+    else if (e.key === 'Escape' && settingsOpen && $('#modal').hidden) toggleSettings(false);
+    else handled = runShortcut(e);
     if (handled) { e.preventDefault(); e.stopPropagation(); }
   }, true);
 
   window.addEventListener('focus', () => {
     pollGit(); pollPorts(); pollSessions(); pollUsage();
-    if (document.activeElement?.id !== 'session-search') activeTab()?.term.focus();
+    if (settingsOpen) $('#settings').focus();
+    else if (document.activeElement?.id !== 'session-search') activeTab()?.term.focus();
   });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) { pollGit(); pollPorts(); pollSessions(); pollUsage(); }
@@ -2205,6 +2498,8 @@ async function init() {
   projects = state.projects;
   ui = state.ui;
   ui.collapsed ||= [];
+  loadKeys(ui.keys);
+  applyKeyTitles();
   for (const key of Object.keys(PANEL_W)) applyPanelW(key, ui[key]);
   for (const p of ui.expanded || []) expanded.add(p);
   placeBrand();

@@ -53,7 +53,8 @@ So a future accent setting only has to call `document.documentElement.style.setP
 Never hard-code the blue, or a tint of it, anywhere else (CSS, renderer, inline styles).
 
 Primary appears **only** on: primary buttons, focus rings, progress-meter fills, the checked checkbox, the
-"needs attention" status dot, and drag-and-drop targets (split drop preview, reorder insertion line). Nothing else gets it.
+"needs attention" status dot, drag-and-drop targets (split drop preview, reorder insertion line), the focused split
+pane's outline and the sidebar's split group. Nothing else gets it.
 
 ### Status colors
 
@@ -98,9 +99,28 @@ row, a "New session" placeholder until the first reply, or a "PowerShell" row). 
 Up to 4 tabs side by side (top-bar columns button, `Ctrl+\`, Ctrl+click a sidebar row, or dragging a row onto the
 terminal or home screen (a session already on screen is opened a second time beside itself); while dragging, a `--primary` 18% fill with a 70% 1 px outline previews the pane it would become). The terminal area becomes
 a grid with 1 px `--border` gaps, no boxes or gutters. Each pane has a 26 px header strip on the terminal background:
-status dot, title (12 px, `--faint`), and a hover-only ghost `×` that closes that pane's session. The focused pane is marked by its title going `--foreground` and a 1 px `--primary` 70% line along its top edge:
-no other color, no background change. Dividers are 4 px invisible handles that take the `.rz` hover tint. When a pane
+status dot, title (12 px, `--faint`), and a hover-only ghost `×` that closes that pane's session. The focused pane is marked by its title going `--foreground`, a 1 px `--primary` outline drawn over all four edges, and the other panes' terminal text dimmed to 55 % opacity:
+no other color, no background change. A stacked split ("New session below") is the same grid transposed. Dividers are 4 px invisible handles that take the `.rz` hover tint. When a pane
 would drop under ~100 columns the right sidebar hides itself and returns when there is room (see CLAUDE.md).
+
+### Split group (sidebar)
+Like a browser tab group, but quiet: no box or border. The split's members share a 3 px `--primary` rail (80 % mixed
+with `--foreground`, rounded on its right end) along the sidebar's left edge and a barely-there `--primary` 7 % tint
+(`rounded-md`). While a tab outside the split is showing, the tint goes and the rail dims to 45 %; clicking the header
+brings the split back. Header 22 px: columns (or rows, when stacked) icon in the dot column, "Split view" 11 px / 500
+`--muted-foreground`, a `--faint` count, and a hover-only 20 px ghost `×` that unsplits. Rows keep their normal
+padding, so the dot column stays at 28 px. The group lives in its project's list; when members come from
+different projects it sits at the top of the list and each row shows its project name (11 px `--faint`) in place of the time.
+
+### Settings page
+`#settings` covers the terminal area (top bar, sidebars and status bar stay). Centered 640 px column, 32 px padding:
+title 18 px / 600 with a ghost `×`, then sections. A section header has a 14 px / 600 title, a 12 px muted line, an
+optional `Reset all` outline sm button on the right, and a 1 px `--border` rule under it. Groups use the 12 px / 500
+`--faint` label; rows are flat 40 px rows (hover `--sidebar-hover`) with the name (13 px) and an optional 11 px `--faint`
+hint on the left. Shortcuts are **Kbd chips** (h 24, `--muted`, 11 px mono, `rounded-sm`; a 20 px `×` fades in on chip
+hover without shifting anything), then a ghost `+` and, on changed rows, a ghost `undo` reset (an empty 24 px slot
+otherwise, so the chips stay aligned). Recording shows a "Press keys…" chip with the focus ring. Notes go under the
+section header (12 px muted, `--destructive` for errors).
 
 ### Status dot
 6 px circle, only on things that are live: `--success` running, `--warning` pulsing working (Claude busy or
@@ -137,7 +157,7 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - Session rows: no guide line. Columns line up: the status dot sits under the folder icon (slot at 28 px),
   titles start at 52 px like the project name. Title 13 px with ellipsis; time 11 px `--faint` on the right. Rows
   backed by an open tab show `×` in place of the time on hover (middle-click closes too). Active = weight 500.
-- Footer: one slim 44 px row. Ghost icon buttons left (add project); stats right, each **icon + value** in a
+- Footer: one slim 44 px row. A ghost `settings` (gear) icon button on the left (`.on` while the settings page is open); stats right, each **icon + value** in a
   28 px `rounded-md` button (padding 0 8, gap 6, 2 px apart, 12 px tabular numbers): plan **session** usage as a ring
   gauge + `10%`, context as the pie icon + `24%`, running as a status dot + `3 running`. Icons `--faint`, values
   `--foreground`, colored only at warn/crit levels. Weekly usage lives in the tooltip and the popover. Each opens its

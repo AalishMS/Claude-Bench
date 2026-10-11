@@ -38,8 +38,8 @@ npm start                # run from source
 npm run package:mac      # build dist/mac-*/Claude Bench.app (unsigned, for your own machine)
 ```
 
-- Shortcuts use `⌘` where the table below says `Ctrl` (`⌘1`..`9` instead of `Alt+1`..`9`, `⌘⌥←/→` for panes,
-  `⌘⌥I` for DevTools). `Ctrl+Tab` stays. `Ctrl` itself is left to Claude Code (`Ctrl+C` interrupts, `Ctrl+V` pastes
+- Shortcuts use `⌘` where the table below says `Ctrl` (`⌘1`..`9` and `⌘`+arrows instead of `Alt+1`..`9` and
+  `Alt`+arrows, `⌘⌥`+arrows to resize panes, `⌘⌥\` for a split below, `⌘,` for settings, `⌘⌥I` for DevTools). `Ctrl+Tab` stays. `Ctrl` itself is left to Claude Code (`Ctrl+C` interrupts, `Ctrl+V` pastes
   images). Copy/paste is `⌘C` / `⌘V` or right-click. Option acts as Meta, so Claude's `Option+P`/`Option+T` work.
 - Claude and shell tabs use the PATH of your login shell (`$SHELL -l`), so the app finds `claude` and `node` even when
   started from Finder. A shell startup file that blocks delays the first tab by at most 5 s.
@@ -73,11 +73,14 @@ Your projects and settings are stored outside the repo, so updating keeps them.
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | next / previous tab |
 | `Alt+1`..`9` | jump to tab |
 | `Ctrl+T` (or `Ctrl+Shift+T`) / `Ctrl+W` | new session in current project / close session (asks only if Claude is working or a dev server is running) |
-| `Ctrl+\` / `Ctrl+Shift+\` | split: new session beside / back to one terminal (or drag a sidebar session onto the terminal) |
+| `Ctrl+\` / `Ctrl+Alt+\` / `Ctrl+Shift+\` | split: new session beside / below / back to one terminal (or drag a sidebar session onto the terminal) |
+| `Alt+arrows` / `Ctrl+Alt+arrows` | split: focus the pane in that direction / move the divider (only while split) |
 | `Ctrl+S` (or `Ctrl+Shift+B`) / `Ctrl+Shift+S` | toggle sidebar / servers panel |
+| `Ctrl+,` | settings |
 | `Ctrl+C` (with selection), `Ctrl+V`, right-click | copy / paste |
 
-These deliberately avoid keys Claude Code uses itself (`Ctrl+B`, `Ctrl+J`, ...), except `Ctrl+T`, `Ctrl+S` and `Ctrl+W`.
+All app shortcuts (everything above except copy/paste) can be changed on the settings page: the gear at the bottom of
+the sidebar. The defaults avoid keys Claude Code uses itself (`Ctrl+B`, `Ctrl+J`, ...), except `Ctrl+T`, `Ctrl+S` and `Ctrl+W`.
 Drop files onto a terminal to paste their paths. `F12` opens DevTools.
 
 ## Layout
