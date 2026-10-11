@@ -142,8 +142,11 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   while updating. Nothing shows otherwise. (Not in the footer: the footer has no room at 232 px.)
   When an update is first seen, an **update popover** (`#update-pop`, the Popover recipe, 300 px) opens under the icon:
   "Update available" (13 px / 600), `N new commits` (12 px muted), up to 5 commit subjects (12 px muted, one line each,
-  `·` bullets, "and N more" in `--faint`), and the AlertDialog button row (`Later` outline sm, `Update…` primary sm). It
-  stays until dismissed: no outside-click or Escape close, so it can't vanish unseen while typing in a terminal.
+  `·` bullets, "and N more" in `--faint`), and the AlertDialog button row (`Later` outline sm, `Update` primary sm). `Update`
+  turns the same popover into a confirm step ("Update and restart?": the commit list, a 12 px muted warning with the
+  open-session count, a bordered list of tabs where Claude is working, `Back` outline sm / `Update and restart`
+  primary sm, destructive when a tab is working) and then a progress view (spinner + "Updating Claude Bench…"). There is no
+  separate update dialog. It stays until dismissed: no outside-click or Escape close, so it can't vanish unseen while typing in a terminal.
 - Search: a plain 32 px row (search icon + "Search" placeholder), no border; hover/focus = `--sidebar-hover`.
 - Rows are flat, 32 px, `rounded-md`, side padding 8. 2 px between rows, 12 px between project groups.
   Hover = `--sidebar-hover`, selected = `--sidebar-accent`. **No borders, no left accent bar.**

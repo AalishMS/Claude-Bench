@@ -125,7 +125,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   reports "up to date" or git's error, `error` in the result, in `#update-pop`; skipped while
   hidden; `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never` so no credential prompt). If behind, `renderUpdate` shows the
   button in `#update-slot`, and `renderUpdatePop` opens `#update-pop` under it (the newest 5 subjects from
-  `git log --format=%s HEAD..@{u}`; Later / Update…, the latter runs `runUpdate`). Dismissing records the `behind` count
+  `git log --format=%s HEAD..@{u}`; Later / Update; Update turns the popover into a confirm step (`runUpdate`) whose button runs `startUpdate`, then a progress view; no separate dialog). Dismissing records the `behind` count
   (`updateSeen`, runtime only), so it returns only when more commits arrive or after a restart. Source runs: confirm (lists working tabs), then `applyUpdate` = `git pull --ff-only`,
   `npm install` only if `package.json`/`package-lock.json` changed, `app.relaunch()` + quit. Any failure (local edits,
   diverged branch, npm) shows git's/npm's message and keeps the app running. Packaged builds can't rebuild while running

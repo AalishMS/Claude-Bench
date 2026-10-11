@@ -2538,6 +2538,7 @@ function renderUpdate() {
  * more commits arrive. Runtime only, so a restart reminds once more.
  */
 let updateSeen = 0; // `behind` count the user has dismissed
+let updateStep = 'info'; // 'info' | 'confirm': the popover's step (the confirm replaces the old centered dialog)
 function renderUpdatePop() {
   const pop = $('#update-pop');
   if (checkNote) { // result of a manual check with nothing to install: a short note, closes itself
@@ -2549,21 +2550,52 @@ function renderUpdatePop() {
     placeUpdatePop();
     return;
   }
-  const show = !!update?.available && !updating && update.behind > updateSeen;
+  const show = !!update?.available && (updating || update.behind > updateSeen);
   pop.hidden = !show;
   if (!show) return;
   const n = update.behind;
-  const later = () => { updateSeen = n; renderUpdatePop(); activeTab()?.term.focus(); };
+  const what = `${n} new commit${n === 1 ? '' : 's'}`;
+  const how = update.packaged
+    ? `The app closes and a separate ${IS_MAC ? 'process' : 'window'} rebuilds it (a minute or two), then reopens it.`
+    : 'Pulls the update, runs npm install if dependencies changed, and restarts the app.';
+  if (updating) { // progress: no buttons, the app restarts by itself
+    pop.replaceChildren(
+      h('h4', {}, 'Updating Claude Bench…'),
+      h('p', { class: 'up-sub' }, update.packaged ? 'Closing now so the rebuild can run.' : 'Pulling changes, the app restarts when done.'),
+      h('div', { class: 'up-busy' }, ico('redo'), h('span', {}, update.packaged ? 'A minute or two' : 'Hold on')));
+    placeUpdatePop();
+    return;
+  }
+  const back = () => { updateStep = 'info'; renderUpdatePop(); };
+  const later = () => { updateSeen = n; updateStep = 'info'; renderUpdatePop(); activeTab()?.term.focus(); };
   const more = n - (update.subjects?.length || 0);
+  const log = update.subjects?.length
+    ? h('ul', { class: 'up-log' }, update.subjects.map((s) => h('li', { title: s }, s)), more > 0 ? h('li', { class: 'up-more' }, `and ${more} more`) : null)
+    : null;
+  if (updateStep === 'confirm') {
+    const working = [...tabs.values()].filter(isWorking);
+    const live = liveTabs().length;
+    pop.replaceChildren(
+      h('h4', {}, 'Update and restart?'),
+      h('p', { class: 'up-sub' }, `${what}. ${how}`),
+      log,
+      live ? h('p', { class: 'up-warn' }, `${live} open session${live === 1 ? '' : 's'} end and reopen afterwards; dev servers started from them stop.`) : null,
+      working.length
+        ? h('ul', { class: 'up-items' }, working.map((t) => h('li', {}, h('span', { class: 'it-name' }, tabLabel(t)), h('span', { class: 'it-sub' }, 'Claude is working'))))
+        : null,
+      h('div', { class: 'row' },
+        h('button', { class: 'btn outline sm', onclick: back }, 'Back'),
+        h('button', { class: `btn ${working.length ? 'destructive' : 'primary'} sm`, onclick: startUpdate }, 'Update and restart')));
+    placeUpdatePop();
+    return;
+  }
   pop.replaceChildren(
     h('h4', {}, 'Update available'),
-    h('p', { class: 'up-sub' }, `${n} new commit${n === 1 ? '' : 's'} for Claude Bench.`),
-    update.subjects?.length
-      ? h('ul', { class: 'up-log' }, update.subjects.map((s) => h('li', { title: s }, s)), more > 0 ? h('li', { class: 'up-more' }, `and ${more} more`) : null)
-      : null,
+    h('p', { class: 'up-sub' }, `${what} for Claude Bench.`),
+    log,
     h('div', { class: 'row' },
       h('button', { class: 'btn outline sm', onclick: later }, 'Later'),
-      h('button', { class: 'btn primary sm', onclick: () => { updateSeen = n; renderUpdatePop(); runUpdate(); } }, 'Update…')));
+      h('button', { class: 'btn primary sm', onclick: runUpdate }, 'Update')));
   placeUpdatePop();
 }
 
@@ -2607,7 +2639,7 @@ async function checkNow() {
   try {
     const next = await api.checkUpdate();
     update = next;
-    if (next?.available) updateSeen = 0; // reopen the "Update available" popover even if it was dismissed before
+    if (next?.available) { updateSeen = 0; updateStep = 'info'; } // reopen the "Update available" popover even if it was dismissed before
     else checkNote = next?.error ? { text: next.error, error: true } : { text: 'Claude Bench is on the latest version.' };
   } catch (e) {
     checkNote = { text: String(e?.message || e).slice(0, 160), error: true };
@@ -2621,23 +2653,15 @@ async function checkNow() {
 }
 
 /** Pull the app's own repo and restart (source runs), or close and let scripts/update.* rebuild a built copy. */
-async function runUpdate() {
+function runUpdate() { // opens the confirm step in the popover; startUpdate does the work
   if (!update?.available || updating) return;
-  const what = `${update.behind} new commit${update.behind === 1 ? '' : 's'}`;
-  const how = update.packaged
-    ? `The app closes, a separate ${IS_MAC ? 'process' : 'window'} pulls the update and rebuilds the app (a minute or two), then reopens it.`
-    : 'This pulls the update, runs npm install if dependencies changed, and restarts the app.';
-  const working = [...tabs.values()].filter(isWorking);
-  const live = liveTabs().length;
-  const ok = await confirmDialog({
-    title: 'Update Claude Bench?',
-    message: `${what}. ${how}`
-      + (live ? ` Open sessions end (${live}) and reopen afterwards; dev servers started from them stop.` : ''),
-    items: working.map((t) => ({ name: tabLabel(t), sub: 'Claude is working' })),
-    okLabel: 'Update and restart',
-    danger: working.length > 0,
-  });
-  if (!ok) return;
+  updateStep = 'confirm';
+  updateSeen = 0;
+  renderUpdatePop();
+}
+
+async function startUpdate() {
+  if (!update?.available || updating) return;
   updating = true;
   renderUpdate();
   const r = await api.applyUpdate(); // on success the app restarts before this returns
