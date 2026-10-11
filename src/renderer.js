@@ -1531,7 +1531,7 @@ function sessionRow(p, s, t = null, showProject = false) {
     class: `session${t ? (t.id === activeId ? ' active' : '') + ' has-tab' : ''}`,
     'data-tab': t?.id,
     ...rowDrag({ id: t?.id || null, project: p, resumeId: s.id }),
-    title: `${s.title}\n${new Date(s.mtime).toLocaleString()}\nDrag onto the terminal (or ${kbd('Shift+click')}) to open beside the current session\nRight-click to fork`,
+    title: `${s.title}\n${new Date(s.last).toLocaleString()}\nDrag onto the terminal (or ${kbd('Shift+click')}) to open beside the current session\nRight-click to fork`,
     onclick: (e) => (e.shiftKey && activeId
       ? besideRow(t, () => openSession(p, { resumeId: s.id, beside: true }))
       : openSessionRow(p, s)),
@@ -1540,7 +1540,7 @@ function sessionRow(p, s, t = null, showProject = false) {
   },
     dotMark(t ? tabDot(t) : ''),
     h('span', { class: 's-title' }, s.title),
-    showProject ? projTag(t, true) : h('span', { class: 's-time' }, fmtAgo(s.mtime)),
+    showProject ? projTag(t, true) : h('span', { class: 's-time' }, fmtAgo(s.last)),
     t ? closeButton(t) : null);
 }
 

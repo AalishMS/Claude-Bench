@@ -569,19 +569,24 @@ async function readTail(file, size, bytes) {
 }
 
 function parseTail(text) {
-  const out = { title: null, prompt: null, usage: null, model: null };
+  const out = { title: null, prompt: null, usage: null, model: null, last: 0 };
   for (const line of text.split('\n')) {
     try {
-      if (line.includes('"type":"ai-title"')) {
+      const msg = line.includes('"type":"assistant"') ? 'assistant' : line.includes('"type":"user"') ? 'user' : null;
+      if (msg) {
+        // Last real conversation entry. The file's mtime also moves on a mere resume and on exit (Claude touches the
+        // transcript and appends a cost-state line), so the sidebar sorts by this instead.
+        const j = JSON.parse(line);
+        if (j.type !== msg) continue;
+        if (!j.isMeta && j.timestamp) out.last = Date.parse(j.timestamp) || out.last;
+        const m = j.message;
+        if (msg === 'assistant' && m?.usage && m.model !== '<synthetic>') { out.usage = m.usage; out.model = m.model; }
+      } else if (line.includes('"type":"ai-title"')) {
         const j = JSON.parse(line);
         if (j.type === 'ai-title' && j.aiTitle) out.title = j.aiTitle;
       } else if (line.includes('"type":"last-prompt"')) {
         const j = JSON.parse(line);
         if (j.type === 'last-prompt' && j.lastPrompt) out.prompt = j.lastPrompt;
-      } else if (line.includes('"type":"assistant"') && line.includes('"usage"')) {
-        const j = JSON.parse(line);
-        const m = j.message;
-        if (j.type === 'assistant' && m?.usage && m.model !== '<synthetic>') { out.usage = m.usage; out.model = m.model; }
       }
     } catch { /* partial or foreign line */ }
   }
@@ -630,6 +635,7 @@ async function readSession(file, st) {
       id: path.basename(file, '.jsonl'),
       title,
       mtime: Math.round(st.mtimeMs),
+      last: t.last || Math.round(st.mtimeMs), // last message time: the sidebar's sort and "ago" (mtime is bumped by resume/exit)
       birth: Math.round(st.birthtimeMs),
       model: t.model,
       ctx: usageTokens(u),
@@ -653,7 +659,7 @@ async function listSessions(cwd) {
       const file = path.join(dir, n);
       try { return await readSession(file, await fs.promises.stat(file)); } catch { return null; }
     }));
-  return rows.filter(Boolean).sort((a, b) => b.mtime - a.mtime).slice(0, 200);
+  return rows.filter(Boolean).sort((a, b) => b.last - a.last).slice(0, 200);
 }
 
 // Model, effort and subagents of one session, for the bar under the terminal. Effort is only in the transcript as

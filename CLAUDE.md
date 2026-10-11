@@ -166,12 +166,12 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   `rsideForced` until the split's membership changes. `fitActive` fits every visible pane.
 - **Tab order** = order of the `tabs` Map, newest first (Ctrl+Tab, Alt+1..9, saved order). Exception: a reopened past session
   (`resumeId`, not a fork or restore) is `parked`: no `toFront`, and `renderSidebar` leaves its row in the project's session list
-  at its mtime slot (never folded behind "Show N more"). `unpark` (first Enter typed in the tab, `wireTerminal`) moves it to the front;
+  at its last-message slot (never folded behind "Show N more"). `unpark` (first Enter typed in the tab, `wireTerminal`) moves it to the front;
   `addToSplit` and `restartTab` clear the flag too. `createTab` puts any other new tab
   first (`toFront`, which rebuilds the Map and calls `saveTabs`; `restoreTabs` passes `append` to keep the saved order), and
   `addToSplit` moves the whole group to the front, so a split is on top and unsplitting moves no row. Each project's list
   shows its open tabs first in that order (`tabRow`; a session open twice gets a row per tab), then its other sessions by
-  mtime. No drag-to-reorder. Labels ("Project 2", "PowerShell 2") number by `seq` (creation order), not by position, so they
+  last message (not file mtime, which Claude bumps on resume and exit). No drag-to-reorder. Labels ("Project 2", "PowerShell 2") number by `seq` (creation order), not by position, so they
   don't renumber when a tab opens.
 - **Closing**: `Ctrl+W`, the top-bar `×` (`#close-tab`) and each pane header's `×` all call `closeTab`. It only asks "End this session?" when
   Claude is working in the tab (`isWorking`) or a dev server started from it is listening (`ports`, owner = this tab); idle tabs close silently.
