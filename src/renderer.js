@@ -214,7 +214,7 @@ const thumbsBy = new Map(); // tab id -> Map(image id -> data URL, or null when 
 const mcpBy = new Map(); // project path -> { ok, servers: [{ name, status, label }] } from `claude mcp list`
 const definedBy = new Map(); // project path -> [{ name, model }] subagents defined in ~/.claude/agents and <project>/.claude/agents
 
-const SESSIONS_SHOWN = 8;
+const SESSIONS_SHOWN = 6; // rows per project (open tabs included) before "Show N more"
 // The window size is not stored in transcripts, so it is derived from the model: 1M for current models (Opus/Sonnet
 // 4.6+, Haiku 5+, Fable, Mythos, unknown newer ones) or a "[1m]" model, 200k for older ones (Claude 3, Haiku 4.x,
 // Opus/Sonnet up to 4.5) until a session has gone past it.
@@ -1670,7 +1670,8 @@ function renderSidebar(force = false) {
     let list = null;
     if (isOpen && (loaded || open.length)) {
       const all = q || showMore.has(p.path);
-      const shown = all ? rest : rest.filter((s, i) => i < SESSIONS_SHOWN || inPlace.has(s.id)); // a parked tab's row is never folded away
+      const room = Math.max(0, SESSIONS_SHOWN - open.length); // open tabs count toward the limit but are never folded
+      const shown = all ? rest : rest.filter((s, i) => i < room || inPlace.has(s.id)); // a parked tab's row is never folded away
       const hidden = rest.length - shown.length;
       list = h('div', { class: 'sessions' },
         openRows(open, p),
@@ -1678,7 +1679,7 @@ function renderSidebar(force = false) {
           ? shown.map((s) => sessionRow(p, s, tabOfSession(s.id)))
           : open.length ? null : h('div', { class: 's-note' }, 'No sessions yet'),
         hidden ? h('div', { class: 's-more', onclick: () => { showMore.add(p.path); renderSidebar(true); } }, `Show ${hidden} more`) : null,
-        !q && showMore.has(p.path) && rest.length > SESSIONS_SHOWN
+        !q && showMore.has(p.path) && rest.length > room
           ? h('div', { class: 's-more', onclick: () => { showMore.delete(p.path); renderSidebar(true); } }, 'Show less')
           : null);
     }
