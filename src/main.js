@@ -1017,7 +1017,8 @@ async function startExternalUpdate(dir) {
       // PowerShell 5.1 exits at once. /s strips only the outer quotes, so the quoted paths survive (no quotes in Windows paths).
       const cmdline = `/d /s /c "start "Updating Claude Bench" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tmp}"`
         + ` -Repo "${dir}" -AppPid ${process.pid} -Exe "${process.execPath}""`;
-      child = spawn('cmd.exe', [cmdline], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true });
+      // cwd outside dist\: the app's own cwd (win-unpacked, from the shortcuts) would be inherited and block electron-builder's rmdir.
+      child = spawn('cmd.exe', [cmdline], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true, cwd: os.tmpdir() });
     }
     await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
     child.unref();

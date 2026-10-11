@@ -7,10 +7,16 @@ param([string]$Repo, [int]$AppPid, [string]$Exe)
 
 $Host.UI.RawUI.WindowTitle = 'Updating Claude Bench'
 
+# This process inherits the app's working directory (the shortcuts start the exe inside dist\win-unpacked), and a
+# working directory keeps the folder from being deleted: electron-builder then fails with EBUSY on rmdir.
+# Set-Location only moves PowerShell's own location, so move the real one.
+[IO.Directory]::SetCurrentDirectory($env:TEMP)
+
 # The app's own process and any process of this exact exe (its helpers keep it locked a moment longer). Matched on the
 # full path of the build being replaced, never on the name, so other copies and dev instances are left alone.
 function AppProcs {
-    @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Id -eq $AppPid -or $_.Path -eq $Exe })
+    $dir = (Split-Path -Parent $Exe) + '\'
+    @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Id -eq $AppPid -or ($_.Path -and $_.Path.StartsWith($dir, [StringComparison]::OrdinalIgnoreCase)) })
 }
 
 function WaitGone([int]$seconds) {
@@ -54,7 +60,12 @@ if (git diff --name-only $before HEAD | Where-Object { $_ -match '^package(-lock
 
 Write-Host "`n> npm run package" -ForegroundColor Cyan
 npm run package
-if ($LASTEXITCODE) { Finish 'The build failed (see above). Run "npm run package" in the repo folder to retry.' }
+if ($LASTEXITCODE) {
+    Write-Host "`nBuild failed; retrying once..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 3
+    npm run package
+}
+if ($LASTEXITCODE) { Finish 'The build failed (see above). The source was updated but not rebuilt, so the app will keep running the old build and say it is up to date. Run "npm run package" in the repo folder to retry.' }
 
 Write-Host "`nUpdated. Starting Claude Bench..." -ForegroundColor Green
 Finish $null
