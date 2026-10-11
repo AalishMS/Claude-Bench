@@ -448,6 +448,7 @@ function trackTab(t) {
   if (t.kind !== 'claude' || t.status !== 'running') return;
   const now = Date.now();
   if (isWorking(t)) {
+    if (t.parked && t.title) { t.parked = false; toFront([t.id]); renderSidebar(true); } // first prompt: the row moves up
     if (!t.run) t.run = { start: now };
     t.run.last = now;
     t.notified = false;
@@ -521,10 +522,11 @@ function createTab(project, { kind = 'claude', args = [], resumeId = null, fork 
     id, project, kind, args, term, fit, host, head, seq: ++tabSeq,
     resumeId, fork, sessionId: fork ? null : resumeId, startedAt: Date.now(), // sessionId of fresh/forked tabs is matched later (assignSessions)
     status: 'starting', exitCode: null, title: '',
+    parked: !!resumeId && !fork && !append, // a reopened past session keeps its place until the first prompt (trackTab)
     lastActive: 0, lastOutput: 0, attention: false, busy: false, busyTimer: null,
   };
   tabs.set(id, tab);
-  if (!append) toFront([id]);
+  if (!append && !tab.parked) toFront([id]);
   term.registerLinkProvider(fileLinks(tab));
   wireTerminal(tab);
   wireScrollbar(tab);
@@ -1017,6 +1019,7 @@ function addToSplit(id, at, below = false) {
     splits.unshift({ ids, cx: 0.5, ry: 0.5, v: below, color });
   }
   rsideForced = false;
+  for (const x of ids) { const t = tabs.get(x); if (t) t.parked = false; }
   toFront(ids);
 }
 
@@ -1608,7 +1611,7 @@ function renderSidebar(force = false) {
   const activeProject = tab?.project.path;
   const key = JSON.stringify([projects, git, activeId, tab?.sessionId, sessionsVer, [...expanded], [...showMore], query,
     Math.floor(Date.now() / 60000), splits.map((g) => [g.ids, g.v, g.color]),
-    [...tabs.values()].map((t) => [t.id, t.project.path, t.kind, t.sessionId, tabDot(t)])]);
+    [...tabs.values()].map((t) => [t.id, t.project.path, t.kind, t.sessionId, tabDot(t), t.parked])]);
   if (!force && key === lastSidebarKey) return;
   lastSidebarKey = key;
   renderPanes();
@@ -1640,7 +1643,9 @@ function renderSidebar(force = false) {
     if (q && !matches.length) return null;
     const isOpen = q ? true : expanded.has(p.path);
     // Open tabs first, in tab order (newest first), then the project's other sessions, newest first.
-    const open = q ? [] : tabsOf(p.path);
+    // A reopened past session (parked, not in a split) stays among them at its own place until its first prompt.
+    // Only while its transcript is listed (a restarted-as-new tab has no sessionId, so it needs its open row).
+    const open = q ? [] : tabsOf(p.path).filter((t) => !(t.parked && !groupOf(t.id) && loaded?.some((s) => s.id === t.sessionId)));
     const openIds = new Set(open.map((t) => t.sessionId));
     const rest = matches.filter((s) => !openIds.has(s.id));
     const isActive = p.path === activeProject;
@@ -1648,11 +1653,13 @@ function renderSidebar(force = false) {
     let list = null;
     if (isOpen && (loaded || open.length)) {
       const all = q || showMore.has(p.path);
-      const hidden = all ? 0 : Math.max(0, rest.length - SESSIONS_SHOWN);
+      const parkedIds = new Set(tabsOf(p.path).filter((t) => t.parked).map((t) => t.sessionId));
+      const shown = all ? rest : rest.filter((s, i) => i < SESSIONS_SHOWN || parkedIds.has(s.id)); // a parked tab's row is never folded away
+      const hidden = rest.length - shown.length;
       list = h('div', { class: 'sessions' },
         openRows(open, p),
         rest.length
-          ? (all ? rest : rest.slice(0, SESSIONS_SHOWN)).map((s) => sessionRow(p, s, tabOfSession(s.id)))
+          ? shown.map((s) => sessionRow(p, s, tabOfSession(s.id)))
           : open.length ? null : h('div', { class: 's-note' }, 'No sessions yet'),
         hidden ? h('div', { class: 's-more', onclick: () => { showMore.add(p.path); renderSidebar(true); } }, `Show ${hidden} more`) : null,
         !q && showMore.has(p.path) && rest.length > SESSIONS_SHOWN

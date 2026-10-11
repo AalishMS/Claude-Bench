@@ -164,7 +164,10 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   Claude session, since resuming one transcript in two processes has both append to it; or another shell). On the home screen a drop just opens it. `renderSidebar` is paused while dragging. `autoRside` hides the right sidebar while a split pane is under 100 cols and
   restores it at 106+ (predicted from the current cols), without touching `ui.servers`; opening it by hand in a split sets
   `rsideForced` until the split's membership changes. `fitActive` fits every visible pane.
-- **Tab order** = order of the `tabs` Map, newest first (Ctrl+Tab, Alt+1..9, saved order). `createTab` puts a new tab
+- **Tab order** = order of the `tabs` Map, newest first (Ctrl+Tab, Alt+1..9, saved order). Exception: a reopened past session
+  (`resumeId`, not a fork or restore) is `parked`: no `toFront`, and `renderSidebar` leaves its row in the project's session list
+  at its mtime slot (never folded behind "Show N more"). `trackTab` unparks it at the first working stretch (the first prompt) and
+  moves it to the front; `addToSplit` unparks too. `createTab` puts any other new tab
   first (`toFront`, which rebuilds the Map and calls `saveTabs`; `restoreTabs` passes `append` to keep the saved order), and
   `addToSplit` moves the whole group to the front, so a split is on top and unsplitting moves no row. Each project's list
   shows its open tabs first in that order (`tabRow`; a session open twice gets a row per tab), then its other sessions by
