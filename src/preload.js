@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld('api', {
   readClipboard: () => ipcRenderer.invoke('clipboard:read'),
   writeClipboard: (text) => ipcRenderer.send('clipboard:write', text),
   flash: () => ipcRenderer.send('win:flash'),
+  notify: (msg) => ipcRenderer.send('notify', msg),
+  onNotifyClick: (cb) => on('notify:click', cb),
   pathForFile: (file) => webUtils.getPathForFile(file),
 
   onOpenPath: (cb) => on('open-path', cb),

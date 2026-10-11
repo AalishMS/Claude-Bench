@@ -10,6 +10,9 @@ genuine Claude Code session, so slash commands, permissions and speed are unchan
   matched by process ancestry. Hover a row to open it in the browser or stop it.
 - **Tabs come back**: open tabs are reopened on the next launch (Claude tabs resume their session with
   `claude --resume`, shell tabs start fresh). A Claude tab is remembered once it has its first reply.
+- **Notifications**: a Claude session in the background (or any session while the window is unfocused) notifies
+  "Needs input" when it shows a permission prompt or a question, and "Done" when a task of 10 s or more finishes.
+  Click it to jump to that tab. Mute them in the OS notification settings.
 - **Tab indicators**: yellow = producing output in the background, orange = bell / session ended.
 
 ## Run
@@ -39,6 +42,7 @@ npm run package:mac      # build dist/mac-*/Claude Bench.app (unsigned, for your
 - Claude and shell tabs use the PATH of your login shell (`$SHELL -l`), so the app finds `claude` and `node` even when
   started from Finder. A shell startup file that blocks delays the first tab by at most 5 s.
 - Open tabs are restored on relaunch as on Windows; restored Claude tabs wait for the login shell's PATH like new ones.
+- Notifications use macOS Notification Center; allow them for the app (or Electron, under `npm start`) when asked.
 - Plan limits in the footer read Claude Code's token from the Keychain; macOS may ask once for access.
 - If electron is missing after `npm install`: `node node_modules/electron/install.js`.
 - If tabs fail with `posix_spawnp failed`: `chmod +x node_modules/@lydell/node-pty-darwin-*/spawn-helper`.

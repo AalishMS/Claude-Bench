@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell, clipboard } = require('electron');
+const { app, BrowserWindow, Menu, Notification, ipcMain, dialog, shell, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -11,7 +11,23 @@ const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
 // Windows is the main platform. macOS gets small `IS_MAC` branches next to the Windows code (best effort, untested here).
 const IS_MAC = process.platform === 'darwin';
 
-if (!IS_MAC) app.setAppUserModelId('com.local.claudebench');
+const AUMID = 'com.local.claudebench'; // = build.appId
+if (!IS_MAC) app.setAppUserModelId(AUMID);
+
+/**
+ * Windows shows toasts of an unregistered AppUserModelID under the host exe's name ("Electron" for npm start).
+ * Registering a display name and icon for it (per user, no installer needed) gives "Claude Bench" for both the packaged
+ * exe and source runs. The icon is copied out of the asar, which Windows can't read. Best effort.
+ */
+function registerToastIdentity() {
+  try {
+    const icon = path.join(app.getPath('userData'), 'toast-icon.png');
+    if (!fs.existsSync(icon)) fs.copyFileSync(ICON, icon);
+    const key = `HKCU\\Software\\Classes\\AppUserModelId\\${AUMID}`;
+    execFile('reg.exe', ['add', key, '/v', 'DisplayName', '/t', 'REG_SZ', '/d', 'Claude Bench', '/f'], { windowsHide: true }, () => {});
+    execFile('reg.exe', ['add', key, '/v', 'IconUri', '/t', 'REG_SZ', '/d', icon, '/f'], { windowsHide: true }, () => {});
+  } catch { /* toasts still work, just under the exe's name */ }
+}
 
 // An app started from Finder gets PATH=/usr/bin:/bin:/usr/sbin:/sbin, which misses claude, node (nvm, Homebrew) and code.
 // Ask the user's login shell for its PATH once; sessions and `claude mcp list` wait for it.
@@ -995,6 +1011,31 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+// A background session needs input or finished (the renderer decides when). Clicking shows the window on that tab.
+// Shown notifications are kept referenced: a garbage-collected one loses its click handler (Windows).
+const liveNotes = new Set();
+function notify(msg) {
+  try {
+    if (!Notification.isSupported()) return;
+    const n = new Notification({ title: String(msg?.title || '').slice(0, 120), body: String(msg?.body || '').slice(0, 240) });
+    const drop = () => liveNotes.delete(n);
+    liveNotes.add(n);
+    n.on('click', () => {
+      drop();
+      if (!mainWindow) return;
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      send('notify:click', msg.tabId);
+    });
+    n.on('close', drop);
+    n.on('failed', (_e, err) => { drop(); console.error('Notification failed:', err); });
+    n.show();
+  } catch (err) {
+    console.error('Notification failed:', err); // e.g. macOS permission denied: never break the app over it
+  }
+}
+
 /** Code.exe: the per-user or system install, else next to the `code.cmd` shim on PATH (it lives in <install>\bin). */
 function findVsCode() {
   const dirs = [
@@ -1029,6 +1070,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     loadState();
     registerIpc();
+    if (!IS_MAC) registerToastIdentity();
     // macOS: Electron's default menu binds Cmd+W, Cmd+R and Cmd+=/- (our shortcuts). Keep Quit/Hide and the Edit roles,
     // which give Cmd+C/V/A to the terminal and to inputs. Windows keeps its default menu (hidden with the title bar).
     if (IS_MAC) Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }]));
@@ -1142,6 +1184,8 @@ function registerIpc() {
     forceClose = true;
     mainWindow?.close();
   });
+
+  ipcMain.on('notify', (_e, msg) => notify(msg));
 
   ipcMain.on('win:flash', () => {
     if (!mainWindow || mainWindow.isFocused()) return;

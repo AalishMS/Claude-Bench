@@ -96,6 +96,8 @@ scripts/         make-icon.js, create-shortcut.ps1
     give Cmd+C/V/A to xterm and inputs. VS Code opens via `open -a "Visual Studio Code"`.
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
+  - Notifications: plain Electron `Notification` (no registry step). An unsigned app may show as "Electron" from
+    `npm start`; if the user denied permission nothing shows and `notify` swallows any error.
   - Terminal: `macOptionIsMeta` (Claude's Option shortcuts), `rightClickSelectsWord: false` (right-click pastes);
     the custom Ctrl+C/V handler is skipped. Labels say "Shell" / "Finder"; tooltips go through `kbd()` (⌘ ⇧ ⌥).
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled every 4 s from the renderer.
@@ -119,6 +121,17 @@ scripts/         make-icon.js, create-shortcut.ps1
   `rsideForced` until the split's membership changes. `fitActive` fits every visible pane.
 - **Closing**: `Ctrl+W`, the top-bar `×` (`#close-tab`) and each pane header's `×` all call `closeTab`. It only asks "End this session?" when
   Claude is working in the tab (`isWorking`) or a dev server started from it is listening (`ports`, owner = this tab); idle tabs close silently.
+- **Notifications** (`trackTab` / `notifyTab` in renderer.js, `notify` in main.js): "<project>: Needs input" or
+  "<project>: Done", body = the tab's title, only when the window is unfocused or the tab is not the active one. Clicking
+  shows the window and activates the tab (`notify:click`). `trackTab` runs every 1.5 s even while hidden. A run = a
+  stretch of `isWorking`; it is Done after 4 s idle if it lasted 10 s+. Needs input = idle title (`✳`) + an
+  `Esc to cancel` footer in the bottom 3 non-empty lines (permission prompt, AskUserQuestion, trust dialog), once per
+  dialog; a bell / OSC 9 / OSC 777 also counts unless that idle stretch was already announced. Each notification consumes
+  the run, so one event gives one notification. No mute setting (the OS has per-app notification settings).
+  Windows: `registerToastIdentity` writes `HKCU\Software\Classes\AppUserModelId\com.local.claudebench` (DisplayName,
+  IconUri = a copy of the icon in userData) at every launch, otherwise toasts say "Electron" under `npm start`.
+  Windows caches the name at an ID's first toast: if one fired before the key existed, delete
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\com.local.claudebench` to reset it.
 - **Right sidebar** (`#rside`, toggled by the top-bar button or `Ctrl+Shift+S`, saved as `ui.servers`; `renderRside`): the active tab's
   **Context** (`x / yk` + %, same numbers as the footer tile), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**.
   - MCPs: only connected ones are listed; the rest are behind a "Show N more" row (`mcpMore`, not persisted). `claude mcp list` run in the project folder (main `mcpList`, `cmd.exe /c claude mcp list`, cached 30 s, never overlapping;
@@ -169,6 +182,9 @@ scripts/         make-icon.js, create-shortcut.ps1
 - **Never kill processes by matching the app name in the path**: "Claude Bench" matches the user's real
   packaged `Claude Bench.exe`, and "Claude Terminal" matches this source folder.
   Match `node_modules\electron\dist` to stop only dev instances.
+- **Claude sends no bell by default.** With its default notification channel it emits neither BEL nor OSC 9 in our
+  terminal (tested on v2.1.296), and a pending tool call is not in the transcript until it has run. That's why "needs
+  input" reads the screen footer. If Claude's dialog footers change wording, update `awaitingInput`.
 - **Context tile**: the window size is not in the transcript, so the Context tile assumes 200k (1M once a session exceeds it).
   Plan-limit percentages are not on disk; they come from the undocumented usage endpoint (may change).
 - A hidden window (`document.hidden`) skips all polling, so when driving a test instance over CDP, override `document.hidden`
@@ -193,5 +209,5 @@ scripts can open sessions, write to ptys (`api.ptyWrite`), and read xterm buffer
 ## Ideas not built yet
 
 Per-project quick commands, "Open in Claude Bench"
-Explorer context menu, notifications when a background session needs input, auto-detect git worktrees.
+Explorer context menu, auto-detect git worktrees.
 Only build these when asked.

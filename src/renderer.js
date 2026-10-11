@@ -199,6 +199,63 @@ function isWorking(tab) {
   return !tab.title.startsWith('✳');
 }
 
+// ------------------------------------------------------- notifications ----
+// "Needs input" and "Done" for Claude tabs in the background (or any tab while the window is unfocused).
+// Claude Code's default notification channel sends nothing to a terminal it doesn't know (no bell, no OSC 9), and the
+// transcript only records a tool call once it has run. What is reliable: the idle title ("✳", see isWorking) plus Claude's
+// input dialogs (permission, AskUserQuestion, folder trust), which all end in an "Esc to cancel" footer at the bottom
+// of the screen. A bell or OSC 9/777 (users who set Claude's notification channel) also counts as needs input.
+
+const DONE_MIN_RUN = 10000; // a run shorter than this is not worth a "Done"
+const DONE_IDLE = 4000; // idle this long before a run counts as finished, so a flicker between steps is one run
+
+/** Is one of Claude's input dialogs open at the bottom of this tab's screen? */
+function awaitingInput(tab) {
+  const b = tab.term.buffer.active;
+  for (let i = b.length - 1, seen = 0; i >= 0 && seen < 3; i--) {
+    const s = b.getLine(i)?.translateToString(true).trim();
+    if (!s) continue;
+    seen++;
+    if (s.includes('Esc to cancel')) return true;
+  }
+  return false;
+}
+
+function notifyTab(tab, what) {
+  tab.notified = true;
+  if (tab.id === activeId && document.hasFocus()) return; // the user is looking at it
+  api.notify({ tabId: tab.id, title: `${tab.project.name}: ${what}`, body: paneTitle(tab) });
+}
+
+/** Called every 1.5 s per Claude tab: follows runs (working stretches) and dialogs, one notification per event. */
+function trackTab(t) {
+  if (t.kind !== 'claude' || t.status !== 'running') return;
+  const now = Date.now();
+  if (isWorking(t)) {
+    if (!t.run) t.run = { start: now };
+    t.run.last = now;
+    t.notified = false;
+    return;
+  }
+  if (t.title.startsWith('✳') && awaitingInput(t)) {
+    if (!t.prompted) { t.prompted = true; t.run = null; notifyTab(t, 'Needs input'); }
+    return;
+  }
+  t.prompted = false; // dialog answered: the next one is a new event
+  if (t.run && now - t.run.last > DONE_IDLE) {
+    const long = t.run.last - t.run.start >= DONE_MIN_RUN;
+    t.run = null;
+    if (long) notifyTab(t, 'Done');
+  }
+}
+
+/** A bell or OSC 9/777 from Claude: needs input, unless this idle stretch was already announced (Claude's 60 s idle ping). */
+function onClaudeSignal(tab) {
+  if (tab.kind !== 'claude' || tab.notified || tab.prompted) return;
+  tab.run = null;
+  notifyTab(tab, 'Needs input');
+}
+
 function tabLabel(tab) {
   const same = [...tabs.values()].filter((t) => t.project.path === tab.project.path && t.kind === tab.kind);
   const n = same.indexOf(tab) + 1;
@@ -331,7 +388,12 @@ function wireTerminal(tab) {
   term.onData((d) => api.ptyWrite(tab.id, d));
   term.onResize(({ cols, rows }) => { api.ptyResize(tab.id, cols, rows); autoRside(); });
   term.onTitleChange((t) => { tab.title = t; });
+  // OSC 9 (iTerm2) and 777 (notify): what Claude sends when its notification channel is set to one of those.
+  // OSC 9;4;... is a progress report (ConEmu), not a message.
+  term.parser.registerOscHandler(9, (d) => { if (!/^\d+;/.test(d)) onClaudeSignal(tab); return true; });
+  term.parser.registerOscHandler(777, (d) => { if (d.startsWith('notify;')) onClaudeSignal(tab); return true; });
   term.onBell(() => {
+    onClaudeSignal(tab);
     if (tab.id === activeId && document.hasFocus()) return;
     tab.attention = true;
     renderSidebar();
@@ -1892,6 +1954,7 @@ function wireGlobalEvents() {
   });
 
   api.onCloseRequest(onCloseRequest);
+  api.onNotifyClick((id) => { if (tabs.has(id)) activate(id); });
 
   api.onOpenPath(async (p) => {
     if (!p) return;
@@ -2030,6 +2093,8 @@ async function init() {
   setInterval(pollUpdate, 30 * 60 * 1000);
   // "Working" depends on recent output, so re-check it (cheap: the renders are key-diffed).
   setInterval(() => { if (!document.hidden) { renderSidebar(); renderFoot(); } }, 1500);
+  // Notifications matter most while the window is hidden, so this one runs regardless (it only reads a few buffer lines).
+  setInterval(() => { for (const t of tabs.values()) trackTab(t); }, 1500);
 }
 
 init();
