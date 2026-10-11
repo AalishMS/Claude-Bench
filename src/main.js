@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, Notification, ipcMain, dialog, shell, clipboard } = require('electron');
+const { app, BrowserWindow, Menu, Notification, ipcMain, dialog, shell, clipboard, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -752,8 +752,9 @@ async function sessionInfo(cwd, sessionId) {
 }
 
 // Right sidebar data. MCP health comes from `claude mcp list` (the transcript does not store it): it health-checks every
-// configured server, so it is slow (seconds), cached per folder and never run twice at once.
-const MCP_TTL_MS = 30 * 1000;
+// configured server (spawning every stdio one), so it is slow (seconds), cached per folder and never run twice at once.
+// MCP config rarely changes mid-session, so the cache lives 5 minutes.
+const MCP_TTL_MS = 5 * 60 * 1000;
 const mcpCache = new Map(); // cwd -> { at, value } | { pending }
 
 /** "name: target - ✔ Connected" -> { name, status, label }. Names can contain ":" (plugin:design:slack), target is after ": ". */
@@ -806,7 +807,7 @@ async function definedAgents(cwd) {
     for (const n of names) {
       try {
         const head = (await fs.promises.readFile(path.join(dir, n), 'utf8')).replace(/^﻿/, '').split(/\r?\n---/)[0];
-        const field = (k) => new RegExp(`^${k}:\s*(.+)$`, 'm').exec(head)?.[1].trim().replace(/^["']|["']$/g, '');
+        const field = (k) => new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(head)?.[1].trim().replace(/^["']|["']$/g, '');
         const name = oneLine(field('name') || n.slice(0, -3));
         out.set(name, { name, model: oneLine(field('model')) || 'inherit' }); // project agents override user ones
       } catch { /* unreadable file */ }
@@ -1063,8 +1064,22 @@ async function applyUpdate() {
 let mainWindow = null;
 let forceClose = false;
 
+/** Saved bounds, or none when no display shows enough of them (the monitor they were on was unplugged). */
+function visibleBounds(b) {
+  if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.y)) return b;
+  try {
+    const wa = screen.getDisplayMatching(b).workArea;
+    const w = Math.min(b.x + b.width, wa.x + wa.width) - Math.max(b.x, wa.x);
+    const h = Math.min(b.y + b.height, wa.y + wa.height) - Math.max(b.y, wa.y);
+    if (w >= 100 && h >= 40) return b;
+    return { width: Math.min(b.width, wa.width), height: Math.min(b.height, wa.height) }; // no x/y: centred on the primary display
+  } catch {
+    return b;
+  }
+}
+
 function createWindow() {
-  const b = state.bounds;
+  const b = visibleBounds(state.bounds);
   mainWindow = new BrowserWindow({
     width: b?.width ?? 1440,
     height: b?.height ?? 900,

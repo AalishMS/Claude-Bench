@@ -259,10 +259,14 @@ const XTERM_THEME = {
  * In-app confirm dialog. `items` is an optional list of { name, sub } rows.
  * Destructive dialogs start with Cancel focused and ignore a bare Enter, so a stray keypress can't confirm.
  */
+let cancelDialog = null; // the open confirmDialog's cancel: a new one first resolves the old one as cancelled
 function confirmDialog({ title, message, items = [], okLabel = 'OK', cancelLabel = 'Cancel', danger = false }) {
+  cancelDialog?.();
   return new Promise((resolve) => {
     const modal = $('#modal');
     const done = (result) => {
+      if (cancelDialog !== cancel) return; // already settled
+      cancelDialog = null;
       window.removeEventListener('keydown', onKey, true);
       modal.hidden = true;
       modal.replaceChildren();
@@ -288,6 +292,8 @@ function confirmDialog({ title, message, items = [], okLabel = 'OK', cancelLabel
         h('div', { class: 'row' },
           cancelBtn,
           h('button', { class: `btn ${danger ? 'destructive' : 'primary'}`, onclick: () => done(true) }, okLabel))));
+    const cancel = () => done(false);
+    cancelDialog = cancel;
     modal.hidden = false;
     window.addEventListener('keydown', onKey, true);
     cancelBtn.focus();
@@ -382,7 +388,7 @@ function awaitingInput(tab) {
 
 function notifyTab(tab, what) {
   tab.notified = true;
-  if (tab.id === activeId && document.hasFocus()) return; // the user is looking at it
+  if (visibleIds().includes(tab.id) && document.hasFocus()) return; // the user is looking at it (any pane of the split)
   api.notify({ tabId: tab.id, title: `${tab.project.name}: ${what}`, body: paneTitle(tab) });
 }
 
@@ -457,13 +463,6 @@ function createTab(project, { kind = 'claude', args = [], resumeId = null, appen
   term.loadAddon(fit);
   term.loadAddon(new WebLinksAddon.WebLinksAddon((_e, uri) => api.openExternal(uri)));
   term.open(host);
-  try {
-    const gl = new WebglAddon.WebglAddon();
-    gl.onContextLoss(() => gl.dispose());
-    term.loadAddon(gl);
-  } catch {
-    /* falls back to the DOM renderer */
-  }
 
   const tab = {
     id, project, kind, args, term, fit, host, head, seq: ++tabSeq,
@@ -556,7 +555,7 @@ function wireTerminal(tab) {
   term.parser.registerOscHandler(777, (d) => { if (d.startsWith('notify;')) onClaudeSignal(tab); return true; });
   term.onBell(() => {
     onClaudeSignal(tab);
-    if (tab.id === activeId && document.hasFocus()) return;
+    if (visibleIds().includes(tab.id) && document.hasFocus()) return;
     tab.attention = true;
     renderSidebar();
     api.flash();
@@ -703,7 +702,8 @@ function wireScrollbar(tab) {
 }
 
 function copySelection(tab) {
-  api.writeClipboard(tab.term.getSelection());
+  const text = tab.term.getSelection();
+  if (text) api.writeClipboard(text); // Ctrl+Shift+C with nothing selected must not wipe the clipboard
   tab.term.clearSelection();
 }
 
@@ -732,28 +732,35 @@ async function restartTab(tab) {
   tab.term.focus();
 }
 
+/** Only asks if closing interrupts something: Claude mid-task or a dev server this tab started. */
+async function confirmClose(tab) {
+  if (tab.status !== 'running') return true;
+  let scan = ports;
+  if (Date.now() - portsAt > 10000) scan = await api.listPorts();
+  const servers = scan.ok ? scan.servers.filter((s) => s.owner?.type === 'session' && s.owner.sessionId === tab.id) : [];
+  const working = isWorking(tab);
+  if (!working && !servers.length) return true;
+  return confirmDialog({
+    title: 'End this session?',
+    message: `Closing "${tabLabel(tab)}" will stop:`,
+    items: [
+      ...(working ? [{ name: 'Claude', sub: 'is working in this session' }] : []),
+      ...servers.map((s) => ({ name: `:${s.port}`, sub: s.name })),
+    ],
+    okLabel: 'End session',
+    danger: true,
+  });
+}
+
+const closing = new Set(); // tab ids whose close is in progress (asking or scanning), so a second close is a no-op
 async function closeTab(id) {
   const tab = tabs.get(id);
-  if (!tab) return;
-  if (tab.status === 'running') {
-    // Only ask if closing interrupts something: Claude mid-task or a dev server this tab started.
-    let scan = ports;
-    if (Date.now() - portsAt > 10000) scan = await api.listPorts();
-    const servers = scan.ok ? scan.servers.filter((s) => s.owner?.type === 'session' && s.owner.sessionId === id) : [];
-    const working = isWorking(tab);
-    if (working || servers.length) {
-      const ok = await confirmDialog({
-        title: 'End this session?',
-        message: `Closing "${tabLabel(tab)}" will stop:`,
-        items: [
-          ...(working ? [{ name: 'Claude', sub: 'is working in this session' }] : []),
-          ...servers.map((s) => ({ name: `:${s.port}`, sub: s.name })),
-        ],
-        okLabel: 'End session',
-        danger: true,
-      });
-      if (!ok) return;
-    }
+  if (!tab || closing.has(id)) return;
+  closing.add(id);
+  try {
+    if (!(await confirmClose(tab)) || !tabs.has(id)) return;
+  } finally {
+    closing.delete(id);
   }
   api.ptyKill(id);
   clearTimeout(tab.busyTimer);
@@ -795,7 +802,7 @@ function activate(id) {
   renderFoot();
   renderInfo();
   renderRside();
-  pollGit();
+  pollGit(false);
   pollInfo();
   pollMcp();
   pollDefinedAgents();
@@ -900,11 +907,40 @@ function toFront(ids) {
 }
 
 /** Show exactly the visible tabs (all split members, or just the active one), then refit them. */
+/**
+ * WebGL renderer for panes on screen only: Chromium keeps 16 live WebGL contexts per page and drops the oldest past
+ * that, so with many tabs the hidden ones use xterm's DOM renderer (free while hidden) and get WebGL back when shown.
+ */
+function setWebgl(t, on) {
+  if (!on) {
+    if (!t.gl) return;
+    // The addon's dispose leaves the context to GC, and Chromium counts it until then: release it now.
+    const ctx = t.host.querySelector('.xterm-screen canvas:not(.xterm-link-layer)')?.getContext('webgl2');
+    t.gl.dispose();
+    t.gl = null;
+    try { ctx?.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* already gone */ }
+    return;
+  }
+  if (t.gl) return;
+  try {
+    const gl = new WebglAddon.WebglAddon();
+    gl.onContextLoss(() => { gl.dispose(); if (t.gl === gl) t.gl = null; });
+    t.term.loadAddon(gl);
+    t.gl = gl;
+  } catch {
+    /* falls back to the DOM renderer */
+  }
+}
+
 function syncVisible() {
   const shown = visibleIds();
-  for (const t of tabs.values()) t.host.classList.toggle('active', shown.includes(t.id));
+  for (const t of tabs.values()) {
+    t.host.classList.toggle('active', shown.includes(t.id));
+    if (!shown.includes(t.id)) setWebgl(t, false);
+  }
   renderSplit();
   requestAnimationFrame(() => {
+    for (const id of visibleIds()) { const t = tabs.get(id); if (t) setWebgl(t, true); }
     fitActive();
     for (const id of shown) {
       const t = tabs.get(id);
@@ -931,6 +967,8 @@ function cloneBeside(tab, at) {
 
 /** Ctrl+click on a session row: show it beside the focused pane instead of replacing it. A session already on screen is opened a second time. */
 function besideRow(open, openNew) {
+  if (open && visibleIds().includes(open.id) && visibleIds().length >= SPLIT_MAX) return activate(open.id);
+  if (visibleIds().length >= SPLIT_MAX) return; // the split is full, like splitHere
   if (!open) openNew();
   else if (visibleIds().includes(open.id)) cloneBeside(open);
   else { addToSplit(open.id); activate(open.id); }
@@ -2371,12 +2409,17 @@ function projectAction(fn) {
 
 // --------------------------------------------------------------- polling ----
 
+// The active project every 4 s, all of them every 20 s (and on focus, project changes).
 let gitBusy = false;
-async function pollGit() {
+let gitTick = 0;
+async function pollGit(all = true) {
   if (gitBusy || document.hidden || !projects.length) return;
+  const cur = all ? null : currentProject();
+  if (!all && !cur) return;
   gitBusy = true;
   try {
-    const next = await api.gitStatus(projects.map((p) => p.path));
+    const res = await api.gitStatus(all ? projects.map((p) => p.path) : [cur.path]);
+    const next = all ? res : { ...git, ...res };
     if (JSON.stringify(next) !== JSON.stringify(git)) {
       git = next;
       renderSidebar();
@@ -2439,7 +2482,8 @@ async function pollUpdate() {
 let portsBusy = false;
 let portsAt = 0;
 async function pollPorts() {
-  if (portsBusy || document.hidden) return;
+  // Only the right sidebar shows ports; closeTab / onCloseRequest rescan themselves when the last scan is stale.
+  if (portsBusy || document.hidden || !rsideShown()) return;
   portsBusy = true;
   try {
     const next = await api.listPorts();
@@ -2461,7 +2505,7 @@ function wireGlobalEvents() {
     if (!tab) return;
     tab.term.write(data);
     tab.lastOutput = Date.now();
-    if (id !== activeId) {
+    if (!visibleIds().includes(id)) {
       if (!tab.busy) { tab.busy = true; renderSidebar(); }
       clearTimeout(tab.busyTimer);
       tab.busyTimer = setTimeout(() => { tab.busy = false; renderSidebar(); }, 1500);
@@ -2500,6 +2544,7 @@ function wireGlobalEvents() {
     if (e.key === 'Escape' && menuFor) closeMenu();
     else if (e.key === 'Escape' && detailKind) setDetail(null);
     else if (e.key === 'Escape' && settingsOpen && $('#modal').hidden) toggleSettings(false);
+    else if (!$('#modal').hidden) handled = false; // a dialog is open: no shortcuts (Ctrl+W again would stack a second one)
     else handled = runShortcut(e);
     if (handled) { e.preventDefault(); e.stopPropagation(); }
   }, true);
@@ -2598,11 +2643,11 @@ async function init() {
   pollUsage();
   pollMcp();
   pollDefinedAgents();
-  setInterval(pollGit, 4000);
+  setInterval(() => pollGit(++gitTick % 5 === 0), 4000);
   setInterval(pollPorts, 6000);
   setInterval(pollSessions, 4000);
   setInterval(pollUsage, 60000);
-  setInterval(pollMcp, 30000);
+  setInterval(pollMcp, 60000); // served from main's 5 min cache; a project change polls at once (activate)
   setTimeout(pollUpdate, 10000); // after startup settles; git fetch is network
   setInterval(pollUpdate, 30 * 60 * 1000);
   // "Working" depends on recent output, so re-check it (cheap: the renders are key-diffed).

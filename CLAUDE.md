@@ -108,7 +108,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     and the recorder reads `e.code`, so Option's special characters don't matter. `Cmd+Alt+arrows` resizes panes.
   - Terminal: `macOptionIsMeta` (Claude's Option shortcuts), `rightClickSelectsWord: false` (right-click pastes);
     the custom Ctrl+C/V handler is skipped. Labels say "Shell" / "Finder"; tooltips go through `kbd()` (⌘ ⇧ ⌥).
-- **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled every 4 s from the renderer.
+- **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled from the renderer: the active project every 4 s, all projects every 20 s (and on focus).
 - **Update** (people install by cloning): `repoDir()` = the app folder for `npm start`, or the repo above `dist/` for a
   packaged build (walks up to a `.git` + `package.json` named `claude-bench`; a `.app` copied elsewhere finds none).
   `checkUpdate` runs `git fetch` + `rev-list --count HEAD..@{u}` 10 s after start and every 30 min (and on demand via the refresh icon next to the app name, `#check-slot` / `checkNow`, which
@@ -178,7 +178,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\com.local.claudebench` to reset it.
 - **Right sidebar** (`#rside`, toggled by the top-bar button or `Ctrl+Shift+S`, saved as `ui.servers`; `renderRside`): the active tab's
   **Context** (`x / yk` + %, same numbers as the footer tile), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**.
-  - MCPs: only connected ones are listed; the rest are behind a "Show N more" row (`mcpMore`, not persisted). `claude mcp list` run in the project folder (main `mcpList`, `cmd.exe /c claude mcp list`, cached 30 s, never overlapping;
+  - MCPs: only connected ones are listed; the rest are behind a "Show N more" row (`mcpMore`, not persisted). `claude mcp list` run in the project folder (main `mcpList`, `cmd.exe /c claude mcp list`, cached 5 min (activating a tab of another project polls it), never overlapping;
     it health-checks every server, so it takes seconds). Output lines `name: target - ✔ Connected | ! Needs authentication | ...` map to
     connected (success) / failed + needs_client_registration (destructive) / needs_auth (warning) / disabled + unknown (muted).
   - Subagents: definitions from `~/.claude/agents/*.md` and `<project>/.claude/agents/*.md` (frontmatter `name`, `model`; `inherit` shows the
@@ -187,7 +187,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     `#modal`, Esc / backdrop / × close): the definition's prompt (`agents:prompt`, body after the frontmatter) and the prompt each run of
     that type was given (first line of its `agent-*.jsonl`), each with its own Context bar (a subagent has a separate window; last reply's usage in its transcript, same assumed 200k/1M rule). `assignSessions` also re-points a running tab at a newer unclaimed
     transcript (`/clear` and `/resume` start a new session file in the same tab), otherwise the sidebar reads the old session's `subagents/`.
-  - Running: dev listeners only, from one PowerShell call (`Get-NetTCPConnection` + `Get-CimInstance Win32_Process`) every 6 s. A listener
+  - Running: dev listeners only, from one PowerShell call (`Get-NetTCPConnection` + `Get-CimInstance Win32_Process`) every 6 s, only while the right sidebar is shown (`closeTab` / `onCloseRequest` rescan when the last scan is over 10 s old). A listener
     belongs to a tab if a session's pty pid is an ancestor; otherwise it is matched to a project if its command line contains the project path
     outside `--flag=` values (Antigravity's `agy.exe --add-dir=<project>` is no server). Rows are status dot, short name, port; clicking a row
     copies `http://localhost:<port>` (rows without a port, or emulators, do nothing). No kill, no "Show all". The scan still walks
@@ -215,6 +215,9 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   addon's row count can be one too many; `fit.fit()` followed by `rows - 1` resized every tab twice per switch, and each
   pty resize makes Claude repaint its screen (the Ctrl+Tab jitter). `fitTab` computes the final size from
   `proposeDimensions()` and calls `term.resize` at most once.
+- **WebGL only on panes on screen** (`setWebgl`, from `syncVisible`): Chromium keeps 16 live WebGL contexts per page and
+  silently drops the oldest, so hidden tabs use the DOM renderer. The addon's `dispose()` leaves its context to GC (Chromium
+  still counts it), so `setWebgl` calls `WEBGL_lose_context.loseContext()` on the canvas that is not `.xterm-link-layer`.
 - **`pty.pid` is 0 right after spawn** on ConPTY. Read `s.pty.pid` lazily at scan time; never cache it.
 - **Windows never clears `ParentProcessId`**: when a parent exits, its pid can be reused by an unrelated process, which then looks like
   the child's ancestor (Discord showed up as a dev server of a session this way). The port scan carries each process's creation time
