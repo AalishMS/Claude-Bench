@@ -178,7 +178,10 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     connected (success) / failed + needs_client_registration (destructive) / needs_auth (warning) / disabled + unknown (muted).
   - Subagents: definitions from `~/.claude/agents/*.md` and `<project>/.claude/agents/*.md` (frontmatter `name`, `model`; `inherit` shows the
     session model) merged with this session's runs from `session:info` (`running` = working dot, finished = check, else idle). A run's
-    real model (last `"model"` in its transcript tail) beats the definition's.
+    real model (last `"model"` in its transcript tail) beats the definition's. Clicking a row opens `agentDialog` (read-only popup in
+    `#modal`, Esc / backdrop / × close): the definition's prompt (`agents:prompt`, body after the frontmatter) and the prompt each run of
+    that type was given (first line of its `agent-*.jsonl`). `assignSessions` also re-points a running tab at a newer unclaimed
+    transcript (`/clear` and `/resume` start a new session file in the same tab), otherwise the sidebar reads the old session's `subagents/`.
   - Running: dev listeners only, from one PowerShell call (`Get-NetTCPConnection` + `Get-CimInstance Win32_Process`) every 6 s. A listener
     belongs to a tab if a session's pty pid is an ancestor; otherwise it is matched to a project if its command line contains the project path
     outside `--flag=` values (Antigravity's `agy.exe --add-dir=<project>` is no server). Rows are status dot, short name, port; clicking a row

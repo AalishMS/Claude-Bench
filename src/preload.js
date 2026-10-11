@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('api', {
   sessionInfo: (cwd, sessionId) => ipcRenderer.invoke('session:info', cwd, sessionId),
   mcpList: (cwd) => ipcRenderer.invoke('mcp:list', cwd),
   definedAgents: (cwd) => ipcRenderer.invoke('agents:defined', cwd),
+  agentPrompt: (cwd, sessionId, name) => ipcRenderer.invoke('agents:prompt', cwd, sessionId, name),
   getUsage: () => ipcRenderer.invoke('usage:get'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   applyUpdate: () => ipcRenderer.invoke('update:apply'),

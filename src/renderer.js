@@ -275,6 +275,46 @@ function confirmDialog({ title, message, items = [], okLabel = 'OK', cancelLabel
   });
 }
 
+/** Read-only popup with a subagent's prompt: its definition's system prompt and/or what each run of it was given. */
+async function agentDialog(a, tab) {
+  const modal = $('#modal');
+  const done = () => {
+    window.removeEventListener('keydown', onKey, true);
+    modal.onclick = null;
+    modal.hidden = true;
+    modal.replaceChildren();
+    activeTab()?.term.focus();
+  };
+  const onKey = (e) => {
+    if (e.key !== 'Escape') return;
+    done();
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const body = h('div', { class: 'ag-body' }, h('div', { class: 'rnote' }, 'Loading…'));
+  modal.replaceChildren(
+    h('div', { class: 'dialog wide', role: 'dialog', 'aria-modal': 'true', onclick: (e) => e.stopPropagation() },
+      h('div', { class: 'ag-head' },
+        h('h3', {}, a.name),
+        a.model ? h('span', { class: 'ag-model mono' }, prettyModel(a.model)) : null,
+        h('button', { class: 'btn ghost icon sm', title: 'Close (Esc)', onclick: done }, ico('x'))),
+      body));
+  modal.onclick = done; // click on the backdrop
+  modal.hidden = false;
+  window.addEventListener('keydown', onKey, true);
+
+  const sec = (label, text) => h('section', { class: 'ag-sec' }, h('div', { class: 'ag-label' }, label), h('pre', { class: 'ag-prompt' }, text));
+  let res = null;
+  try { res = await api.agentPrompt(tab?.project.path, tab?.sessionId, a.name); } catch { /* shown as empty below */ }
+  if (modal.hidden) return; // closed while loading
+  const parts = [];
+  if (res?.definition) parts.push(sec('Agent prompt', res.definition));
+  const runs = res?.runs || [];
+  runs.slice(0, 5).forEach((r) => parts.push(sec(runs.length > 1 || res?.definition ? `Prompt given${r.description ? `: ${r.description}` : ''}` : (r.description ? `Prompt given: ${r.description}` : 'Prompt given'), r.prompt || '(empty)')));
+  if (runs.length > 5) parts.push(h('div', { class: 'rnote' }, `${runs.length - 5} older runs not shown.`));
+  body.replaceChildren(...(parts.length ? parts : [h('div', { class: 'rnote' }, 'No prompt found: this agent is not defined in a file and has not run in this session.')]));
+}
+
 // ----------------------------------------------------------------- tabs ----
 
 const activeTab = () => tabs.get(activeId);
@@ -1231,6 +1271,17 @@ function assignSessions() {
       : free.filter((s) => s.birth >= t.startedAt - 1000).sort((a, b) => a.birth - b.birth)[0];
     if (pick) { t.sessionId = pick.id; claimed.add(pick.id); }
   }
+  // /clear (and /resume inside a tab) switches to a new transcript: follow it, or the right sidebar keeps reading the old
+  // session's subagents. Only when no fresh tab of the project is still waiting for its first transcript.
+  for (const t of tabs.values()) {
+    if (t.kind !== 'claude' || !t.sessionId || t.status !== 'running') continue;
+    const list = sessionsBy[t.project.path] || [];
+    const cur = list.find((s) => s.id === t.sessionId);
+    if (!cur || [...tabs.values()].some((o) => o !== t && o.kind === 'claude' && !o.sessionId && o.project.path === t.project.path)) continue;
+    const next = list.filter((s) => !claimed.has(s.id) && s.birth >= t.startedAt && s.birth >= cur.mtime - 2000 && s.mtime > cur.mtime)
+      .sort((a, b) => a.birth - b.birth)[0];
+    if (next) { t.sessionId = next.id; claimed.add(next.id); infoBy.delete(t.id); }
+  }
   saveTabs(); // diffed: only writes when a tab just got its transcript
 }
 
@@ -1892,7 +1943,7 @@ function renderRside(force = false) {
   const agentBody = agents.length ? agents.map((a) => {
     const st = a.running ? 'working' : a.done ? 'done' : 'idle';
     const tip = `${a.name}: ${st}${a.running > 1 ? ` (${a.running} running)` : ''}${a.done ? `, ${a.done} finished this session` : ''}`;
-    return h('div', { class: 'rrow', title: tip },
+    return h('div', { class: 'rrow copy', title: `${tip}\nClick to see its prompt`, onclick: () => agentDialog(a, activeTab()) },
       st === 'working' ? h('i', { class: 'dot s working' }) : st === 'done' ? h('span', { class: 't-ok' }, ico('check')) : statusDot('mute'),
       h('span', { class: 'name' }, a.name),
       h('span', { class: 'meta mono' }, a.model ? prettyModel(a.model) : '—'));

@@ -811,6 +811,52 @@ async function definedAgents(cwd) {
   return [...out.values()];
 }
 
+/**
+ * What a subagent is told: the system prompt of its definition file (the body after the frontmatter), and the prompt each
+ * run of this type in the session was given (first line of its transcript). Both are capped, they can be long.
+ */
+const PROMPT_CAP = 20000;
+async function agentPrompts(cwd, sessionId, name) {
+  const out = { definition: null, runs: [] };
+  if (typeof name !== 'string' || typeof cwd !== 'string') return out;
+  const dirs = [path.join(cwd, '.claude', 'agents'), path.join(os.homedir(), '.claude', 'agents')]; // project wins
+  for (const dir of dirs) {
+    let names = [];
+    try { names = (await fs.promises.readdir(dir)).filter((n) => n.endsWith('.md')); } catch { continue; }
+    for (const n of names) {
+      try {
+        const text = (await fs.promises.readFile(path.join(dir, n), 'utf8')).replace(/^﻿/, '');
+        const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text);
+        const fm = m ? m[1] : '';
+        const own = /^name:\s*(.+)$/m.exec(fm)?.[1].trim().replace(/^["']|["']$/g, '') || n.slice(0, -3);
+        if (own !== name) continue;
+        out.definition = (m ? m[2] : text).trim().slice(0, PROMPT_CAP);
+        break;
+      } catch { /* unreadable file */ }
+    }
+    if (out.definition != null) break;
+  }
+  if (typeof sessionId === 'string' && UUID_RE.test(sessionId)) {
+    const dir = path.join(projectDir(cwd), sessionId, 'subagents');
+    try {
+      const names = (await fs.promises.readdir(dir)).filter((n) => /^agent-.+\.jsonl$/.test(n));
+      for (const n of names) {
+        try {
+          const file = path.join(dir, n);
+          const meta = (await readJson(file.replace(/\.jsonl$/, '.meta.json'))) || {};
+          if ((meta.agentType || 'agent') !== name) continue;
+          const first = (await readRange(file, 0, 512 * 1024)).split('\n')[0];
+          const c = JSON.parse(first).message?.content;
+          const prompt = typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => x.text || '').join('\n') : '';
+          out.runs.push({ description: oneLine(meta.description), prompt: prompt.trim().slice(0, PROMPT_CAP), start: Math.round((await fs.promises.stat(file)).birthtimeMs) });
+        } catch { /* partial first line or unreadable */ }
+      }
+    } catch { /* no subagents */ }
+    out.runs.sort((a, b) => b.start - a.start);
+  }
+  return out;
+}
+
 // Plan limits (session, weekly, per-model weekly) come from the same endpoint Claude Code's /usage reads, using the
 // OAuth token Claude Code keeps in ~/.claude/.credentials.json. The token only goes to api.anthropic.com.
 // Claude Code refreshes the token while it runs; we never write the credentials file.
@@ -1230,6 +1276,7 @@ function registerIpc() {
   ipcMain.handle('session:info', (_e, cwd, sessionId) => sessionInfo(cwd, sessionId));
   ipcMain.handle('mcp:list', (_e, cwd) => mcpList(cwd));
   ipcMain.handle('agents:defined', (_e, cwd) => definedAgents(cwd));
+  ipcMain.handle('agents:prompt', (_e, cwd, sessionId, name) => agentPrompts(cwd, sessionId, name));
   ipcMain.handle('usage:get', () => getLimits());
   ipcMain.handle('update:check', () => checkUpdate());
   ipcMain.handle('update:apply', () => applyUpdate());
