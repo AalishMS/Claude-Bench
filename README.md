@@ -10,8 +10,10 @@ genuine Claude Code session, so slash commands, permissions and speed are unchan
   matched by process ancestry. Hover a row to open it in the browser or stop it.
 - **Tabs come back**: open tabs are reopened on the next launch (Claude tabs resume their session with
   `claude --resume`, shell tabs start fresh). A Claude tab is remembered once it has its first reply.
-- **Reorder tabs**: open sessions sit at the top of their project's list; drag one up or down within the project to
-  change the tab order (`Ctrl+Tab`, `Alt+1`..`9`). The order is kept across restarts.
+- **Newest first**: open sessions sit at the top of their project's list, the newest on top; `Alt+1` is the newest tab.
+  The order is kept across restarts.
+- **Split groups**: you can have several splits at once. Each shows as a box in the sidebar (its own color when there
+  are several); clicking one of its sessions brings that split back on screen.
 - **Notifications**: a Claude session in the background (or any session while the window is unfocused) notifies
   "Needs input" when it shows a permission prompt or a question, and "Done" when a task of 10 s or more finishes.
   Click it to jump to that tab. Mute them in the OS notification settings.

@@ -19,6 +19,10 @@
   --destructive: #ff6467;
   --success: #7fb77e;
   --warning: #d6b25e;
+  --group-1: #7c5cd6; /* split groups 2-5 when several exist (the first is --primary); away from the status hues */
+  --group-2: #2f9e93;
+  --group-3: #c0507f;
+  --group-4: #c47a35;
   --sidebar: #030303; /* the darkest surface: only the left sidebar (plus faint noise, see #sidebar) */
   --sidebar-foreground: #fafafa;
   --sidebar-accent: #262626; /* selected row */
@@ -190,10 +194,6 @@ body.resizing .rz { pointer-events: auto; }
 
 /* sessions (and open PowerShell tabs) under a project: one 32px line each */
 .session { position: relative; display: flex; align-items: center; gap: 6px; height: 32px; flex: none; padding: 0 4px 0 28px; border-radius: var(--radius-md); color: var(--muted-foreground); cursor: pointer; }
-/* reorder: insertion line in the 2 px gap between rows, the same tint as the split drop preview's outline */
-.session.drop-before::before, .session.drop-after::after { content: ''; position: absolute; left: 28px; right: 4px; height: 2px; border-radius: 1px; background: color-mix(in srgb, var(--primary) 70%, transparent); pointer-events: none; }
-.session.drop-before::before { top: -2px; }
-.session.drop-after::after { bottom: -2px; }
 .session:hover { background: var(--sidebar-hover); color: var(--foreground); }
 .session.active { background: var(--sidebar-accent); color: var(--foreground); font-weight: 500; }
 .s-mark { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 18px; }
@@ -203,12 +203,18 @@ body.resizing .rz { pointer-events: auto; }
 .session.has-tab:hover .s-time, .session.has-tab:hover .s-proj { display: none; }
 .session.has-tab:hover .s-close { display: inline-flex; }
 .s-proj { flex: 0 1 auto; max-width: 40%; padding-right: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 400; color: var(--faint); }
-/* split group (like a browser tab group): a slim --primary rail down the left edge and a barely-there tint, no border.
-   Rows keep their normal padding, so the dot column stays at 28px; the rail sits in the 4px sidebar inset beside it. */
-.split-group { position: relative; display: flex; flex-direction: column; gap: 2px; flex: none; padding: 2px 0; border-radius: var(--radius-md); background: color-mix(in srgb, var(--primary) 7%, transparent); }
-.split-group::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; border-radius: 0 3px 3px 0; background: color-mix(in srgb, var(--primary) 80%, var(--foreground)); }
+/* split group (like a browser tab group): a slim rail down the left edge and a barely-there tint, no border.
+   Rows keep their normal padding, so the dot column stays at 28px; the rail sits in the 4px sidebar inset beside it.
+   --g is the group's color: --primary (g0) for a lone group, one of the --group-* tokens each when there are several. */
+.split-group.g0 { --g: var(--primary); }
+.split-group.g1 { --g: var(--group-1); }
+.split-group.g2 { --g: var(--group-2); }
+.split-group.g3 { --g: var(--group-3); }
+.split-group.g4 { --g: var(--group-4); }
+.split-group { position: relative; display: flex; flex-direction: column; gap: 2px; flex: none; padding: 2px 0; border-radius: var(--radius-md); background: color-mix(in srgb, var(--g) 7%, transparent); }
+.split-group::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; border-radius: 0 3px 3px 0; background: color-mix(in srgb, var(--g) 80%, var(--foreground)); }
 .split-group.idle { background: transparent; }
-.split-group.idle::before { background: color-mix(in srgb, var(--primary) 45%, transparent); }
+.split-group.idle::before { background: color-mix(in srgb, var(--g) 45%, transparent); }
 .sg-head { display: flex; align-items: center; gap: 6px; height: 22px; flex: none; padding: 0 4px 0 28px; font-size: 11px; font-weight: 500; color: var(--muted-foreground); }
 .split-group.idle .sg-head { cursor: pointer; }
 .split-group.idle .sg-head:hover { color: var(--foreground); }

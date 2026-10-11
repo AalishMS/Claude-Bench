@@ -185,7 +185,12 @@ let projects = [];
 let ui = { sidebar: true, servers: true, fontSize: 14, collapsed: [] }; // replaced by the saved state in init()
 const tabs = new Map(); // id -> tab
 let activeId = null;
-let split = null; // { ids: [tab id, 2-4 of them], cx, ry, v } side-by-side panes (runtime only); activeId is the focused pane; v = stacked
+// Split groups (runtime only): [{ ids: [tab id, 2-4 of them], cx, ry, v }], newest first; a tab is in at most one.
+// The group holding activeId is on screen (activeId is its focused pane); v = stacked.
+let splits = [];
+const groupOf = (id) => splits.find((g) => g.ids.includes(id)) || null;
+const curSplit = () => groupOf(activeId);
+let tabSeq = 0; // creation counter: tabLabel numbers by it, so a new tab at the front doesn't renumber the others
 let settingsOpen = false; // the settings page covers the terminal area
 let rsideAuto = false; // the right sidebar was hidden by autoRside (ui.servers still holds the user's choice)
 let rsideForced = false; // the user reopened it by hand in a cramped split: leave it alone until the split changes
@@ -392,7 +397,8 @@ function onClaudeSignal(tab) {
 }
 
 function tabLabel(tab) {
-  const same = [...tabs.values()].filter((t) => t.project.path === tab.project.path && t.kind === tab.kind);
+  const same = [...tabs.values()].filter((t) => t.project.path === tab.project.path && t.kind === tab.kind)
+    .sort((a, b) => a.seq - b.seq);
   const n = same.indexOf(tab) + 1;
   return same.length > 1 ? `${tab.project.name} ${n}` : tab.project.name;
 }
@@ -406,15 +412,15 @@ async function openSession(project, { kind = 'claude', args = [], resumeId = nul
   return tab;
 }
 
-/** A tab with its terminal, not started and not shown yet. */
-function createTab(project, { kind = 'claude', args = [], resumeId = null } = {}) {
+/** A tab with its terminal, not started and not shown yet. New tabs go first (newest on top); `append` keeps a restored order. */
+function createTab(project, { kind = 'claude', args = [], resumeId = null, append = false } = {}) {
   if (resumeId) args = ['--resume']; // main builds the real argv from resumeId; this only labels the tab
   const id = crypto.randomUUID();
   const head = h('div', { class: 'pane-head' });
   const host = h('div', { class: 'term-host' }, head);
   $('#terminals').append(host);
   hostObserver.observe(host);
-  host.addEventListener('mousedown', () => { if (split?.ids.includes(id) && activeId !== id) activate(id); }, true);
+  host.addEventListener('mousedown', () => { if (activeId !== id && visibleIds().includes(id)) activate(id); }, true);
 
   const term = new Terminal({
     ...TERM_FONT,
@@ -441,12 +447,13 @@ function createTab(project, { kind = 'claude', args = [], resumeId = null } = {}
   }
 
   const tab = {
-    id, project, kind, args, term, fit, host, head,
+    id, project, kind, args, term, fit, host, head, seq: ++tabSeq,
     resumeId, sessionId: resumeId, startedAt: Date.now(), // sessionId of fresh tabs is matched later (assignSessions)
     status: 'starting', exitCode: null, title: '',
     lastActive: 0, lastOutput: 0, attention: false, busy: false, busyTimer: null,
   };
   tabs.set(id, tab);
+  if (!append) toFront([id]);
   wireTerminal(tab);
   wireScrollbar(tab);
   return tab;
@@ -461,10 +468,11 @@ async function restoreTabs(saved) {
   for (const r of saved?.tabs || []) {
     try {
       const project = projects.find((p) => p.path === r.project);
-      if (project) made.push(createTab(project, { kind: r.kind, resumeId: r.kind === 'claude' ? r.sessionId : null }));
+      if (project) made.push(createTab(project, { kind: r.kind, resumeId: r.kind === 'claude' ? r.sessionId : null, append: true }));
     } catch { /* skip this one */ }
   }
   if (!made.length) return;
+  made.forEach((t, i) => { t.seq = tabSeq - i; }); // saved newest first: the oldest keeps the lowest number
   const first = made[saved.active] || made[0];
   activate(first.id);
   fitTab(first);
@@ -736,7 +744,7 @@ async function closeTab(id) {
   hostObserver.unobserve(tab.host);
   const order = [...tabs.keys()];
   const idx = order.indexOf(id);
-  const slot = split ? split.ids.indexOf(id) : -1;
+  const slot = groupOf(id)?.ids.indexOf(id) ?? -1;
   tabs.delete(id);
   const mates = removeFromSplit(id);
   if (activeId === id) {
@@ -805,45 +813,69 @@ function fitActive() {
 // ---------------------------------------------------------------- split ----
 // Up to 4 tabs side by side. 2 = A|B, 3 = A|(B over C), 4 = (A B)/(C D). cx / ry are the column and row ratios.
 // A stacked split (v, started with "New session below") is the same layout transposed: 2 = A over B, 3 = A over (B|C).
-// A tab outside the split shows alone and the split returns when one of its members is focused again.
+// There can be several split groups; focusing a member shows its group, a tab in none shows alone.
 
 const SPLIT_MAX = 4;
+const GROUP_COLORS = 5; // .split-group.g0..g4 in styles.css; one group alone is always g0 (--primary)
 const SPLIT_MIN_W = 240; // px a pane keeps when a divider is dragged
 const SPLIT_MIN_H = 120;
 const RSIDE_MIN_COLS = 100; // below this a pane is hard to read: the right sidebar steps aside
 const RSIDE_BACK_COLS = RSIDE_MIN_COLS + 6; // ...and returns only with this much room, so it can't flap
 
-const visibleIds = () => (split && split.ids.includes(activeId) ? split.ids : activeId ? [activeId] : []);
+const visibleIds = () => curSplit()?.ids || (activeId ? [activeId] : []);
 
 /**
- * Put a tab that is not on screen yet into the split at position `at` (default: last), next to the visible panes.
- * `below` stacks a new split; a split that is already on screen keeps its orientation.
+ * Put a tab that is not on screen yet into the visible split at position `at` (default: last), or start a new group with
+ * the active tab. A tab leaves its old group first. `below` stacks a new group; one already on screen keeps its orientation.
+ * The group moves to the front of the tab order, so it is the newest thing in the sidebar and stays put when unsplit.
  */
 function addToSplit(id, at, below = false) {
   if (!activeId || !tabs.has(id)) return;
-  const base = [...visibleIds()];
+  const cur = curSplit();
+  const base = cur ? cur.ids : [activeId];
   if (base.includes(id) || base.length >= SPLIT_MAX) return;
-  const fresh = base.length < 2;
-  base.splice(at ?? base.length, 0, id);
-  split = { ids: base, cx: split?.cx ?? 0.5, ry: split?.ry ?? 0.5, v: fresh ? below : split.v };
+  removeFromSplit(id);
+  const ids = [...base];
+  ids.splice(at ?? ids.length, 0, id);
+  if (cur) cur.ids = ids;
+  else {
+    const used = new Set(splits.map((g) => g.color));
+    let color = 0;
+    while (used.has(color) && color < GROUP_COLORS) color++;
+    if (color === GROUP_COLORS) color = splits.length % GROUP_COLORS; // more groups than colors: reuse
+    splits.unshift({ ids, cx: 0.5, ry: 0.5, v: below, color });
+  }
   rsideForced = false;
+  toFront(ids);
 }
 
-/** Drops a tab from the split state (the tab itself stays open); a split of one is no split. Returns the remaining members. */
+/** Drops a tab from its group (the tab itself stays open); a group of one is no group. Returns the remaining members. */
 function removeFromSplit(id) {
-  if (!split || !split.ids.includes(id)) return split ? split.ids : [];
-  const rest = split.ids.filter((x) => x !== id);
+  const g = groupOf(id);
+  if (!g) return [];
+  g.ids = g.ids.filter((x) => x !== id);
   rsideForced = false;
-  split = rest.length < 2 ? null : { ...split, ids: rest };
-  return rest;
+  if (g.ids.length < 2) splits = splits.filter((x) => x !== g);
+  return g.ids;
 }
 
-function unsplit() {
-  if (!split) return;
-  split = null;
+/** End a split group (default: the one on screen); its tabs stay open where they are. */
+function unsplit(g = curSplit()) {
+  if (!g) return;
+  splits = splits.filter((x) => x !== g);
   rsideForced = false;
   syncVisible();
   renderSidebar(true); // drops the split group
+}
+
+/** Move tabs to the front of the tab order (sidebar, Alt+1..9, Ctrl+Tab, saved order), keeping their given order. */
+function toFront(ids) {
+  const order = [...ids, ...[...tabs.keys()].filter((x) => !ids.includes(x))];
+  if (order.join() === [...tabs.keys()].join()) return;
+  const entries = order.map((x) => [x, tabs.get(x)]);
+  tabs.clear();
+  for (const [k, v] of entries) tabs.set(k, v);
+  saveTabs();
 }
 
 /** Show exactly the visible tabs (all split members, or just the active one), then refit them. */
@@ -866,7 +898,7 @@ function syncVisible() {
 function splitHere(below = false) {
   const tab = activeTab();
   if (!tab) return newSessionHere();
-  if (split?.ids.includes(tab.id) && split.ids.length >= SPLIT_MAX) return;
+  if (visibleIds().length >= SPLIT_MAX) return;
   openSession(tab.project, { beside: true, below });
 }
 
@@ -937,7 +969,8 @@ function wireDropZone() {
     e.dataTransfer.dropEffect = 'move';
     const r = box.getBoundingClientRect();
     const n = base.length + 1;
-    const cx = split?.cx ?? 0.5, ry = split?.ry ?? 0.5, v = base.length > 1 && split.v;
+    const cur = curSplit();
+    const cx = cur?.cx ?? 0.5, ry = cur?.ry ?? 0.5, v = !!cur?.v;
     let best = null;
     for (let k = 0; k < n; k++) {
       const c = cellRect(n, k, cx, ry, r.width, r.height, v);
@@ -966,49 +999,6 @@ function wireDropZone() {
     } else if (!tab) openSession(src.project, { resumeId: src.resumeId, beside: true, at });
     else if (visibleIds().includes(tab.id)) cloneBeside(tab, at);
     else { addToSplit(tab.id, at); activate(tab.id); }
-  });
-}
-
-/** Move tab `id` just before (or after) tab `targetId` in the tab order, and remember it. */
-function moveTab(id, targetId, after) {
-  const ids = [...tabs.keys()];
-  const next = ids.filter((x) => x !== id);
-  next.splice(next.indexOf(targetId) + (after ? 1 : 0), 0, id);
-  if (next.join() === ids.join()) return;
-  const entries = next.map((x) => [x, tabs.get(x)]);
-  tabs.clear();
-  for (const [k, v] of entries) tabs.set(k, v);
-  saveTabs();
-}
-
-// Reorder: drop an open tab's row between the open rows of its own project. A thin line marks the insertion point.
-// The sidebar and the terminal drop zone never overlap, so the two targets can't be confused.
-function wireReorder() {
-  const root = $('#projects');
-  let mark = null; // { row, after }
-  const clear = () => { mark?.row.classList.remove('drop-before', 'drop-after'); mark = null; };
-  root.addEventListener('dragover', (e) => {
-    const src = dragSrc?.id && tabs.get(dragSrc.id);
-    const row = e.target.closest?.('.session[data-tab]');
-    const t = row && tabs.get(row.dataset.tab);
-    if (!src || !t || t === src || t.project.path !== src.project.path) { clear(); return; }
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const r = row.getBoundingClientRect();
-    const after = e.clientY > r.top + r.height / 2;
-    if (mark?.row === row && mark.after === after) return;
-    clear();
-    mark = { row, after };
-    row.classList.add(after ? 'drop-after' : 'drop-before');
-  });
-  root.addEventListener('dragleave', (e) => { if (!root.contains(e.relatedTarget)) clear(); });
-  root.addEventListener('drop', (e) => {
-    if (!mark || !dragSrc?.id) return;
-    e.preventDefault();
-    const { row, after } = mark;
-    clear();
-    moveTab(dragSrc.id, row.dataset.tab, after);
-    endDrag(); // re-renders the held-back sidebar
   });
 }
 
@@ -1043,7 +1033,8 @@ function nudgeSplit(dir) {
   const axis = dir === 'left' || dir === 'right' ? 'x' : 'y';
   if ($(axis === 'x' ? '#pz-v' : '#pz-h').hidden) return true; // this layout has no divider that way
   const step = dir === 'left' || dir === 'up' ? -RESIZE_STEP : RESIZE_STEP;
-  setSplitRatio(axis, (axis === 'x' ? split.cx : split.ry) + step);
+  const g = curSplit();
+  setSplitRatio(axis, (axis === 'x' ? g.cx : g.ry) + step);
   return true;
 }
 
@@ -1058,7 +1049,8 @@ function paneCell(n, i, v = false) {
 /** Grid placement, dividers and pane headers for the current split (or back to the plain single-terminal layout). */
 function renderSplit() {
   const box = $('#terminals');
-  const ids = split && split.ids.includes(activeId) ? split.ids : [];
+  const split = curSplit();
+  const ids = split ? split.ids : [];
   const n = ids.length;
   const v = n > 1 && split.v;
   box.classList.toggle('split', n > 1);
@@ -1097,7 +1089,7 @@ function renderSplit() {
 /** Pane headers: status dot, title, and a button that takes the pane out of the split. Key-diffed. */
 let lastPanesKey = '';
 function renderPanes() {
-  const ids = split && split.ids.includes(activeId) ? split.ids : [];
+  const ids = curSplit()?.ids || [];
   const key = JSON.stringify([ids.map((id) => { const t = tabs.get(id); return [id, tabDot(t), paneTitle(t)]; }), activeId, sessionsVer]);
   if (key === lastPanesKey) return;
   lastPanesKey = key;
@@ -1118,7 +1110,7 @@ function paneTitle(t) {
   const known = t.sessionId && (sessionsBy[t.project.path] || []).find((s) => s.id === t.sessionId);
   if (known) return known.title;
   if (t.kind === 'shell') {
-    const shells = tabsOf(t.project.path).filter((x) => x.kind === 'shell');
+    const shells = tabsOf(t.project.path).filter((x) => x.kind === 'shell').sort((a, b) => a.seq - b.seq);
     return `${SHELL_LABEL}${shells.length > 1 ? ' ' + (shells.indexOf(t) + 1) : ''}`;
   }
   return t.resumeId ? 'Resumed session' : t.args[0] === '--continue' ? 'Continued session' : 'New session';
@@ -1152,6 +1144,8 @@ function autoRside() {
 
 /** Set the column (x) or row (y) ratio of the split, keeping every pane at least SPLIT_MIN_W x SPLIT_MIN_H. */
 function setSplitRatio(axis, v) {
+  const split = curSplit();
+  if (!split) return;
   const r = $('#terminals').getBoundingClientRect();
   if (axis === 'x') split.cx = Math.min(1 - SPLIT_MIN_W / r.width, Math.max(SPLIT_MIN_W / r.width, v));
   else split.ry = Math.min(1 - SPLIT_MIN_H / r.height, Math.max(SPLIT_MIN_H / r.height, v));
@@ -1169,7 +1163,7 @@ function wireDivider(el, axis) {
     document.body.classList.add('resizing');
   });
   el.addEventListener('pointermove', (e) => {
-    if (!split || !el.hasPointerCapture(e.pointerId)) return;
+    if (!curSplit() || !el.hasPointerCapture(e.pointerId)) return;
     const r = box.getBoundingClientRect();
     apply(axis === 'x' ? (e.clientX - r.left) / r.width : (e.clientY - r.top) / r.height);
   });
@@ -1181,7 +1175,7 @@ function wireDivider(el, axis) {
   };
   el.addEventListener('pointerup', end);
   el.addEventListener('pointercancel', end);
-  el.addEventListener('dblclick', () => split && apply(0.5));
+  el.addEventListener('dblclick', () => curSplit() && apply(0.5));
 }
 
 const hostObserver = new ResizeObserver(() => requestAnimationFrame(fitActive));
@@ -1315,8 +1309,7 @@ function sessionRow(p, s, t = null, showProject = false) {
     class: `session${t ? (t.id === activeId ? ' active' : '') + ' has-tab' : ''}`,
     'data-tab': t?.id,
     ...rowDrag({ id: t?.id || null, project: p, resumeId: s.id }),
-    title: `${s.title}\n${new Date(s.mtime).toLocaleString()}\nDrag onto the terminal (or ${IS_MAC ? '⌘' : 'Ctrl+'}click) to open beside the current session`
-      + (t ? '\nDrag between open sessions to reorder' : ''),
+    title: `${s.title}\n${new Date(s.mtime).toLocaleString()}\nDrag onto the terminal (or ${IS_MAC ? '⌘' : 'Ctrl+'}click) to open beside the current session`,
     onclick: (e) => (mod(e) && activeId
       ? besideRow(t, () => openSession(p, { resumeId: s.id, beside: true }))
       : openSessionRow(p, s)),
@@ -1335,23 +1328,25 @@ function tabRow(t, showProject = false) {
 }
 
 /**
- * The split's members in one tinted box, like a browser tab group: inside their project's list, or at the top of the
- * sidebar when they come from different projects (each row then names its project). Clicking the header brings the
- * split back when a tab outside it is showing; its × unsplits.
+ * A split group's members in one tinted box, like a browser tab group: inside their project's list, or at the top of the
+ * sidebar when they come from different projects (each row then names its project). Clicking the header shows the
+ * group when it isn't on screen; its × unsplits it. With several groups each has its own color.
  */
-function splitGroup(members, showProject) {
+function splitGroup(g, showProject) {
+  const members = g.ids.map((id) => tabs.get(id)).filter(Boolean);
   const live = members.some((t) => t.id === activeId);
-  return h('div', { class: `split-group${live ? '' : ' idle'}` },
+  const color = splits.length > 1 ? g.color : 0;
+  return h('div', { class: `split-group g${color}${live ? '' : ' idle'}` },
     h('div', {
       class: 'sg-head', title: live ? 'On screen side by side' : 'Click to show these side by side again',
       onclick: () => { if (!live) activate(members[0].id); },
     },
-      h('span', { class: 'sg-ico' }, ico(split.v ? 'rows' : 'columns')),
+      h('span', { class: 'sg-ico' }, ico(g.v ? 'rows' : 'columns')),
       h('span', {}, 'Split view'),
       h('span', { class: 'sg-count' }, String(members.length)),
       h('button', {
-        class: 'btn ghost icon sm', title: tip('Back to one terminal', 'unsplit'),
-        onclick: (e) => { e.stopPropagation(); unsplit(); },
+        class: 'btn ghost icon sm', title: live ? tip('Back to one terminal', 'unsplit') : 'Unsplit',
+        onclick: (e) => { e.stopPropagation(); unsplit(g); },
       }, ico('x'))),
     members.map((t) => tabRow(t, showProject)));
 }
@@ -1402,7 +1397,7 @@ function renderSidebar(force = false) {
   const tab = activeTab();
   const activeProject = tab?.project.path;
   const key = JSON.stringify([projects, git, activeId, tab?.sessionId, sessionsVer, [...expanded], [...showMore], query,
-    Math.floor(Date.now() / 60000), split && [split.ids, split.v],
+    Math.floor(Date.now() / 60000), splits.map((g) => [g.ids, g.v, g.color]),
     [...tabs.values()].map((t) => [t.id, t.project.path, t.kind, t.sessionId, tabDot(t)])]);
   if (!force && key === lastSidebarKey) return;
   lastSidebarKey = key;
@@ -1414,16 +1409,27 @@ function renderSidebar(force = false) {
     return;
   }
   const q = query.trim().toLowerCase();
-  // Split members are grouped: in their project when they share one, else in a group of their own at the top.
-  const members = !q && split ? split.ids.map((id) => tabs.get(id)).filter(Boolean) : [];
-  const inSplit = new Set(members.length > 1 ? members.map((t) => t.id) : []);
-  const groupHome = inSplit.size && members.every((t) => t.project.path === members[0].project.path) ? members[0].project.path : null;
+  // Split groups sit in their project's list where their first member is in tab order, or (mixed projects) at the top.
+  const homeOf = new Map(q ? [] : splits.map((g) => {
+    const paths = new Set(g.ids.map((id) => tabs.get(id)?.project.path));
+    return [g, paths.size === 1 ? [...paths][0] : null];
+  }));
+  const openRows = (open, p) => {
+    const done = new Set();
+    return open.map((t) => {
+      const g = homeOf.size ? groupOf(t.id) : null;
+      if (!g) return tabRow(t);
+      if (homeOf.get(g) !== p.path || done.has(g)) return null;
+      done.add(g);
+      return splitGroup(g, false);
+    });
+  };
   const groups = projects.map((p) => {
     const loaded = sessionsBy[p.path];
     const matches = q ? (loaded || []).filter((s) => s.title.toLowerCase().includes(q)) : loaded || [];
     if (q && !matches.length) return null;
     const isOpen = q ? true : expanded.has(p.path);
-    // Open tabs first, in tab order (drag to reorder), then the project's other sessions, newest first.
+    // Open tabs first, in tab order (newest first), then the project's other sessions, newest first.
     const open = q ? [] : tabsOf(p.path);
     const openIds = new Set(open.map((t) => t.sessionId));
     const rest = matches.filter((s) => !openIds.has(s.id));
@@ -1434,8 +1440,7 @@ function renderSidebar(force = false) {
       const all = q || showMore.has(p.path);
       const hidden = all ? 0 : Math.max(0, rest.length - SESSIONS_SHOWN);
       list = h('div', { class: 'sessions' },
-        groupHome === p.path ? splitGroup(members, false) : null,
-        open.filter((t) => !inSplit.has(t.id)).map((t) => tabRow(t)),
+        openRows(open, p),
         rest.length
           ? (all ? rest : rest.slice(0, SESSIONS_SHOWN)).map((s) => sessionRow(p, s, tabOfSession(s.id)))
           : open.length ? null : h('div', { class: 's-note' }, 'No sessions yet'),
@@ -1449,7 +1454,8 @@ function renderSidebar(force = false) {
       isActive && git[p.path] ? gitSubLine(git[p.path]) : null,
       list);
   }).filter(Boolean);
-  if (inSplit.size && !groupHome) groups.unshift(h('div', { class: 'group' }, splitGroup(members, true)));
+  const mixed = splits.filter((g) => homeOf.has(g) && !homeOf.get(g));
+  groups.unshift(...mixed.map((g) => h('div', { class: 'group' }, splitGroup(g, true))));
   root.replaceChildren(...(groups.length ? groups
     : [h('div', { class: 'empty-note' }, `No sessions match "${query.trim()}"`)]));
 }
@@ -2516,9 +2522,8 @@ function wireGlobalEvents() {
   $('#toggle-sidebar').addEventListener('click', () => setSidebar(!ui.sidebar));
   $('#toggle-rside').addEventListener('click', () => setServers(!rsideShown()));
   $('#close-tab').addEventListener('click', () => { if (activeId) closeTab(activeId); });
-  $('#split-tab').addEventListener('click', () => (split ? unsplit() : splitHere()));
+  $('#split-tab').addEventListener('click', () => (curSplit() ? unsplit() : splitHere()));
   wireDropZone();
-  wireReorder();
   wireDivider($('#pz-v'), 'x');
   wireDivider($('#pz-h'), 'y');
 

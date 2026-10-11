@@ -73,14 +73,16 @@ everything that needs checking there. Tick what works. For anything that fails, 
 - [ ] Deny notifications in System Settings → Notifications, then repeat a "Done" case: nothing shows and the app
       keeps working normally.
 
-## Reorder tabs
+## Tab order and split groups
 
-- [ ] Open tabs sit at the top of their project's list in the sidebar.
-- [ ] Drag an open tab's row up or down within its project: a thin blue line shows where it will land, and dropping
-      moves it. ⌘1–9 and Ctrl+Tab follow the new order.
-- [ ] Dragging onto a row of a different project, or onto a session that isn't open, shows no line and changes nothing.
-- [ ] Dragging a row onto the terminal area still opens it in a split pane.
-- [ ] Quit and restart: the new order is kept.
+- [ ] Open tabs sit at the top of their project's list, newest first. A new session (⌘T) appears as the top row, and
+      ⌘1 jumps to it.
+- [ ] On an older tab press ⌘\: the split shows as a "Split view" box at the top of the list. ⌘⇧\ unsplits and the two
+      rows stay where they were.
+- [ ] Make a second split from a tab outside the first one (focus it, ⌘\): there are now two boxes, each with its own
+      color. Clicking a session in the other box switches the terminal area to that split.
+- [ ] Dragging a row onto the terminal area still opens it in a split pane. Dragging rows within the sidebar does nothing.
+- [ ] Quit and restart: the tabs come back in the same order (splits are not saved).
 
 ## Opened from Finder
 

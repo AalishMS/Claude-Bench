@@ -77,7 +77,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   synchronously via tmp file + rename. The app used to be "Claude Terminal": if no state exists yet, the loader
   reads `%APPDATA%\claude-terminal\state.json` once (`legacyStateFile`).
 - **Restore tabs**: `state.tabs` (`{ project, kind, sessionId }` in tab order) + `state.activeTab`, sent by the renderer's
-  `saveTabs` (key-diffed; called from `activate`, `closeTab`, `assignSessions`, `moveTab`), never on a timer. Claude tabs
+  `saveTabs` (key-diffed; called from `activate`, `closeTab`, `assignSessions`, `toFront`), never on a timer. Claude tabs
   without a transcript yet are not saved. At launch `state:get` returns `restore` = `restorableTabs()` (drops entries whose
   project is gone or whose `<uuid>.jsonl` is missing, one try/catch per entry); `restoreTabs` creates all tabs, starts the
   active one first, then the rest 400 ms apart (Claude tabs via `--resume <uuid>`, shells fresh). Split view is not saved.
@@ -102,7 +102,6 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
   - Notifications: plain Electron `Notification` (no registry step). An unsigned app may show as "Electron" from
     `npm start`; if the user denied permission nothing shows and `notify` swallows any error.
-  - Reorder: plain HTML5 drag events, no Mac branch.
   - Packaged update: `/bin/bash update.sh` detached with the login shell's PATH (after `shellEnvReady`); waits on the
     pid with `kill -0` (20 s, then `kill -9` on that pid only); reopens the bundle (`execPath` three levels up) with `open`. No visible window, so the log is it.
   - Shortcuts: the `SHORTCUTS` defaults use `M` = Cmd and `JUMP` = Cmd (Windows: Ctrl / Alt); `comboText` draws ⌃⌥⇧⌘,
@@ -138,25 +137,29 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   `renderSettings`): for now only Shortcuts. Clicking a chip (or +) records the next combo with Ctrl/Alt/Cmd (or an F key);
   a combo another action uses is moved over (`keysNote` says so). Esc cancels recording, then closes the page; activating
   any tab closes it too.
-- **Split view** (runtime only, not saved): `split = { ids, cx, ry, v }` in renderer.js shows 2-4 tabs as a grid in `#terminals`
+- **Split view** (runtime only, not saved): `splits` = a list of groups `{ ids, cx, ry, v, color }` (newest first, a tab in at
+  most one; `groupOf(id)`, `curSplit()` = the active tab's group). The group on screen shows 2-4 tabs as a grid in `#terminals`
   (2 = A|B, 3 = A|(B over C), 4 = 2x2; `v` = stacked, started by "New session below": 2 = A over B, 3 = A over (B|C), which
   `paneCell` / `cellRect` get by transposing) with draggable dividers. `focusPane(dir)` picks the nearest pane that way,
-  `nudgeSplit(dir)` moves a divider by 5 %. The sidebar shows the members in a `.split-group` box (`splitGroup`): inside
-  their project's list, or at the top of `#projects` when they come from different projects (rows then show the project name). `activeId` is the focused pane, so status bar, right sidebar and
-  polling keep following one tab. `visibleIds()` = the split if the active tab is in it, else just the active tab (a non-member
-  shows alone and the split returns when a member is focused). Entry: top-bar button / `Ctrl+\` (`splitHere`, new session beside),
+  `nudgeSplit(dir)` moves a divider by 5 %. The sidebar shows each group in a `.split-group` box (`splitGroup`): inside
+  their project's list where the first member sits in tab order, or at the top of `#projects` when they come from different
+  projects (rows then show the project name). With several groups each box has its color (`.g0`..`.g4` = `--primary`,
+  `--group-1..4`, the lowest free index at creation); a lone group is always `.g0`. Its header shows it, its × `unsplit(g)`. `activeId` is the focused pane, so status bar, right sidebar and
+  polling keep following one tab. `visibleIds()` = the active tab's group, else just the active tab (focusing a member of another group
+  switches the terminal area to that group). `addToSplit` adds to the visible group or starts a new one with the active tab;
+  a tab moving in leaves its old group, and a group of one is dropped. Entry: top-bar button / `Ctrl+\` (`splitHere`, new session beside),
   Ctrl+click a sidebar row (`besideRow`), or drag a sidebar row onto the terminal area or the home screen: `#dropzone` (shown only while
   dragging, `rowDrag` / `wireDropZone`) previews the pane in the resulting layout (`cellRect`; the slot whose pane centre is nearest
   the pointer wins) and the drop places it (`addToSplit(id, at)`). A session already on screen is opened again beside itself (`cloneBeside`: the same
   Claude session resumed in a second pane, or another shell). On the home screen a drop just opens it. `renderSidebar` is paused while dragging. `autoRside` hides the right sidebar while a split pane is under 100 cols and
   restores it at 106+ (predicted from the current cols), without touching `ui.servers`; opening it by hand in a split sets
   `rsideForced` until the split's membership changes. `fitActive` fits every visible pane.
-- **Tab order** = insertion order of the `tabs` Map (Ctrl+Tab, Alt+1..9, saved order). Each project's list shows its open
-  tabs first in that order (`tabRow`; a session open twice gets a row per tab), then its other sessions by mtime.
-  Reorder (`wireReorder` on `#projects`): dropping an open tab's row on another open row of the same project inserts it
-  before/after (upper/lower half; `.drop-before` / `.drop-after` draw the line), via `moveTab`, which rebuilds the Map and
-  calls `saveTabs`. Rows carry `data-tab`; closed sessions and other projects' rows refuse the drop. The terminal
-  `#dropzone` is a separate area, so split drops are unaffected; `renderSidebar` stays paused until `endDrag`.
+- **Tab order** = order of the `tabs` Map, newest first (Ctrl+Tab, Alt+1..9, saved order). `createTab` puts a new tab
+  first (`toFront`, which rebuilds the Map and calls `saveTabs`; `restoreTabs` passes `append` to keep the saved order), and
+  `addToSplit` moves the whole group to the front, so a split is on top and unsplitting moves no row. Each project's list
+  shows its open tabs first in that order (`tabRow`; a session open twice gets a row per tab), then its other sessions by
+  mtime. No drag-to-reorder. Labels ("Project 2", "PowerShell 2") number by `seq` (creation order), not by position, so they
+  don't renumber when a tab opens.
 - **Closing**: `Ctrl+W`, the top-bar `×` (`#close-tab`) and each pane header's `×` all call `closeTab`. It only asks "End this session?" when
   Claude is working in the tab (`isWorking`) or a dev server started from it is listening (`ports`, owner = this tab); idle tabs close silently.
 - **Notifications** (`trackTab` / `notifyTab` in renderer.js, `notify` in main.js): "<project>: Needs input" or

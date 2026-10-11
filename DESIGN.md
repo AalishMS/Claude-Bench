@@ -53,7 +53,9 @@ So a future accent setting only has to call `document.documentElement.style.setP
 Never hard-code the blue, or a tint of it, anywhere else (CSS, renderer, inline styles).
 
 Primary appears **only** on: primary buttons, focus rings, progress-meter fills, the checked checkbox, the
-"needs attention" status dot, drag-and-drop targets (split drop preview, reorder insertion line) and the sidebar's split group. Nothing else gets it.
+"needs attention" status dot, drag-and-drop targets (split drop preview) and the sidebar's split group. Nothing else gets it. The one exception to
+"single accent": with several split groups, groups after the first take `--group-1..4` (violet, teal, rose, orange,
+away from the status hues) so they can be told apart; a lone group is always `--primary`.
 
 ### Status colors
 
@@ -103,12 +105,13 @@ no outline, no other color, no background change. Panes clip their content so no
 would drop under ~100 columns the right sidebar hides itself and returns when there is room (see CLAUDE.md).
 
 ### Split group (sidebar)
-Like a browser tab group, but quiet: no box or border. The split's members share a 3 px `--primary` rail (80 % mixed
-with `--foreground`, rounded on its right end) along the sidebar's left edge and a barely-there `--primary` 7 % tint
-(`rounded-md`). While a tab outside the split is showing, the tint goes and the rail dims to 45 %; clicking the header
-brings the split back. Header 22 px: columns (or rows, when stacked) icon in the dot column, "Split view" 11 px / 500
+Like a browser tab group, but quiet: no box or border. The split's members share a 3 px rail in the group's color `--g`
+(80 % mixed with `--foreground`, rounded on its right end) along the sidebar's left edge and a barely-there `--g` 7 % tint
+(`rounded-md`). `--g` is `--primary` for a lone group; with several groups each keeps the color it got when created
+(`.g0`..`.g4`, the lowest free one). While the group isn't on screen, the tint goes and the rail dims to 45 %; clicking
+the header shows it. Header 22 px: columns (or rows, when stacked) icon in the dot column, "Split view" 11 px / 500
 `--muted-foreground`, a `--faint` count, and a hover-only 20 px ghost `×` that unsplits. Rows keep their normal
-padding, so the dot column stays at 28 px. The group lives in its project's list; when members come from
+padding, so the dot column stays at 28 px. The group lives in its project's list, at its first member's place in tab order; when members come from
 different projects it sits at the top of the list and each row shows its project name (11 px `--faint`) in place of the time.
 
 ### Settings page
@@ -149,10 +152,9 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   11 px `--faint` line under it (`branch · 3 changed`, the branch truncates first). A collapsed active project gets
   the selected background.
 - Folder icon: the same `folder` icon for every project, 16 px in an 18 px slot, `--muted-foreground`.
-- Session list order: the project's open tabs first, in tab order, then its other sessions newest first. Dragging an
-  open tab's row between the open rows of the same project reorders tabs: a 2 px `--primary` 70% line (the split drop
-  preview's outline tint) sits in the gap where it would land, from the status-dot column (28 px) to the row's right padding. Nothing else moves
-  while dragging.
+- Session list order: newest first throughout. The project's open tabs first, in tab order (a new tab goes on top; a
+  split group moves to the top when it forms or gains a member, so unsplitting moves nothing), then its other sessions
+  newest first. No drag-to-reorder.
 - Session rows: no guide line. Columns line up: the status dot sits under the folder icon (slot at 28 px),
   titles start at 52 px like the project name. Title 13 px with ellipsis; time 11 px `--faint` on the right. Rows
   backed by an open tab show `×` in place of the time on hover (middle-click closes too). Active = weight 500.
