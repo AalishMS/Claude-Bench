@@ -760,6 +760,11 @@ async function sessionInfo(cwd, sessionId) {
     } catch { /* no subagents */ }
   }
   model = model || settings?.model || null;
+  // A bare alias from settings ("sonnet") has no version: use the one model of that family known in modelSettings.
+  if (model && /^[a-z]+$/i.test(model)) {
+    const ids = Object.keys(settings?.modelSettings || {}).filter((k) => k.startsWith(`claude-${model.toLowerCase()}-`));
+    if (ids.length === 1) model = ids[0];
+  }
   effort = effort || defaultEffort(settings, model);
   const now = Date.now();
   agents = agents.filter(Boolean)
