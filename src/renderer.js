@@ -206,8 +206,11 @@ const mcpBy = new Map(); // project path -> { ok, servers: [{ name, status, labe
 const definedBy = new Map(); // project path -> [{ name, model }] subagents defined in ~/.claude/agents and <project>/.claude/agents
 
 const SESSIONS_SHOWN = 8;
-const CONTEXT_WINDOW = 200000; // not stored in transcripts: assume 200k, or 1M once a session has gone past it
+// The window size is not stored in transcripts: 1M for Opus (what /context reports) or a "[1m]" model, else 200k
+// until a session has gone past it.
+const CONTEXT_WINDOW = 200000;
 const CONTEXT_WINDOW_LARGE = 1000000;
+const largeWindow = (model) => /opus|\[1m\]/i.test(model || '');
 
 // Terminal typography. A light body weight with a clearly heavier bold, and generous line spacing, so
 // headings, prose, code and dim "thinking"/tool lines stay distinguishable. Size is user-adjustable (Ctrl +/-/0).
@@ -1514,7 +1517,7 @@ function closeMenu() {
 const fmtTok = (n) => (n < 1000 ? String(n)
   : n < 1e4 ? `${(n / 1e3).toFixed(1)}k`
   : n < 1e6 ? `${Math.round(n / 1e3)}k`
-  : `${(n / 1e6).toFixed(1)}M`);
+  : `${+(n / 1e6).toFixed(1)}M`);
 const modelName = (m) => (m || 'unknown').replace(/^claude-/, '');
 /** A limit whose window already reset counts as 0% until the next window starts. */
 const limitPct = (l) => (l.resetsAt && l.resetsAt < Date.now() ? 0 : l.percent);
@@ -1532,7 +1535,8 @@ function contextInfo() {
   if (!tab || tab.kind !== 'claude') return null;
   const session = (sessionsBy[tab.project.path] || []).find((s) => s.id === tab.sessionId) || null;
   if (!session?.ctx) return { tab, session, pct: null };
-  const win = session.ctx > CONTEXT_WINDOW ? CONTEXT_WINDOW_LARGE : CONTEXT_WINDOW;
+  const model = infoBy.get(tab.id)?.model || session.model;
+  const win = session.ctx > CONTEXT_WINDOW || largeWindow(model) ? CONTEXT_WINDOW_LARGE : CONTEXT_WINDOW;
   return { tab, session, win, pct: Math.min(100, Math.round((session.ctx / win) * 100)) };
 }
 
@@ -1616,7 +1620,7 @@ const DETAILS = {
       h('span', { class: `meter big ${levelOf(c.pct)}` }, h('i', { style: `width:${c.pct}%` })),
       dRow('Used', `${fmtTok(c.session.ctx)} of ${fmtTok(c.win)} (${c.pct}%)`),
       dRow('Model', modelName(c.session.model)),
-      dNote('Approximate: the window size is assumed (200k, or 1M once a session passes 200k). Type /context in the tab for exact numbers.'));
+      dNote('Approximate: the window size is assumed (1M for Opus, else 200k until a session passes it). Type /context in the tab for exact numbers.'));
   },
 
   state() {
@@ -1910,7 +1914,7 @@ function renderRside(force = false) {
 
   const lvl = ctx?.pct != null ? levelOf(ctx.pct) : '';
   const head = ctx?.pct != null
-    ? h('div', { class: 'ctx-head', title: 'Approximate: the window size is assumed (200k, or 1M once a session passes 200k). Type /context in the tab for exact numbers.' },
+    ? h('div', { class: 'ctx-head', title: 'Approximate: the window size is assumed (1M for Opus, else 200k until a session passes it). Type /context in the tab for exact numbers.' },
         h('div', { class: 'ctx-line' },
           h('span', { class: 'ctx-title' }, 'Context'),
           h('span', { class: 'ctx-val' }, `${fmtTok(ctx.session.ctx)} / ${fmtTok(ctx.win)}`)),
