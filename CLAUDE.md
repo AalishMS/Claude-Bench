@@ -166,8 +166,8 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   `rsideForced` until the split's membership changes. `fitActive` fits every visible pane.
 - **Tab order** = order of the `tabs` Map, newest first (Ctrl+Tab, Alt+1..9, saved order). Exception: a reopened past session
   (`resumeId`, not a fork or restore) is `parked`: no `toFront`, and `renderSidebar` leaves its row in the project's session list
-  at its mtime slot (never folded behind "Show N more"). `trackTab` unparks it at the first working stretch (the first prompt) and
-  moves it to the front; `addToSplit` unparks too. `createTab` puts any other new tab
+  at its mtime slot (never folded behind "Show N more"). `unpark` (first Enter typed in the tab, `wireTerminal`) moves it to the front;
+  `addToSplit` and `restartTab` clear the flag too. `createTab` puts any other new tab
   first (`toFront`, which rebuilds the Map and calls `saveTabs`; `restoreTabs` passes `append` to keep the saved order), and
   `addToSplit` moves the whole group to the front, so a split is on top and unsplitting moves no row. Each project's list
   shows its open tabs first in that order (`tabRow`; a session open twice gets a row per tab), then its other sessions by

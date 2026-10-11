@@ -448,7 +448,6 @@ function trackTab(t) {
   if (t.kind !== 'claude' || t.status !== 'running') return;
   const now = Date.now();
   if (isWorking(t)) {
-    if (t.parked && t.title) { t.parked = false; toFront([t.id]); renderSidebar(true); } // first prompt: the row moves up
     if (!t.run) t.run = { start: now };
     t.run.last = now;
     t.notified = false;
@@ -614,10 +613,20 @@ async function startPty(tab) {
   renderStatus();
 }
 
+/** A reopened past session stops keeping its place: it joins the open tabs at the front (`front` false: just clear the flag). */
+function unpark(tab, front = true) {
+  if (!tab.parked) return;
+  tab.parked = false;
+  if (front) { toFront([tab.id]); renderSidebar(true); }
+}
+
 function wireTerminal(tab) {
   const { term, host } = tab;
 
-  term.onData((d) => api.ptyWrite(tab.id, d));
+  term.onData((d) => {
+    if (tab.parked && d.includes('\r')) unpark(tab); // Enter = the first prompt: the row moves up
+    api.ptyWrite(tab.id, d);
+  });
   term.onResize(({ cols, rows }) => { api.ptyResize(tab.id, cols, rows); autoRside(); });
   term.onTitleChange((t) => { tab.title = t; });
   // OSC 9 (iTerm2) and 777 (notify): what Claude sends when its notification channel is set to one of those.
@@ -865,6 +874,7 @@ function showOverlay(tab, message, isError = false) {
 /** `mode`: 'resume' = the tab's current session (`--resume`), 'fresh' = a new session, else the same command as before. */
 async function restartTab(tab, mode) {
   tab.host.querySelector('.overlay')?.remove();
+  unpark(tab, false);
   if (mode === 'resume') { tab.resumeId = tab.sessionId; tab.args = ['--resume']; tab.fork = false; }
   if (mode === 'fresh') { tab.resumeId = null; tab.args = []; tab.fork = false; }
   tab.term.write(`\r\n\x1b[2m— ${mode === 'resume' ? 'resuming' : 'restarting'} —\x1b[0m\r\n`);
@@ -1019,7 +1029,7 @@ function addToSplit(id, at, below = false) {
     splits.unshift({ ids, cx: 0.5, ry: 0.5, v: below, color });
   }
   rsideForced = false;
-  for (const x of ids) { const t = tabs.get(x); if (t) t.parked = false; }
+  for (const x of ids) { const t = tabs.get(x); if (t) unpark(t, false); }
   toFront(ids);
 }
 
@@ -1645,7 +1655,11 @@ function renderSidebar(force = false) {
     // Open tabs first, in tab order (newest first), then the project's other sessions, newest first.
     // A reopened past session (parked, not in a split) stays among them at its own place until its first prompt.
     // Only while its transcript is listed (a restarted-as-new tab has no sessionId, so it needs its open row).
-    const open = q ? [] : tabsOf(p.path).filter((t) => !(t.parked && !groupOf(t.id) && loaded?.some((s) => s.id === t.sessionId)));
+    const mine = tabsOf(p.path);
+    const listed = loaded && mine.some((t) => t.parked) ? new Set(loaded.map((s) => s.id)) : null;
+    const inPlace = new Set(); // session ids of parked tabs whose row stays in the list below
+    for (const t of mine) if (t.parked && listed?.has(t.sessionId) && !groupOf(t.id)) inPlace.add(t.sessionId);
+    const open = q ? [] : mine.filter((t) => !inPlace.has(t.sessionId));
     const openIds = new Set(open.map((t) => t.sessionId));
     const rest = matches.filter((s) => !openIds.has(s.id));
     const isActive = p.path === activeProject;
@@ -1653,8 +1667,7 @@ function renderSidebar(force = false) {
     let list = null;
     if (isOpen && (loaded || open.length)) {
       const all = q || showMore.has(p.path);
-      const parkedIds = new Set(tabsOf(p.path).filter((t) => t.parked).map((t) => t.sessionId));
-      const shown = all ? rest : rest.filter((s, i) => i < SESSIONS_SHOWN || parkedIds.has(s.id)); // a parked tab's row is never folded away
+      const shown = all ? rest : rest.filter((s, i) => i < SESSIONS_SHOWN || inPlace.has(s.id)); // a parked tab's row is never folded away
       const hidden = rest.length - shown.length;
       list = h('div', { class: 'sessions' },
         openRows(open, p),
