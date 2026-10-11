@@ -959,6 +959,16 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+/** Code.exe: the per-user or system install, else next to the `code.cmd` shim on PATH (it lives in <install>\bin). */
+function findVsCode() {
+  const dirs = [
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code'),
+    path.join(process.env.ProgramFiles || '', 'Microsoft VS Code'),
+    ...(process.env.PATH || '').split(';').filter((d) => d && fs.existsSync(path.join(d, 'code.cmd'))).map((d) => path.dirname(d)),
+  ];
+  return dirs.map((d) => path.join(d, 'Code.exe')).find((f) => fs.existsSync(f)) || null;
+}
+
 // A folder passed on the command line: `claude-bench.exe C:\some\project`.
 // In dev the app's own folder ("electron .") is also an argument, so skip that one.
 function pathFromArgv(argv) {
@@ -1077,11 +1087,12 @@ function registerIpc() {
         execFile('/usr/bin/open', ['-a', 'Visual Studio Code', p], (err) => resolve(err ? { ok: false, error: 'Could not start VS Code' } : { ok: true }));
       });
     }
+    const exe = findVsCode();
+    if (!exe) return { ok: false, error: 'VS Code not found' };
     return new Promise((resolve) => {
-      // `code` is a .cmd shim on PATH; fall back to the per-user install when PATH lacks it.
-      const exe = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code', 'Code.exe');
-      const [file, args] = fs.existsSync(exe) ? [exe, [p]] : ['cmd.exe', ['/d', '/c', 'code', p]];
-      const child = spawn(file, args, { detached: true, stdio: 'ignore', windowsHide: true });
+      // No windowsHide: it puts SW_HIDE in STARTUPINFO, and Windows applies that to VS Code's first window,
+      // so a cold start ran with no visible window at all.
+      const child = spawn(exe, [p], { detached: true, stdio: 'ignore' });
       child.on('error', () => resolve({ ok: false, error: 'Could not start VS Code' }));
       child.on('spawn', () => { child.unref(); resolve({ ok: true }); });
     });
