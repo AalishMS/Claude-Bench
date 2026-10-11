@@ -60,7 +60,7 @@ DESIGN.md        design system (shadcn/ui + tweaks): tokens, component recipes, 
 scripts/         make-icon.js, create-shortcut.ps1
 ```
 
-- **State** lives in `%APPDATA%\claude-bench\state.json` (projects, ui flags, window bounds). Written
+- **State** lives in `%APPDATA%\claude-bench\state.json` (projects, ui flags incl. sidebar widths, window bounds). Written
   synchronously via tmp file + rename. The app used to be "Claude Terminal": if no state exists yet, the loader
   reads `%APPDATA%\claude-terminal\state.json` once (`legacyStateFile`).
 - **Sessions**: `cmd.exe /d /c claude [--continue|--resume]` for Claude tabs (resolves `claude.cmd` and

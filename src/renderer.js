@@ -1200,6 +1200,40 @@ function setFontSize(size) {
   requestAnimationFrame(fitActive);
 }
 
+// Sidebar widths: the CSS vars hold the live value, ui.sidebarW / ui.rsideW the saved one.
+const PANEL_W = {
+  sidebarW: { min: 180, max: 480, def: 232, cssVar: '--sidebar-w' },
+  rsideW: { min: 240, max: 600, def: 300, cssVar: '--rside-w' },
+};
+const clampW = (key, w) => Math.min(PANEL_W[key].max, Math.max(PANEL_W[key].min, Math.round(w) || PANEL_W[key].def));
+function applyPanelW(key, w) {
+  ui[key] = clampW(key, w);
+  document.documentElement.style.setProperty(PANEL_W[key].cssVar, ui[key] + 'px');
+}
+
+/** Drag handle on a divider. `widthAt(clientX)` gives the panel width for a pointer position; the terminal refits via its ResizeObserver. */
+function wireResizer(el, key, widthAt) {
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    el.setPointerCapture(e.pointerId);
+    el.classList.add('drag');
+    document.body.classList.add('resizing');
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (el.hasPointerCapture(e.pointerId)) applyPanelW(key, widthAt(e.clientX));
+  });
+  const end = (e) => {
+    if (!el.hasPointerCapture(e.pointerId)) return;
+    el.releasePointerCapture(e.pointerId);
+    el.classList.remove('drag');
+    document.body.classList.remove('resizing');
+    api.setUi({ [key]: ui[key] });
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('dblclick', () => { applyPanelW(key, PANEL_W[key].def); api.setUi({ [key]: ui[key] }); });
+}
+
 /** Toggle + logo live in the sidebar's top row; while it is collapsed they move to the start of the top bar. */
 function placeBrand() {
   document.body.classList.toggle('sidebar-collapsed', !ui.sidebar);
@@ -1444,6 +1478,9 @@ function wireGlobalEvents() {
   $('#toggle-sidebar').addEventListener('click', () => setSidebar(!ui.sidebar));
   $('#toggle-rside').addEventListener('click', () => setServers(!ui.servers));
 
+  wireResizer($('#rz-left'), 'sidebarW', (x) => x);
+  wireResizer($('#rz-right'), 'rsideW', (x) => window.innerWidth - x);
+
   new ResizeObserver(() => requestAnimationFrame(fitActive)).observe($('#terminals'));
 }
 
@@ -1461,6 +1498,7 @@ async function init() {
   projects = state.projects;
   ui = state.ui;
   ui.collapsed ||= [];
+  for (const key of Object.keys(PANEL_W)) applyPanelW(key, ui[key]);
   for (const p of ui.expanded || []) expanded.add(p);
   placeBrand();
   document.body.classList.toggle('rside-open', ui.servers);

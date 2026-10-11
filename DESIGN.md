@@ -100,7 +100,7 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 (no grey placeholder).
 
 ### Sidebar: shadcn `Sidebar`, lightened
-- `#sidebar` is a full-height column: bg `--sidebar` (the darkest surface), width 256, 1 px `--sidebar-border` on the
+- `#sidebar` is a full-height column: bg `--sidebar` (the darkest surface), width 232 by default (resizable, see below), 1 px `--sidebar-border` on the
   terminal side. Nothing inside has its own box, card, tint or border.
 - Top row (40 px, draggable): sidebar toggle, logo, app name (`#brand`). While collapsed, `#brand` moves to the start
   of the top bar so the toggle stays reachable.
@@ -121,7 +121,8 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   gauge + `10%`, context as the pie icon + `24%`, running as a status dot + `3 running`. Icons `--faint`, values
   `--foreground`, colored only at warn/crit levels. Weekly usage lives in the tooltip and the popover. Each opens its
   `#detail` popover; hover `--sidebar-hover`, `.on` = bg `--sidebar-accent`.
-- The right sidebar (`#rside`, 300 px) uses the `--background` surface (same as the terminal) with a 1 px `--sidebar-border` on its terminal side.
+- **Resizing**: both sidebars are drag-resizable (`.rz` handles, 4 px overlaying the divider with no layout width; hover/drag = `--primary` tint; double-click resets). Left 180–480 (default 232), right 240–600 (default 300), saved as `ui.sidebarW` / `ui.rsideW` and applied to `--sidebar-w` / `--rside-w`. Content sits 4 px from the left edge of the sidebar (8 px right).
+- The right sidebar (`#rside`, 300 px by default) uses the `--background` surface (same as the terminal) with a 1 px `--sidebar-border` on its terminal side.
   Top: **Context** header (12 px muted title + `150k / 200k`, the % at 20 px/600 colored only at warn/crit, a `.meter.big`).
   Then collapsible sections (32 px muted 12 px/500 header with a chevron and a faint count; open by default): **MCPs**,
   **Subagents**, **Running**. Rows are the same flat 30 px inset rows: 8 px circular status dot (or a 14 px check for finished

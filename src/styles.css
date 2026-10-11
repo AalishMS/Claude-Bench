@@ -32,7 +32,7 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 5%);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 10%), 0 2px 4px -2px rgb(0 0 0 / 10%);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
-  --sidebar-w: 256px;
+  --sidebar-w: 232px; /* both widths are user-resizable (ui.sidebarW / ui.rsideW) */
   --rside-w: 300px;
   --mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
 }
@@ -98,7 +98,7 @@ button { font: inherit; color: inherit; }
 #topbar .btn, #brand .btn { -webkit-app-region: no-drag; }
 
 /* toggle + logo + name: the sidebar's top row (draggable), or the top bar's start while the sidebar is collapsed */
-#brand { display: flex; align-items: center; gap: 8px; flex: none; height: 40px; padding: 0 8px; -webkit-app-region: drag; }
+#brand { display: flex; align-items: center; gap: 8px; flex: none; height: 40px; padding: 0 8px 0 4px; -webkit-app-region: drag; }
 #brand .logo { width: 20px; height: 20px; display: inline-flex; }
 #brand .logo svg { width: 100%; height: 100%; }
 .brand-name { font-weight: 500; white-space: nowrap; }
@@ -117,13 +117,23 @@ body.sidebar-collapsed .brand-name { display: none; }
 #rside { width: var(--rside-w); background: var(--background); border-left: 1px solid var(--sidebar-border); display: none; overflow-x: hidden; overflow-y: auto; padding-bottom: 12px; }
 body.sidebar-collapsed #sidebar { display: none; }
 body.rside-open #rside { display: flex; }
+/* drag handles on the two dividers: 4px overlaying the panel edge, zero layout width */
+.rz { position: relative; z-index: 6; flex: none; width: 4px; cursor: col-resize; -webkit-app-region: no-drag; transition: background-color 0.15s; }
+#rz-left { margin-left: -4px; }
+#rz-right { margin-right: -4px; display: none; }
+body.rside-open #rz-right { display: block; }
+body.sidebar-collapsed #rz-left { display: none; }
+.rz:hover, .rz.drag { background: color-mix(in srgb, var(--primary) 60%, transparent); }
+body.resizing { cursor: col-resize; }
+body.resizing * { pointer-events: none; }
+body.resizing .rz { pointer-events: auto; }
 #main { position: relative; flex: 1; min-width: 0; background: var(--background); }
 
 
 /* ----------------------------------------------------------- projects --- */
 /* Flat rows, no boxes or guide lines. Columns line up: a project's name and its sessions' titles both start at
    52px, and a session's status dot sits under the project's folder icon. 2px between rows, 12px between groups. */
-#projects { flex: 1; display: flex; flex-direction: column; gap: 12px; overflow-x: hidden; overflow-y: auto; padding: 0 8px 12px; }
+#projects { flex: 1; display: flex; flex-direction: column; gap: 12px; overflow-x: hidden; overflow-y: auto; padding: 0 8px 12px 4px; }
 .group, .sessions { display: flex; flex-direction: column; gap: 2px; flex: none; }
 .project { display: flex; align-items: center; gap: 6px; height: 32px; flex: none; padding: 0 4px 0 6px; border-radius: var(--radius-md); cursor: pointer; }
 .project:hover { background: var(--sidebar-hover); }
@@ -158,7 +168,7 @@ body.rside-open #rside { display: flex; }
 .g.muted { color: var(--faint); }
 
 /* session search: a plain row (no input box); hover/focus get the row highlight */
-.search { display: flex; align-items: center; gap: 8px; height: 32px; flex: none; margin: 0 8px 8px; padding: 0 8px 0 9px; border-radius: var(--radius-md); color: var(--faint); cursor: text; }
+.search { display: flex; align-items: center; gap: 8px; height: 32px; flex: none; margin: 0 8px 8px 4px; padding: 0 8px 0 9px; border-radius: var(--radius-md); color: var(--faint); cursor: text; }
 .search:hover, .search:focus-within { background: var(--sidebar-hover); color: var(--muted-foreground); }
 .search .ico { width: 14px; height: 14px; }
 .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--foreground); font: inherit; user-select: text; }
@@ -186,7 +196,7 @@ body.rside-open #rside { display: flex; }
 
 /* footer: one slim row, icon buttons left, compact usage / context / running text right (each opens #detail) */
 /* every stat is icon (14px slot) + value, same height and padding, 2px apart; the row aligns with the list's 8px inset */
-#side-foot { display: flex; align-items: center; gap: 2px; height: 44px; flex: none; padding: 0 8px; }
+#side-foot { display: flex; align-items: center; gap: 2px; height: 44px; flex: none; padding: 0 8px 0 4px; }
 .fstats { display: flex; align-items: center; gap: 2px; min-width: 0; margin-left: auto; }
 .fstat { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--foreground); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; transition: background-color 0.15s, color 0.15s; }
 .fstat:hover { background: var(--sidebar-hover); }

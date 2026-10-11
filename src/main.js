@@ -15,7 +15,7 @@ app.setAppUserModelId('com.local.claudebench');
 
 const defaults = {
   projects: [], // [{ path, name }]
-  ui: { sidebar: true, servers: false, fontSize: 14, expanded: [], collapsed: [] }, // expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut
+  ui: { sidebar: true, servers: false, sidebarW: 232, rsideW: 300, fontSize: 14, expanded: [], collapsed: [] }, // expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut
   bounds: null,
   maximized: false,
 };
