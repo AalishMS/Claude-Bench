@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const on = (channel, cb) => ipcRenderer.on(channel, (_e, ...args) => cb(...args));
 
 contextBridge.exposeInMainWorld('api', {
+  platform: process.platform,
   getState: () => ipcRenderer.invoke('state:get'),
   addProjects: () => ipcRenderer.invoke('projects:add'),
   removeProject: (p) => ipcRenderer.invoke('projects:remove', p),

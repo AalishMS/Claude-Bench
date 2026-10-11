@@ -62,6 +62,16 @@ const LOGO_SVG = `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="3" y="3" 
 
 const baseName = (p) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
 
+// macOS: app shortcuts use Cmd so Ctrl stays Claude's (Ctrl+Tab stays, Cmd+Tab is the OS switcher; Alt+1..9 is Cmd+1..9).
+const IS_MAC = api.platform === 'darwin';
+const mod = (e) => (IS_MAC ? e.metaKey : e.ctrlKey);
+/** Shortcut text for tooltips: "Ctrl+Shift+S" on Windows, "⌘⇧S" on macOS. */
+const kbd = (s) => (IS_MAC
+  ? s.replace(/Ctrl\+Alt\+/g, '⌘⌥').replace(/Alt\+/g, '⌘').replace(/Ctrl\+(?!Tab)/g, '⌘').replace(/Shift\+/g, '⇧')
+  : s);
+const SHELL_LABEL = IS_MAC ? 'Shell' : 'PowerShell';
+const FILES_APP = IS_MAC ? 'Finder' : 'Explorer';
+
 // --------------------------------------------------------------- state ----
 
 let projects = [];
@@ -92,7 +102,7 @@ const CONTEXT_WINDOW_LARGE = 1000000;
 // Terminal typography. A light body weight with a clearly heavier bold, and generous line spacing, so
 // headings, prose, code and dim "thinking"/tool lines stay distinguishable. Size is user-adjustable (Ctrl +/-/0).
 const TERM_FONT = {
-  fontFamily: '"Cascadia Mono", Consolas, monospace',
+  fontFamily: '"Cascadia Mono", Consolas, Menlo, monospace', // Menlo: macOS
   fontWeight: '300',
   fontWeightBold: '700',
   minimumContrastRatio: 3, // keeps brightBlack text (shell flags, hints) readable now that brightBlack is a dark bar
@@ -193,6 +203,10 @@ async function openSession(project, { kind = 'claude', args = [], resumeId = nul
     scrollback: 20000,
     allowProposedApi: true,
     theme: XTERM_THEME,
+    // macOS (both are already the defaults on Windows): right-click must not select a word, or the contextmenu
+    // handler copies it instead of pasting; Option acts as Meta so Claude's Option+P/T/B/F shortcuts work.
+    rightClickSelectsWord: false,
+    macOptionIsMeta: IS_MAC,
   });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
@@ -258,7 +272,8 @@ function wireTerminal(tab) {
       if (e.type === 'keydown') { e.preventDefault(); api.ptyWrite(tab.id, '\n'); }
       return false;
     }
-    if (e.type !== 'keydown' || !e.ctrlKey || e.altKey) return true;
+    // macOS: Ctrl+C/V belong to Claude (interrupt, image paste); Cmd+C/V come through the Edit menu as native copy/paste.
+    if (IS_MAC || e.type !== 'keydown' || !e.ctrlKey || e.altKey) return true;
     const k = e.key.toLowerCase();
     if (k === 'c' && (term.hasSelection() || e.shiftKey)) {
       e.preventDefault();
@@ -687,7 +702,7 @@ function renderSplit() {
   const n = ids.length;
   box.classList.toggle('split', n > 1);
   $('#split-tab').classList.toggle('on', !!split);
-  $('#split-tab').title = split ? 'Back to one terminal (Ctrl+Shift+\\)' : 'New session beside this one (Ctrl+\\)';
+  $('#split-tab').title = kbd(split ? 'Back to one terminal (Ctrl+Shift+\\)' : 'New session beside this one (Ctrl+\\)');
 
   for (const t of tabs.values()) {
     const i = ids.indexOf(t.id);
@@ -728,7 +743,7 @@ function renderPanes() {
       h('span', { class: 's-mark' }, tabDot(t) ? h('i', { class: `dot ${tabDot(t)}` }) : null),
       h('span', { class: 'ph-title' }, paneTitle(t)),
       h('button', {
-        class: 'btn ghost icon sm', title: 'Close session (Ctrl+W)',
+        class: 'btn ghost icon sm', title: kbd('Close session (Ctrl+W)'),
         onclick: (e) => { e.stopPropagation(); closeTab(id); },
       }, ico('x')));
   }
@@ -740,7 +755,7 @@ function paneTitle(t) {
   if (known) return known.title;
   if (t.kind === 'shell') {
     const shells = tabsOf(t.project.path).filter((x) => x.kind === 'shell');
-    return `PowerShell${shells.length > 1 ? ' ' + (shells.indexOf(t) + 1) : ''}`;
+    return `${SHELL_LABEL}${shells.length > 1 ? ' ' + (shells.indexOf(t) + 1) : ''}`;
   }
   return t.resumeId ? 'Resumed session' : t.args[0] === '--continue' ? 'Continued session' : 'New session';
 }
@@ -906,7 +921,7 @@ const dotMark = (state) => h('span', { class: 's-mark' }, state ? h('i', { class
 /** Rows backed by an open tab show × in place of their time on hover; middle-click closes too, as on the old tabs. */
 function closeButton(t) {
   return h('button', {
-    class: 'btn ghost icon sm s-close', title: 'Close (Ctrl+W)',
+    class: 'btn ghost icon sm s-close', title: kbd('Close (Ctrl+W)'),
     onclick: (e) => { e.stopPropagation(); closeTab(t.id); },
   }, ico('x'));
 }
@@ -917,8 +932,8 @@ function sessionRow(p, s, activeSession) {
   return h('div', {
     class: `session${s.id === activeSession ? ' active' : ''}${t ? ' has-tab' : ''}`,
     ...rowDrag({ id: t?.id || null, project: p, resumeId: s.id }),
-    title: `${s.title}\n${new Date(s.mtime).toLocaleString()}\nDrag onto the terminal (or Ctrl+click) to open beside the current session`,
-    onclick: (e) => (e.ctrlKey && activeId
+    title: `${s.title}\n${new Date(s.mtime).toLocaleString()}\nDrag onto the terminal (or ${IS_MAC ? '⌘' : 'Ctrl+'}click) to open beside the current session`,
+    onclick: (e) => (mod(e) && activeId
       ? besideRow(t, () => openSession(p, { resumeId: s.id, beside: true }))
       : openSessionRow(p, s)),
     onauxclick: auxClose(t),
@@ -940,8 +955,8 @@ function pendingRow(t) {
   return h('div', {
     class: `session has-tab${t.kind === 'claude' ? ' pending' : ''}${t.id === activeId ? ' active' : ''}`,
     ...rowDrag({ id: t.id, project: t.project, resumeId: null }),
-    title: t.kind === 'shell' ? `PowerShell in ${t.project.path}` : 'Its title appears after the first reply',
-    onclick: (e) => { if (e.ctrlKey && activeId) besideRow(t, null); else activate(t.id); },
+    title: t.kind === 'shell' ? `${SHELL_LABEL} in ${t.project.path}` : 'Its title appears after the first reply',
+    onclick: (e) => { if (mod(e) && activeId) besideRow(t, null); else activate(t.id); },
     onauxclick: auxClose(t),
   },
     dotMark(tabDot(t)),
@@ -1058,8 +1073,8 @@ function toggleMenu(p, anchor) {
   const el = $('#menu');
   el.replaceChildren(
     item('redo', 'Continue last conversation', () => openSession(p, { args: ['--continue'] })),
-    item('terminal', 'Open PowerShell here', () => openSession(p, { kind: 'shell' })),
-    item('folder', 'Show in Explorer', () => api.openFolder(p.path)),
+    item('terminal', `Open ${SHELL_LABEL} here`, () => openSession(p, { kind: 'shell' })),
+    item('folder', `Show in ${FILES_APP}`, () => api.openFolder(p.path)),
     h('div', { class: 'menu-sep' }),
     item('trash', 'Remove from list', () => removeProject(p), true));
   el.hidden = false;
@@ -1243,10 +1258,10 @@ function renderWelcome() {
                 h('span', { class: 'proj-go' }, ico('arrowRight')))))
         : h('button', { class: 'btn primary', onclick: addProjects }, ico('folderPlus'), 'Add project'),
       h('div', { class: 'hint' },
-        h('span', {}, h('kbd', {}, 'Ctrl+T'), ' new session'),
+        h('span', {}, h('kbd', {}, kbd('Ctrl+T')), ' new session'),
         h('span', {}, h('kbd', {}, 'Ctrl+Tab'), ' switch'),
-        h('span', {}, h('kbd', {}, 'Ctrl+S'), ' sidebar'),
-        h('span', {}, h('kbd', {}, 'Ctrl+Shift+S'), ' side panel'))));
+        h('span', {}, h('kbd', {}, kbd('Ctrl+S')), ' sidebar'),
+        h('span', {}, h('kbd', {}, kbd('Ctrl+Shift+S')), ' side panel'))));
 }
 
 function renderStatus() {
@@ -1744,22 +1759,25 @@ function wireGlobalEvents() {
   });
 
   // Ctrl+T (new session) and Ctrl+S (sidebar) are taken from Claude Code on purpose; the rest avoid its keys.
+  // mod(e) is Ctrl on Windows and Cmd on macOS (see IS_MAC).
   window.addEventListener('keydown', (e) => {
     let handled = true;
     if (e.key === 'Escape' && menuFor) closeMenu();
     else if (e.key === 'Escape' && detailKind) setDetail(null);
-    else if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === '=' || e.key === '+')) setFontSize(ui.fontSize + 1);
-    else if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === '-' || e.key === '_')) setFontSize(ui.fontSize - 1);
-    else if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key === '0') setFontSize(FONT_SIZE.default);
+    else if (mod(e) && !e.altKey && !e.shiftKey && (e.key === '=' || e.key === '+')) setFontSize(ui.fontSize + 1);
+    else if (mod(e) && !e.altKey && !e.shiftKey && (e.key === '-' || e.key === '_')) setFontSize(ui.fontSize - 1);
+    else if (mod(e) && !e.altKey && !e.shiftKey && e.key === '0') setFontSize(FONT_SIZE.default);
     else if (e.ctrlKey && !e.altKey && e.key === 'Tab') cycleTab(e.shiftKey ? -1 : 1);
-    else if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'w') { if (activeId) closeTab(activeId); }
-    else if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key === '\\') splitHere();
-    else if (e.ctrlKey && !e.altKey && e.shiftKey && (e.key === '|' || e.key === '\\')) unsplit();
-    else if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) focusPane(e.key === 'ArrowRight' ? 1 : -1);
-    else if (e.altKey && !e.ctrlKey && !e.shiftKey && /^[1-9]$/.test(e.key)) {
+    else if (mod(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'w') { if (activeId) closeTab(activeId); }
+    else if (mod(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 't') newSessionHere();
+    else if (mod(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's') setSidebar(!ui.sidebar);
+    else if (mod(e) && !e.altKey && !e.shiftKey && e.key === '\\') splitHere();
+    else if (mod(e) && !e.altKey && e.shiftKey && (e.key === '|' || e.key === '\\')) unsplit();
+    else if (mod(e) && e.altKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) focusPane(e.key === 'ArrowRight' ? 1 : -1);
+    else if ((IS_MAC ? e.metaKey && !e.altKey : e.altKey && !e.ctrlKey) && !e.shiftKey && /^[1-9]$/.test(e.key)) {
       const id = [...tabs.keys()][Number(e.key) - 1];
       if (id) activate(id);
-    } else if (e.ctrlKey && e.shiftKey && !e.altKey) {
+    } else if (mod(e) && e.shiftKey && !e.altKey) {
       const k = e.key.toLowerCase();
       if (k === 't') newSessionHere();
       else if (k === 'w') { if (activeId) closeTab(activeId); }
@@ -1831,6 +1849,12 @@ async function init() {
   $('#open-folder').append(ico('folder'));
   $('#toggle-rside').append(ico('panelRight'));
   $('#search-icon').append(ico('search'));
+  if (IS_MAC) {
+    document.body.classList.add('mac'); // room for the traffic lights (styles.css)
+    for (const el of document.querySelectorAll('[title]')) {
+      el.title = kbd(el.title).replace('PowerShell', SHELL_LABEL).replace('Explorer', FILES_APP);
+    }
+  }
 
   const state = await api.getState();
   projects = state.projects;

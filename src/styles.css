@@ -34,7 +34,7 @@
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
   --sidebar-w: 232px; /* both widths are user-resizable (ui.sidebarW / ui.rsideW) */
   --rside-w: 300px;
-  --mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  --mono: "Cascadia Mono", "Cascadia Code", Consolas, Menlo, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -103,6 +103,9 @@ button { font: inherit; color: inherit; }
 #brand .logo svg { width: 100%; height: 100%; }
 .brand-name { font-weight: 500; white-space: nowrap; }
 #topbar #brand { padding: 0; }
+/* macOS: window buttons (traffic lights) sit at the top-left, where #brand always is, instead of the top-right */
+body.mac #topbar { padding-right: 8px; }
+body.mac #brand, body.mac #topbar #brand { padding-left: 72px; }
 body.sidebar-collapsed .brand-name { display: none; }
 @keyframes pulse { 50% { opacity: 0.3; } }
 

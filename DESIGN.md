@@ -64,13 +64,13 @@ gradients, no glows, no tinted cards.
 ## 2. Typography
 
 - UI font: **Segoe UI Variable** (`"Segoe UI Variable Text", "Segoe UI", system-ui`). This is a tweak: shadcn uses
-  Geist, but bundling it isn't worth it on Windows.
+  Geist, but bundling it isn't worth it on Windows. On macOS `system-ui` resolves to San Francisco.
 - Compact scale (a tweak; shadcn's base is 14 px): **13 px** body, 12 px small / labels, 11 px meta, 14 px
   dialog/section emphasis, 18 px dialog title (`text-lg`), 30 px welcome h1 (`text-3xl`, semibold, `tracking-tight`).
 - Weights: 400 body, 500 for project names, active rows, buttons and labels, 600 for titles.
 - Labels are **sentence case** (shadcn `SidebarGroupLabel`: 12 px, 500, `--muted-foreground`). No uppercase
   tracking-widened labels.
-- Mono (`--mono`, Cascadia Mono): ports, numbers in popovers, kbd.
+- Mono (`--mono`, Cascadia Mono; Menlo on macOS): ports, numbers in popovers, kbd.
 
 ## 3. Components
 
@@ -195,7 +195,8 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - Two columns: the full-height sidebar, then the workspace (top bar, terminal + right sidebar, status bar). The top
   bar and status bar never run under the sidebar.
 - Top bar 40 px (draggable; new-session `+` on the left, right-sidebar toggle and the window controls on the right via
-  `titleBarOverlay`). Status bar 24 px: git branch, changes and path on the left; the active Claude tab's model,
+  `titleBarOverlay`). On macOS the traffic lights sit top-left instead (`trafficLightPosition`), so `body.mac` moves the
+  room from the top bar's right padding to `#brand`'s left padding. Status bar 24 px: git branch, changes and path on the left; the active Claude tab's model,
   effort and subagents, then the running count, on the right. There is no separate info bar.
 - **No badges.** Git info is plain text (`main  2 changed`), colored only by meaning.
 - Lists are flat inset rows; nothing wraps or shifts on hover.
@@ -207,8 +208,9 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 Per-line font size is impossible in a terminal grid, and the app never re-parses Claude's output into "blocks".
 `XTERM_THEME` is the real lever.
 
-- **Typography** (`TERM_FONT` in renderer.js): Cascadia Mono, light body weight (300), bold 700, line height 1.4,
-  slight letter spacing. Size via `Ctrl +` / `Ctrl -` / `Ctrl 0` (10–24, saved in `ui.fontSize`).
+- **Typography** (`TERM_FONT` in renderer.js): Cascadia Mono (Menlo on macOS, which has no light weight), light body
+  weight (300), bold 700, line height 1.4, slight letter spacing. Size via `Ctrl +` / `Ctrl -` / `Ctrl 0` (`⌘` on macOS;
+  10–24, saved in `ui.fontSize`).
 - Claude Code emits the **ANSI 16-color palette** (measured from the xterm buffer): default fg = body, `white` =
   secondary/meta text and rules, `white`+dim = diff context, `brightWhite` on `brightBlack` bg = the user's message bar,
   `brightBlue` = inline code, `brightGreen` = bullets and diff +, `brightRed` = diff -, bold = headings/strong, italic
