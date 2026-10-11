@@ -285,9 +285,14 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   input" reads the screen footer. If Claude's dialog footers change wording, update `awaitingInput`.
 - **No mouse in Claude tabs (clicks in the prompt / on subagent output do nothing, prompt not pinned to the bottom)** =
   Claude fell back to its classic renderer: the buffer is `normal`, not `alternate`, and `term.modes.mouseTrackingMode`
-  is `none`. Claude turns fullscreen off per version after two failed fullscreen starts (`fullscreenAutoDisabled` in
-  `~/.claude.json`); `/tui fullscreen` in any tab clears it, then restart the tabs. Not caused by the app: closing a
-  young tab, quitting and even force-killing the app all let Claude clear its boot canary (tested on v2.1.296).
+  is `none`. A fullscreen start writes `fullscreenBootPending[<pid>]` to `~/.claude.json`, removed on a clean exit or
+  10 s after the first frame; a process that dies with it still there is a strike, and the next launch on the machine
+  runs classic ("didn't finish starting last time"). Two strikes set `fullscreenAutoDisabled` for that version;
+  `/tui fullscreen` in any tab clears it, then restart the tabs. node-pty's Windows `kill()` also TerminateProcess-es
+  every console process, which in Claude's first ~2.5 s beats its clean exit, so closing a young tab or quitting
+  during a restore used to cause strikes. `endSession` in main.js closes only the console for Claude tabs (and ends
+  leftovers after 5 s); it relies on node-pty's private `_agent._getConsoleProcessList` (falls back to `kill()`), so
+  recheck it after a node-pty update (tested on v2.1.296).
 - **Context tile**: the window size is not in the transcript, so `contextWindow(model, used)` in renderer.js derives it from the model id or display name: 1M for current models (Opus/Sonnet 4.6+, Haiku 5+, Fable, Mythos, anything unrecognised) or a `[1m]` model, 200k for Claude 3, Haiku 4.x and Opus/Sonnet up to 4.5 (1M once a session exceeds it). The main tab, the footer tile and each subagent run in the agent popup all use it, each with its own model. Update it when a new model family ships with a different window.
   Plan-limit percentages are not on disk; they come from the undocumented usage endpoint (may change).
 - A hidden window (`document.hidden`) skips all polling, so when driving a test instance over CDP, override `document.hidden`

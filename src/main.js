@@ -198,6 +198,26 @@ function flushSession(id) {
   send('pty:data', id, data);
 }
 
+// Windows: node-pty's kill() closes the console and also TerminateProcess-es every process attached to it. In
+// its first seconds Claude is too busy to beat that, so its fullscreen boot canary stays in ~/.claude.json and the
+// next launch falls back to the classic renderer (two strikes turn fullscreen off for that version). For Claude
+// tabs, close only the console (Claude exits on the close event) and end what is left after 5 s.
+function endSession(s) {
+  const agent = s.pty._agent;
+  if (IS_MAC || s.kind !== 'claude' || typeof agent?._getConsoleProcessList !== 'function') {
+    try { s.pty.kill(); } catch { /* already gone */ }
+    return;
+  }
+  const list = agent._getConsoleProcessList.call(agent).catch(() => []);
+  agent._getConsoleProcessList = () => Promise.resolve([]);
+  try { s.pty.kill(); } catch { /* already gone */ }
+  setTimeout(() => list.then((pids) => {
+    for (const pid of pids) {
+      try { process.kill(pid); } catch { /* exited */ }
+    }
+  }), 5000).unref();
+}
+
 function createSession({ id, cwd, kind, args, resumeId, fork, cols, rows }) {
   if (sessions.has(id)) return { ok: false, error: 'Session already exists' };
   if (!isDir(cwd)) return { ok: false, error: `Folder not found: ${cwd}` };
@@ -1462,9 +1482,7 @@ if (!app.requestSingleInstanceLock()) {
 
 app.on('window-all-closed', () => app.quit());
 app.on('before-quit', () => {
-  for (const s of sessions.values()) {
-    try { s.pty.kill(); } catch { /* already gone */ }
-  }
+  for (const s of sessions.values()) endSession(s);
 });
 
 // ------------------------------------------------------------------ ipc ----
@@ -1525,7 +1543,8 @@ function registerIpc() {
     try { sessions.get(id)?.pty.resize(Math.max(cols, 2), Math.max(rows, 2)); } catch { /* exited */ }
   });
   ipcMain.on('pty:kill', (_e, id) => {
-    try { sessions.get(id)?.pty.kill(); } catch { /* exited */ }
+    const s = sessions.get(id);
+    if (s) endSession(s);
   });
 
   ipcMain.handle('git:status', async (_e, paths) => {
