@@ -104,7 +104,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     `npm start`; if the user denied permission nothing shows and `notify` swallows any error.
   - Reorder: plain HTML5 drag events, no Mac branch.
   - Packaged update: `/bin/bash update.sh` detached with the login shell's PATH (after `shellEnvReady`); waits on the
-    pid with `kill -0`; reopens the bundle (`execPath` three levels up) with `open`. No visible window, so the log is it.
+    pid with `kill -0` (20 s, then `kill -9` on that pid only); reopens the bundle (`execPath` three levels up) with `open`. No visible window, so the log is it.
   - Shortcuts: the `SHORTCUTS` defaults use `M` = Cmd and `JUMP` = Cmd (Windows: Ctrl / Alt); `comboText` draws ⌃⌥⇧⌘,
     and the recorder reads `e.code`, so Option's special characters don't matter. `Cmd+Alt+arrows` resizes panes.
   - Terminal: `macOptionIsMeta` (Claude's Option shortcuts), `rightClickSelectsWord: false` (right-click pastes);
@@ -122,7 +122,9 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   diverged branch, npm) shows git's/npm's message and keeps the app running. Packaged builds can't rebuild while running
   (the exe is locked), so `startExternalUpdate` copies `scripts/update.ps1` (`update.sh` on macOS) to the temp folder
   (git pull may rewrite it), starts it detached and quits. The script waits for the app's pid and any process of the same
-  exe path to end, `git pull --ff-only`, `npm install` if `package(-lock).json` changed, `npm run package[:mac]`, then
+  exe path to end (20 s, then it force-ends them: a copy that closed its window but never exited keeps the exe locked and
+  holds the single-instance lock, so a reopen would quit at once; seen in real use, cause not reproduced; also done
+  before the reopen on failure), `git pull --ff-only`, `npm install` if `package(-lock).json` changed, `npm run package[:mac]`, then
   reopens the exe/.app (tabs restore). Windows: a visible console; on failure it shows the error, waits for Enter and
   reopens the old build. macOS: output in `<userData>/update.log`, opened in TextEdit on failure. Test it against a scratch
   clone (junction its `node_modules`), never the real `dist\`.

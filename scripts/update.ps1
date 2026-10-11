@@ -7,24 +7,37 @@ param([string]$Repo, [int]$AppPid, [string]$Exe)
 
 $Host.UI.RawUI.WindowTitle = 'Updating Claude Bench'
 
+# The app's own process and any process of this exact exe (its helpers keep it locked a moment longer). Matched on the
+# full path of the build being replaced, never on the name, so other copies and dev instances are left alone.
+function AppProcs {
+    @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Id -eq $AppPid -or $_.Path -eq $Exe })
+}
+
+function WaitGone([int]$seconds) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((AppProcs).Count -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+    -not (AppProcs).Count
+}
+
+# A copy that closed its window but never exited holds the single-instance lock, so a reopened exe would quit at once.
+function EndLeftover {
+    if (WaitGone 20) { return $true }
+    Write-Host 'Claude Bench did not exit; ending it...' -ForegroundColor Yellow
+    AppProcs | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+    WaitGone 10
+}
+
 function Finish([string]$err) {
     if ($err) {
         Write-Host "`n$err" -ForegroundColor Red
         Read-Host 'Press Enter to close this window'
     }
-    if (Test-Path $Exe) { Start-Process -FilePath $Exe }
+    if ((Test-Path $Exe) -and (EndLeftover)) { Start-Process -FilePath $Exe }
     exit $(if ($err) { 1 } else { 0 })
 }
 
 Write-Host 'Waiting for Claude Bench to close...'
-# The app's own process, then any helper process of the same exe (they keep it locked a moment longer).
-$deadline = (Get-Date).AddSeconds(60)
-while ((Get-Date) -lt $deadline) {
-    $busy = (Get-Process -Id $AppPid -ErrorAction SilentlyContinue) -or (Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $Exe })
-    if (-not $busy) { break }
-    Start-Sleep -Milliseconds 500
-}
-if ($busy) { Finish 'Claude Bench is still running. Close it, then run "git pull" and "npm run package" in the repo folder.' }
+if (-not (EndLeftover)) { Finish 'Claude Bench is still running. Close it, then run "git pull" and "npm run package" in the repo folder.' }
 
 Set-Location -LiteralPath $Repo
 $before = git rev-parse HEAD

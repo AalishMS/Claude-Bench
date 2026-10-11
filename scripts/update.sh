@@ -15,7 +15,13 @@ finish() {
 }
 
 echo "Waiting for Claude Bench to close..."
-for _ in $(seq 1 120); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.5; done
+for _ in $(seq 1 40); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.5; done
+# A copy that never exits would keep the build locked and block the reopen: end it (its own pid only).
+if kill -0 "$APP_PID" 2>/dev/null; then
+  echo "Claude Bench did not exit; ending it..."
+  kill -9 "$APP_PID" 2>/dev/null
+  for _ in $(seq 1 20); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.5; done
+fi
 kill -0 "$APP_PID" 2>/dev/null && finish "Claude Bench is still running. Close it, then run git pull and npm run package:mac in the repo folder."
 
 cd "$REPO" || finish "Repo folder not found: $REPO"

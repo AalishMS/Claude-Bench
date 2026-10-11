@@ -61,7 +61,8 @@ and a popup under it lists what's new with **Later** and **Update…** buttons. 
   update, it stops and shows git's message.
 - **Running a built copy (`.exe` / `.app`):** it can't rebuild itself while open, so Update closes it and hands over to
   `scripts/update.ps1` (`update.sh` on macOS): it pulls, runs `npm install` if needed, rebuilds with `npm run package`
-  (`package:mac`), and reopens the app with your tabs. On Windows a console window shows the progress; on macOS, if
+  (`package:mac`), and reopens the app with your tabs. If the app hasn't fully exited after 20 seconds, the script
+  ends it (only that copy). On Windows a console window shows the progress; on macOS, if
   something fails, the log opens in TextEdit. Doing it by hand: close the app, `git pull`, then `npm run package`.
 
 Your projects and settings are stored outside the repo, so updating keeps them.
