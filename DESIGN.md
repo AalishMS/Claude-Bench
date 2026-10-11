@@ -97,7 +97,7 @@ row, a "New session" placeholder until the first reply, or a "PowerShell" row). 
 `Ctrl+W` still work on tab order. The top bar has a ghost `×` that closes the active session (hidden on the home screen).
 
 ### Split panes
-Up to 4 tabs side by side (top-bar columns button, `Ctrl+\`, Ctrl+click a sidebar row, or dragging a row onto the
+Up to 4 tabs side by side (top-bar columns button, `Ctrl+\`, Shift+click a sidebar row, or dragging a row onto the
 terminal or home screen (a session already on screen is opened a second time beside itself); while dragging, a `--primary` 18% fill with a 70% 1 px outline previews the pane it would become). The terminal area becomes
 a grid with 1 px `--border` gaps, no boxes or gutters. Each pane has a 26 px header strip on the terminal background:
 status dot, title (12 px, `--faint`), and a hover-only ghost `×` that closes that pane's session. The focused pane is marked only by its title going `--foreground` and the other panes' terminal text (and scrollbar) dimmed to 40 % opacity:
@@ -148,16 +148,19 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   Hover = `--sidebar-hover`, selected = `--sidebar-accent`. **No borders, no left accent bar.**
 - Project row: chevron (14 px, `--faint`), folder icon, name (500), and on the right one status dot when anything
   in the project is live. On hover the dot is replaced by `+` (new session) and `…` (DropdownMenu: continue, open
-  PowerShell, show in Explorer, remove). Path and git info live in the tooltip; the **active** project adds one
+  PowerShell, show in Explorer, move to top, remove). When another project has the same folder name, the name is
+  followed by its parent folder(s) in 11 px `--faint` (`.p-parent`). Project rows drag to reorder: a 2 px inset
+  `--primary` line (`.drop-before` / `.drop-after`) shows where the row lands. Path and git info live in the tooltip; the **active** project adds one
   11 px `--faint` line under it (`branch · 3 changed`, the branch truncates first). A collapsed active project gets
   the selected background.
 - Folder icon: the same `folder` icon for every project, 16 px in an 18 px slot, `--muted-foreground`.
 - Session list order: newest first throughout. The project's open tabs first, in tab order (a new tab goes on top; a
   split group moves to the top when it forms or gains a member, so unsplitting moves nothing), then its other sessions
-  newest first. No drag-to-reorder.
+  newest first. No drag-to-reorder of sessions.
 - Session rows: no guide line. Columns line up: the status dot sits under the folder icon (slot at 28 px),
   titles start at 52 px like the project name. Title 13 px with ellipsis; time 11 px `--faint` on the right. Rows
   backed by an open tab show `×` in place of the time on hover (middle-click closes too). Active = weight 500.
+  Right-click a transcript row opens the DropdownMenu at the pointer: Open/Show, Open beside, Fork session, Fork beside.
 - Footer: one slim 44 px row. A ghost `settings` (gear) icon button on the left (`.on` while the settings page is open); stats right, each **icon + value** in a
   28 px `rounded-md` button (padding 0 8, gap 6, 2 px apart, 12 px tabular numbers): plan **session** usage as a ring
   gauge + `10%`, context as the pie icon + `24%`, running as a status dot + `3 running`. Icons `--faint`, values
@@ -172,7 +175,8 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   Only connected MCPs are listed; the rest sit behind a muted `Show N more` row (same pattern as the session list), and the count reads `connected/total`.
   MCP status colors: connected `--success`, failed / needs_client_registration `--destructive`, needs_auth `--warning`,
   disabled / unknown `--muted-foreground`. Subagents: working = pulsing `--warning` dot, finished = `--success` check,
-  idle = `--faint` dot. Running rows with a port copy `http://localhost:<port>` on click (meta flips to "Copied").
+  idle = `--faint` dot. Running rows with a port copy `http://localhost:<port>` on click (meta flips to "Copied"),
+  Shift+click opens it in the browser.
 
 ### DropdownMenu: shadcn `DropdownMenu` (`#menu`)
 - On the Popover recipe: bg `--popover`, 1 px `--border`, `rounded-lg`, `shadow-md`, padding 4, min-width 210.

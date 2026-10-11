@@ -55,6 +55,8 @@ const ICONS = {
   undo: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   check: '<polyline points="20 6 9 17 4 12"/>',
+  fork: '<circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/>',
+  arrowUp: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
   box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
 };
@@ -353,6 +355,21 @@ async function agentDialog(a, tab) {
 const activeTab = () => tabs.get(activeId);
 const tabsOf = (projectPath) => [...tabs.values()].filter((t) => t.project.path === projectPath);
 
+/** The parent folders that tell a project apart from others of the same folder name ("clients" for C:\code\clients\app), else ''. */
+function projParent(p) {
+  const same = projects.filter((x) => x.path !== p.path && x.name.toLowerCase() === p.name.toLowerCase());
+  if (!same.length) return '';
+  const up = (q) => q.path.replace(/[\\/]+$/, '').split(/[\\/]/).slice(0, -1).reverse(); // nearest parent first
+  const mine = up(p);
+  for (let k = 1; k <= mine.length; k++) {
+    const tail = mine.slice(0, k).join('/').toLowerCase();
+    if (same.every((x) => up(x).slice(0, k).join('/').toLowerCase() !== tail)) return mine.slice(0, k).reverse().join('/');
+  }
+  return p.path;
+}
+/** A project's name for labels and notifications: "app (clients)" when another project is also called "app". */
+const projName = (p) => { const up = projParent(p); return up ? `${p.name} (${up})` : p.name; };
+
 /**
  * Is Claude actively working in this tab? Claude Code puts a spinner glyph in the terminal title while it
  * works and "✳" when idle, and it keeps redrawing while busy. Requiring both avoids flagging an idle
@@ -389,7 +406,7 @@ function awaitingInput(tab) {
 function notifyTab(tab, what) {
   tab.notified = true;
   if (visibleIds().includes(tab.id) && document.hasFocus()) return; // the user is looking at it (any pane of the split)
-  api.notify({ tabId: tab.id, title: `${tab.project.name}: ${what}`, body: paneTitle(tab) });
+  api.notify({ tabId: tab.id, title: `${projName(tab.project)}: ${what}`, body: paneTitle(tab) });
 }
 
 /** Called every 1.5 s per Claude tab: follows runs (working stretches) and dialogs, one notification per event. */
@@ -425,11 +442,11 @@ function tabLabel(tab) {
   const same = [...tabs.values()].filter((t) => t.project.path === tab.project.path && t.kind === tab.kind)
     .sort((a, b) => a.seq - b.seq);
   const n = same.indexOf(tab) + 1;
-  return same.length > 1 ? `${tab.project.name} ${n}` : tab.project.name;
+  return same.length > 1 ? `${projName(tab.project)} ${n}` : projName(tab.project);
 }
 
-async function openSession(project, { kind = 'claude', args = [], resumeId = null, beside = false, below = false, at } = {}) {
-  const tab = createTab(project, { kind, args, resumeId });
+async function openSession(project, { kind = 'claude', args = [], resumeId = null, fork = false, beside = false, below = false, at } = {}) {
+  const tab = createTab(project, { kind, args, resumeId, fork });
   if (beside) addToSplit(tab.id, at, below);
   activate(tab.id);
   fitTab(tab);
@@ -438,8 +455,9 @@ async function openSession(project, { kind = 'claude', args = [], resumeId = nul
 }
 
 /** A tab with its terminal, not started and not shown yet. New tabs go first (newest on top); `append` keeps a restored order. */
-function createTab(project, { kind = 'claude', args = [], resumeId = null, append = false } = {}) {
+function createTab(project, { kind = 'claude', args = [], resumeId = null, fork = false, append = false } = {}) {
   if (resumeId) args = ['--resume']; // main builds the real argv from resumeId; this only labels the tab
+  fork = !!(fork && resumeId); // --fork-session: resumes a copy under a new session id, matched later like a fresh tab
   const id = crypto.randomUUID();
   const head = h('div', { class: 'pane-head' });
   const host = h('div', { class: 'term-host' }, head);
@@ -461,17 +479,19 @@ function createTab(project, { kind = 'claude', args = [], resumeId = null, appen
   });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
-  term.loadAddon(new WebLinksAddon.WebLinksAddon((_e, uri) => api.openExternal(uri)));
+  // Links open on Ctrl+click (Cmd on macOS), so a plain click in Claude's screen never opens a browser or editor by accident.
+  term.loadAddon(new WebLinksAddon.WebLinksAddon((e, uri) => { if (mod(e)) api.openExternal(uri); }));
   term.open(host);
 
   const tab = {
     id, project, kind, args, term, fit, host, head, seq: ++tabSeq,
-    resumeId, sessionId: resumeId, startedAt: Date.now(), // sessionId of fresh tabs is matched later (assignSessions)
+    resumeId, fork, sessionId: fork ? null : resumeId, startedAt: Date.now(), // sessionId of fresh/forked tabs is matched later (assignSessions)
     status: 'starting', exitCode: null, title: '',
     lastActive: 0, lastOutput: 0, attention: false, busy: false, busyTimer: null,
   };
   tabs.set(id, tab);
   if (!append) toFront([id]);
+  term.registerLinkProvider(fileLinks(tab));
   wireTerminal(tab);
   wireScrollbar(tab);
   return tab;
@@ -482,25 +502,35 @@ function createTab(project, { kind = 'claude', args = [], resumeId = null, appen
  * order. The active one starts first; the others follow one by one so a dozen `claude --resume` don't boot at once.
  */
 async function restoreTabs(saved) {
-  const made = [];
+  const bySaved = []; // saved index -> tab (null if it couldn't be made), so split groups can name their members
   for (const r of saved?.tabs || []) {
+    let tab = null;
     try {
       const project = projects.find((p) => p.path === r.project);
-      if (project) made.push(createTab(project, { kind: r.kind, resumeId: r.kind === 'claude' ? r.sessionId : null, append: true }));
+      if (project) tab = createTab(project, { kind: r.kind, resumeId: r.kind === 'claude' ? r.sessionId : null, append: true });
     } catch { /* skip this one */ }
+    bySaved.push(tab);
   }
+  const made = bySaved.filter(Boolean);
   if (!made.length) return;
   made.forEach((t, i) => { t.seq = tabSeq - i; }); // saved newest first: the oldest keeps the lowest number
-  const first = made[saved.active] || made[0];
+  for (const g of saved.splits || []) {
+    const ids = [...new Set(g.tabs.map((i) => bySaved[i]?.id).filter((id) => id && !groupOf(id)))].slice(0, SPLIT_MAX);
+    if (ids.length >= 2) splits.push({ ids, cx: g.cx, ry: g.ry, v: g.v, color: splits.length % GROUP_COLORS });
+  }
+  const first = bySaved[saved.active] || made[0];
   activate(first.id);
   fitTab(first);
   await startPty(first);
-  for (const t of made) {
+  // the panes on screen with it start next, then the rest
+  const shown = visibleIds();
+  for (const t of [...made.filter((x) => shown.includes(x.id)), ...made.filter((x) => !shown.includes(x.id))]) {
     if (t === first) continue;
     await new Promise((r) => setTimeout(r, 400));
     if (!tabs.has(t.id)) continue; // closed meanwhile
     // Hidden terminals can't measure themselves: start at the visible one's size, activate() refits later.
-    try { t.term.resize(first.term.cols, first.term.rows); } catch { /* keep 80x24 */ }
+    if (t.host.offsetWidth) fitTab(t);
+    else try { t.term.resize(first.term.cols, first.term.rows); } catch { /* keep 80x24 */ }
     await startPty(t).catch(() => {});
   }
 }
@@ -518,6 +548,11 @@ function saveTabs() {
   const payload = {
     tabs: list.map((t) => ({ project: t.project.path, kind: t.kind, sessionId: t.kind === 'claude' ? t.sessionId : null })),
     active: list.indexOf(activeTab()),
+    // split groups by index into `tabs`; members not saved (no transcript yet) drop out
+    splits: splits.map((g) => ({
+      tabs: g.ids.map((id) => list.findIndex((t) => t.id === id)).filter((i) => i >= 0),
+      cx: Math.round(g.cx * 1000) / 1000, ry: Math.round(g.ry * 1000) / 1000, v: !!g.v,
+    })).filter((g) => g.tabs.length >= 2),
   };
   const key = JSON.stringify(payload);
   if (key === savedTabsKey) return;
@@ -528,7 +563,7 @@ function saveTabs() {
 async function startPty(tab) {
   if (!tabs.has(tab.id)) return;
   const res = await api.ptyCreate({
-    id: tab.id, cwd: tab.project.path, kind: tab.kind, args: tab.args, resumeId: tab.resumeId,
+    id: tab.id, cwd: tab.project.path, kind: tab.kind, args: tab.args, resumeId: tab.resumeId, fork: tab.fork,
     cols: tab.term.cols, rows: tab.term.rows,
   });
   if (!tabs.has(tab.id)) { if (res.ok) api.ptyKill(tab.id); return; } // closed while starting
@@ -597,6 +632,67 @@ function wireTerminal(tab) {
     if (paths.length) term.paste(paths.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(' ') + ' ');
     term.focus();
   });
+}
+
+// File links: paths Claude prints (src/main.js:123, C:\x\y.ts:4:2, ./README.md) open in VS Code at that line. A match
+// becomes a link only if main finds that file (relative to the tab's project); answers are cached briefly per folder.
+// One buffer line at a time, so a path wrapped over two rows is not a link. URLs are left to the web-links addon.
+const FILE_RE = /(?:[A-Za-z]:[\\/]|\.{1,2}[\\/]|[\\/])?(?:[\w.@+-]+[\\/])*[\w@+-][\w.@+-]*\.[A-Za-z][A-Za-z0-9]{0,11}(?::(\d+)(?::(\d+))?)?/g;
+const URL_RE = /[a-z][a-z0-9+.-]*:\/\/\S+/gi;
+const FILE_TTL = 10000;
+const fileCache = new Map(); // `${cwd}\n${path}` -> { abs | null, at }
+
+/** The line's text plus the cell column of each character (wide characters take two cells). */
+function lineCells(term, y) {
+  const line = term.buffer.active.getLine(y);
+  if (!line) return null;
+  let text = '';
+  const col = [];
+  for (let x = 0; x < line.length; x++) {
+    const cell = line.getCell(x);
+    if (!cell || cell.getWidth() === 0) continue; // second half of a wide character
+    const ch = cell.getChars() || ' ';
+    for (let i = 0; i < ch.length; i++) col.push(x);
+    text += ch;
+  }
+  return { text, col };
+}
+
+function fileLinks(tab) {
+  return {
+    async provideLinks(y, callback) {
+      const cells = lineCells(tab.term, y - 1);
+      if (!cells || !/[\w]\.[A-Za-z]/.test(cells.text)) return callback(undefined);
+      const urls = [...cells.text.matchAll(URL_RE)].map((m) => [m.index, m.index + m[0].length]);
+      const found = [...cells.text.matchAll(FILE_RE)]
+        .filter((m) => !urls.some(([a, b]) => m.index < b && m.index + m[0].length > a))
+        .slice(0, 20)
+        .map((m) => ({ m, file: m[0].replace(/(?::\d+){1,2}$/, '') }));
+      if (!found.length) return callback(undefined);
+      const cwd = tab.project.path;
+      const now = Date.now();
+      const ask = [...new Set(found.map((f) => f.file).filter((f) => !(fileCache.get(`${cwd}\n${f}`)?.at > now - FILE_TTL)))];
+      if (ask.length) {
+        try {
+          const res = await api.resolveFiles(cwd, ask);
+          ask.forEach((f, i) => fileCache.set(`${cwd}\n${f}`, { abs: res[i] || null, at: now }));
+        } catch { /* no links this time */ }
+        if (fileCache.size > 2000) fileCache.clear();
+      }
+      const links = found.map(({ m, file }) => {
+        const abs = fileCache.get(`${cwd}\n${file}`)?.abs;
+        if (!abs) return null;
+        const last = m.index + m[0].length - 1;
+        return {
+          range: { start: { x: cells.col[m.index] + 1, y }, end: { x: cells.col[last] + 1, y } },
+          text: m[0],
+          decorations: { underline: true, pointerCursor: true },
+          activate: (e) => mod(e) && api.openFile(abs, Number(m[1]) || null, Number(m[2]) || null),
+        };
+      }).filter(Boolean);
+      callback(links.length ? links : undefined);
+    },
+  };
 }
 
 // A thin scrollbar of our own (xterm's is hidden). On the normal buffer (shells) it shows the real position.
@@ -713,20 +809,31 @@ async function pasteInto(tab) {
   else if (tab.kind === 'claude') api.ptyWrite(tab.id, '\x1bv'); // Alt+V: Claude Code's image paste on Windows
 }
 
+/**
+ * Exit (or failed start) overlay. A Claude tab that ended with a transcript offers Resume (that session again) and
+ * New session; otherwise Restart runs the same command again.
+ */
 function showOverlay(tab, message, isError = false) {
   tab.host.querySelector('.overlay')?.remove();
+  const resumable = !isError && tab.kind === 'claude' && !!tab.sessionId;
   tab.host.append(
     h('div', { class: `overlay${isError ? ' error' : ''}` },
       h('span', { class: 'msg' }, message),
-      h('button', { class: 'btn outline sm', onclick: () => restartTab(tab) }, ico('redo'), 'Restart'),
+      resumable
+        ? [h('button', { class: 'btn outline sm', onclick: () => restartTab(tab, 'resume') }, ico('redo'), 'Resume'),
+          h('button', { class: 'btn outline sm', onclick: () => restartTab(tab, 'fresh') }, ico('plus'), 'New session')]
+        : h('button', { class: 'btn outline sm', onclick: () => restartTab(tab) }, ico('redo'), 'Restart'),
       h('button', { class: 'btn outline sm', onclick: () => closeTab(tab.id) }, 'Close tab')));
 }
 
-async function restartTab(tab) {
+/** `mode`: 'resume' = the tab's current session (`--resume`), 'fresh' = a new session, else the same command as before. */
+async function restartTab(tab, mode) {
   tab.host.querySelector('.overlay')?.remove();
-  tab.term.write('\r\n\x1b[2m— restarting —\x1b[0m\r\n');
+  if (mode === 'resume') { tab.resumeId = tab.sessionId; tab.args = ['--resume']; tab.fork = false; }
+  if (mode === 'fresh') { tab.resumeId = null; tab.args = []; tab.fork = false; }
+  tab.term.write(`\r\n\x1b[2m— ${mode === 'resume' ? 'resuming' : 'restarting'} —\x1b[0m\r\n`);
   tab.status = 'starting';
-  tab.sessionId = tab.resumeId; // a restarted fresh tab is a new Claude session
+  tab.sessionId = tab.fork ? null : tab.resumeId; // a restarted fresh (or forked) tab is a new Claude session
   tab.startedAt = Date.now();
   await startPty(tab);
   tab.term.focus();
@@ -894,6 +1001,7 @@ function unsplit(g = curSplit()) {
   rsideForced = false;
   syncVisible();
   renderSidebar(true); // drops the split group
+  saveTabs();
 }
 
 /** Move tabs to the front of the tab order (sidebar, Alt+1..9, Ctrl+Tab, saved order), keeping their given order. */
@@ -959,13 +1067,16 @@ function splitHere(below = false) {
   openSession(tab.project, { beside: true, below });
 }
 
-/** Another copy of what a tab runs, opened beside: the same Claude session resumed (once it has a transcript), or a fresh shell. */
+/**
+ * Another copy of what a tab runs, opened beside: a fork of the Claude session (once it has a transcript; resuming the same
+ * one would have two processes appending to one transcript), else a new session, or a fresh shell.
+ */
 function cloneBeside(tab, at) {
   if (tab.kind === 'shell') return openSession(tab.project, { kind: 'shell', beside: true, at });
-  return openSession(tab.project, { resumeId: tab.sessionId || null, beside: true, at });
+  return openSession(tab.project, { resumeId: tab.sessionId || null, fork: !!tab.sessionId, beside: true, at });
 }
 
-/** Ctrl+click on a session row: show it beside the focused pane instead of replacing it. A session already on screen is opened a second time. */
+/** Shift+click on a session row: show it beside the focused pane instead of replacing it. A session already on screen is opened a second time. */
 function besideRow(open, openNew) {
   if (open && visibleIds().includes(open.id) && visibleIds().length >= SPLIT_MAX) return activate(open.id);
   if (visibleIds().length >= SPLIT_MAX) return; // the split is full, like splitHere
@@ -1094,6 +1205,7 @@ function nudgeSplit(dir) {
   const step = dir === 'left' || dir === 'up' ? -RESIZE_STEP : RESIZE_STEP;
   const g = curSplit();
   setSplitRatio(axis, (axis === 'x' ? g.cx : g.ry) + step);
+  saveTabs();
   return true;
 }
 
@@ -1172,7 +1284,7 @@ function paneTitle(t) {
     const shells = tabsOf(t.project.path).filter((x) => x.kind === 'shell').sort((a, b) => a.seq - b.seq);
     return `${SHELL_LABEL}${shells.length > 1 ? ' ' + (shells.indexOf(t) + 1) : ''}`;
   }
-  return t.resumeId ? 'Resumed session' : t.args[0] === '--continue' ? 'Continued session' : 'New session';
+  return t.fork ? 'Forked session' : t.resumeId ? 'Resumed session' : t.args[0] === '--continue' ? 'Continued session' : 'New session';
 }
 
 /**
@@ -1231,10 +1343,11 @@ function wireDivider(el, axis) {
     el.releasePointerCapture(e.pointerId);
     el.classList.remove('drag');
     document.body.classList.remove('resizing');
+    saveTabs(); // the ratio is saved with the split, once per drag
   };
   el.addEventListener('pointerup', end);
   el.addEventListener('pointercancel', end);
-  el.addEventListener('dblclick', () => curSplit() && apply(0.5));
+  el.addEventListener('dblclick', () => { if (curSplit()) { apply(0.5); saveTabs(); } });
 }
 
 const hostObserver = new ResizeObserver(() => requestAnimationFrame(fitActive));
@@ -1361,7 +1474,7 @@ function closeButton(t) {
 const auxClose = (t) => (e) => { if (t && e.button === 1) closeTab(t.id); };
 
 /** Project name on rows of a split group that mixes projects, in place of the time. */
-const projTag = (t, show) => (show ? h('span', { class: 's-proj' }, t.project.name) : null);
+const projTag = (t, show) => (show ? h('span', { class: 's-proj' }, projName(t.project)) : null);
 
 /** A transcript row; `t` is the open tab showing it (a session opened twice gets one row per tab). */
 function sessionRow(p, s, t = null, showProject = false) {
@@ -1369,10 +1482,11 @@ function sessionRow(p, s, t = null, showProject = false) {
     class: `session${t ? (t.id === activeId ? ' active' : '') + ' has-tab' : ''}`,
     'data-tab': t?.id,
     ...rowDrag({ id: t?.id || null, project: p, resumeId: s.id }),
-    title: `${s.title}\n${new Date(s.mtime).toLocaleString()}\nDrag onto the terminal (or ${IS_MAC ? '⌘' : 'Ctrl+'}click) to open beside the current session`,
-    onclick: (e) => (mod(e) && activeId
+    title: `${s.title}\n${new Date(s.mtime).toLocaleString()}\nDrag onto the terminal (or ${kbd('Shift+click')}) to open beside the current session\nRight-click to fork`,
+    onclick: (e) => (e.shiftKey && activeId
       ? besideRow(t, () => openSession(p, { resumeId: s.id, beside: true }))
       : openSessionRow(p, s)),
+    oncontextmenu: (e) => { e.preventDefault(); sessionMenu(p, s, t, e); },
     onauxclick: auxClose(t),
   },
     dotMark(t ? tabDot(t) : ''),
@@ -1418,7 +1532,7 @@ function pendingRow(t, showProject = false) {
     'data-tab': t.id,
     ...rowDrag({ id: t.id, project: t.project, resumeId: null }),
     title: t.kind === 'shell' ? `${SHELL_LABEL} in ${t.project.path}` : 'Its title appears after the first reply',
-    onclick: (e) => { if (mod(e) && activeId) besideRow(t, null); else activate(t.id); },
+    onclick: (e) => { if (e.shiftKey && activeId) besideRow(t, null); else activate(t.id); },
     onauxclick: auxClose(t),
   },
     dotMark(tabDot(t)),
@@ -1452,7 +1566,7 @@ function gitSubLine(info) {
 let lastSidebarKey = '';
 let sessionsVer = 0; // bumped when sessionsBy changes, so the render key stays cheap
 function renderSidebar(force = false) {
-  if (dragSrc) return; // rebuilding rows mid-drag would drop the dragged element; endDrag re-renders
+  if (dragSrc || projDrag) return; // rebuilding rows mid-drag would drop the dragged element; the drag's end re-renders
   document.body.classList.toggle('no-tabs', tabs.size === 0);
   const tab = activeTab();
   const activeProject = tab?.project.path;
@@ -1526,15 +1640,16 @@ function projectRow(p, isActive, isOpen) {
   const run = ['attention', 'working', 'running'].find((d) => dots.includes(d));
   return h('div', {
     class: `project${isActive && !isOpen ? ' current' : ''}${menuFor === p.path ? ' menu-open' : ''}`,
-    title: [p.path, gitSummary(git[p.path])].filter(Boolean).join('\n'),
+    title: [p.path, gitSummary(git[p.path]), 'Drag to reorder'].filter(Boolean).join('\n'),
     onclick: () => (isActive ? toggleExpand(p) : focusProject(p)), // a second click collapses
+    ...projDragProps(p),
   },
     h('button', {
       class: `chev${isOpen ? ' open' : ''}`, title: isOpen ? 'Hide sessions' : 'Show sessions',
       onclick: (e) => { e.stopPropagation(); toggleExpand(p); },
     }, ico('chevron')),
     h('span', { class: 'p-icon' }, ico('folder')),
-    h('span', { class: 'p-name' }, p.name),
+    h('span', { class: 'p-name' }, p.name, projParent(p) ? h('span', { class: 'p-parent' }, projParent(p)) : null),
     h('span', { class: 'p-run', title: run ? 'Something is running' : null }, run ? h('i', { class: `dot ${run}` }) : null),
     h('div', { class: 'p-acts' },
       rowButton('plus', 'New Claude session', () => openSession(p)),
@@ -1546,26 +1661,88 @@ function projectRow(p, isActive, isOpen) {
 
 // ------------------------------------------------------------ "…" menu ----
 
+const menuItem = (icon, label, run, danger = false) => h('button', {
+  class: `menu-item${danger ? ' danger' : ''}`, role: 'menuitem',
+  onclick: () => { closeMenu(); run(); },
+}, ico(icon), label);
+
+/** Show #menu with these items at (x, y), or ending at `flipY` when it would run off the bottom. */
+function openMenu(key, items, x, y, flipY = y) {
+  const el = $('#menu');
+  el.replaceChildren(...items.filter(Boolean));
+  el.hidden = false;
+  el.style.left = `${Math.max(8, Math.min(x, window.innerWidth - el.offsetWidth - 8))}px`;
+  el.style.top = `${y + el.offsetHeight > window.innerHeight - 8 ? Math.max(8, flipY - el.offsetHeight) : y}px`;
+  menuFor = key;
+}
+
 function toggleMenu(p, anchor) {
   if (menuFor === p.path) { closeMenu(); return; }
-  const item = (icon, label, run, danger = false) => h('button', {
-    class: `menu-item${danger ? ' danger' : ''}`, role: 'menuitem',
-    onclick: () => { closeMenu(); run(); },
-  }, ico(icon), label);
-  const el = $('#menu');
-  el.replaceChildren(
-    item('redo', 'Continue last conversation', () => openSession(p, { args: ['--continue'] })),
-    item('terminal', `Open ${SHELL_LABEL} here`, () => openSession(p, { kind: 'shell' })),
-    item('folder', `Show in ${FILES_APP}`, () => api.openFolder(p.path)),
-    h('div', { class: 'menu-sep' }),
-    item('trash', 'Remove from list', () => removeProject(p), true));
-  el.hidden = false;
   const r = anchor.getBoundingClientRect();
-  el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8))}px`;
-  const below = r.bottom + 4;
-  el.style.top = `${below + el.offsetHeight > window.innerHeight - 8 ? r.top - 4 - el.offsetHeight : below}px`;
-  menuFor = p.path;
+  openMenu(p.path, [
+    menuItem('redo', 'Continue last conversation', () => openSession(p, { args: ['--continue'] })),
+    menuItem('terminal', `Open ${SHELL_LABEL} here`, () => openSession(p, { kind: 'shell' })),
+    menuItem('folder', `Show in ${FILES_APP}`, () => api.openFolder(p.path)),
+    projects[0]?.path !== p.path ? menuItem('arrowUp', 'Move to top', () => moveProject(p.path, projects[0].path, false)) : null,
+    h('div', { class: 'menu-sep' }),
+    menuItem('trash', 'Remove from list', () => removeProject(p), true),
+  ], r.left, r.bottom + 4, r.top - 4);
   anchor.closest('.project').classList.add('menu-open'); // keeps + and … visible; projectRow re-applies it on renders
+}
+
+/** Right-click on a transcript row: open it (beside), or fork it, i.e. resume a copy under a new session id to try another way. */
+function sessionMenu(p, s, t, e) {
+  const room = activeId && visibleIds().length < SPLIT_MAX;
+  openMenu(`s:${s.id}`, [
+    menuItem('arrowRight', t ? 'Show' : 'Open', () => openSessionRow(p, s)),
+    room ? menuItem('columns', 'Open beside', () => besideRow(t, () => openSession(p, { resumeId: s.id, beside: true }))) : null,
+    h('div', { class: 'menu-sep' }),
+    menuItem('fork', 'Fork session', () => openSession(p, { resumeId: s.id, fork: true })),
+    room ? menuItem('fork', 'Fork beside', () => openSession(p, { resumeId: s.id, fork: true, beside: true })) : null,
+  ], e.clientX, e.clientY, e.clientY);
+}
+
+// Projects are reordered by dragging their rows (a line shows where the row lands) or with "Move to top".
+let projDrag = null; // path of the project row being dragged
+
+function projDragProps(p) {
+  const clear = (el) => el.classList.remove('drop-before', 'drop-after');
+  const after = (e) => { const r = e.currentTarget.getBoundingClientRect(); return e.clientY > r.top + r.height / 2; };
+  return {
+    draggable: 'true',
+    ondragstart: (e) => {
+      projDrag = p.path;
+      closeMenu();
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', p.path);
+    },
+    ondragover: (e) => {
+      if (!projDrag || projDrag === p.path) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      e.currentTarget.classList.toggle('drop-after', after(e));
+      e.currentTarget.classList.toggle('drop-before', !after(e));
+    },
+    ondragleave: (e) => clear(e.currentTarget),
+    ondrop: (e) => {
+      e.preventDefault();
+      clear(e.currentTarget);
+      const from = projDrag;
+      projDrag = null;
+      if (from && from !== p.path) moveProject(from, p.path, after(e));
+    },
+    ondragend: () => { if (projDrag) { projDrag = null; renderSidebar(true); } },
+  };
+}
+
+/** Put project `from` just before (or `after`) project `to`; main saves the order. */
+async function moveProject(from, to, after) {
+  const order = projects.map((x) => x.path).filter((x) => x !== from);
+  const i = order.indexOf(to);
+  if (i < 0) return;
+  order.splice(i + (after ? 1 : 0), 0, from);
+  projects = await api.reorderProjects(order);
+  renderAll();
 }
 
 // No re-render here: closing happens on mousedown, and rebuilding the rows then would swallow the click.
@@ -1738,7 +1915,7 @@ function renderWelcome() {
             projects.map((p) =>
               h('div', { class: 'proj', onclick: () => focusProject(p) },
                 h('div', { class: 'proj-main' },
-                  h('div', { class: 'p-name' }, p.name),
+                  h('div', { class: 'p-name' }, projName(p)),
                   h('div', { class: 'p-path' }, h('bdi', {}, p.path))),
                 h('div', { class: 'p-git' }, gitPills(git[p.path])),
                 h('span', { class: 'proj-go' }, ico('arrowRight')))))
@@ -2025,8 +2202,8 @@ function renderRside(force = false) {
         const copyable = !!s.port && !/emulator|qemu|adb/i.test(`${s.name} ${s.cmd || ''}`);
         return h('div', {
           class: `rrow${copyable ? ' copy' : ''}${copiedPort === s.port ? ' copied' : ''}`,
-          title: copyable ? `Copy http://localhost:${s.port}` : (s.cmd || s.name),
-          onclick: copyable ? () => copyServer(s) : null,
+          title: copyable ? `Copy http://localhost:${s.port}\n${kbd('Shift+click')} to open it in the browser` : (s.cmd || s.name),
+          onclick: copyable ? (e) => (e.shiftKey ? api.openExternal(`http://localhost:${s.port}`) : copyServer(s)) : null,
         }, statusDot('ok'), h('span', { class: 'name' }, itemName(s)),
           h('span', { class: 'meta mono' }, copiedPort === s.port ? 'Copied' : s.port ? `:${s.port}` : ''));
       });
@@ -2138,7 +2315,7 @@ async function addProjects() {
 async function removeProject(p) {
   const ok = await confirmDialog({
     title: 'Remove project?',
-    message: `"${p.name}" will be removed from this list. The folder itself is not touched, and open tabs stay open.`,
+    message: `"${projName(p)}" will be removed from this list. The folder itself is not touched, and open tabs stay open.`,
     okLabel: 'Remove',
     danger: true,
   });

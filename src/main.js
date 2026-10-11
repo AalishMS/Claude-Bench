@@ -73,6 +73,7 @@ const defaults = {
   maximized: false,
   tabs: [], // open tabs in tab order, reopened at launch: [{ project: path, kind: 'claude' | 'shell', sessionId }]
   activeTab: -1, // index into tabs
+  splits: [], // split groups of the open tabs: [{ tabs: [index into tabs, 2-4], cx, ry, v }]
 };
 let state = structuredClone(defaults);
 const stateFile = () => path.join(app.getPath('userData'), 'state.json');
@@ -108,6 +109,7 @@ function saveState() {
  */
 function restorableTabs() {
   const list = [];
+  const at = new Map(); // saved index -> index in list
   let active = -1;
   (Array.isArray(state.tabs) ? state.tabs : []).forEach((t, i) => {
     try {
@@ -119,10 +121,16 @@ function restorableTabs() {
       } else if (t.kind === 'shell') {
         list.push({ project: proj.path, kind: 'shell', sessionId: null });
       } else return;
+      at.set(i, list.length - 1);
       if (i === state.activeTab) active = list.length - 1;
     } catch { /* skip this one */ }
   });
-  return { tabs: list, active };
+  // Split groups name their members by saved index: keep the members still there, and groups that still have two.
+  const splits = (Array.isArray(state.splits) ? state.splits : []).map((g) => ({
+    cx: g?.cx, ry: g?.ry, v: g?.v === true,
+    tabs: (Array.isArray(g?.tabs) ? g.tabs : []).filter((i) => at.has(i)).map((i) => at.get(i)),
+  })).filter((g) => g.tabs.length >= 2);
+  return { tabs: list, active, splits };
 }
 
 function saveTabs(payload) {
@@ -131,6 +139,14 @@ function saveTabs(payload) {
     .filter((t) => typeof t?.project === 'string' && (t.kind === 'shell' || (t.kind === 'claude' && UUID_RE.test(t.sessionId))))
     .map((t) => ({ project: t.project, kind: t.kind, sessionId: t.kind === 'claude' ? t.sessionId : null }));
   state.activeTab = Number.isInteger(payload?.active) ? payload.active : -1;
+  const ratio = (v) => (typeof v === 'number' && v > 0.05 && v < 0.95 ? v : 0.5);
+  const used = new Set();
+  state.splits = (Array.isArray(payload?.splits) ? payload.splits : []).slice(0, 12).map((g) => {
+    const members = (Array.isArray(g?.tabs) ? g.tabs : [])
+      .filter((i) => Number.isInteger(i) && i >= 0 && i < state.tabs.length && !used.has(i)).slice(0, 4);
+    members.forEach((i) => used.add(i)); // a tab is in at most one group
+    return { tabs: members, cx: ratio(g.cx), ry: ratio(g.ry), v: g.v === true };
+  }).filter((g) => g.tabs.length >= 2);
   saveState();
 }
 
@@ -182,7 +198,7 @@ function flushSession(id) {
   send('pty:data', id, data);
 }
 
-function createSession({ id, cwd, kind, args, resumeId, cols, rows }) {
+function createSession({ id, cwd, kind, args, resumeId, fork, cols, rows }) {
   if (sessions.has(id)) return { ok: false, error: 'Session already exists' };
   if (!isDir(cwd)) return { ok: false, error: `Folder not found: ${cwd}` };
   // Only a bare UUID may reach the command line as a session id.
@@ -198,7 +214,8 @@ function createSession({ id, cwd, kind, args, resumeId, cols, rows }) {
   let file;
   let argv;
   if (kind === 'claude') {
-    const extra = resumeId ? ['--resume', resumeId] : (args || []).filter((a) => ALLOWED_CLAUDE_ARGS.has(a));
+    const extra = resumeId ? ['--resume', resumeId, ...(fork === true ? ['--fork-session'] : [])]
+      : (args || []).filter((a) => ALLOWED_CLAUDE_ARGS.has(a));
     if (IS_MAC) {
       // Found on the login shell's PATH (shellEnvReady); the tab ends when claude exits, like cmd /c.
       file = 'claude';
@@ -1189,6 +1206,38 @@ function findVsCode() {
   return dirs.map((d) => path.join(d, 'Code.exe')).find((f) => fs.existsSync(f)) || null;
 }
 
+/**
+ * Open a file in VS Code at a line (`code -g file:line:col`), else in the default app. Windows: Code.exe takes the same
+ * arguments as the code.cmd shim. macOS: the `code` CLI from the login shell's PATH, else `open -a` (no line), else open.
+ */
+async function openFileAt(file, line, col) {
+  try {
+    if (typeof file !== 'string' || !fs.statSync(file).isFile()) return { ok: false, error: 'File not found' };
+  } catch {
+    return { ok: false, error: 'File not found' };
+  }
+  const n = (v) => (Number.isInteger(v) && v > 0 ? v : null);
+  const target = [file, n(line), n(line) && n(col)].filter(Boolean).join(':');
+  const start = (exe, args) => new Promise((resolve) => {
+    // No windowsHide (see shell:openInCode): VS Code's first window would start hidden.
+    const child = spawn(exe, args, { detached: true, stdio: 'ignore' });
+    child.on('error', () => resolve(false));
+    child.on('spawn', () => { child.unref(); resolve(true); });
+  });
+  if (IS_MAC) {
+    await shellEnvReady;
+    const ok = await new Promise((resolve) => execFile('code', ['-g', target], (err) => resolve(!err)));
+    if (ok) return { ok: true };
+    const opened = await new Promise((resolve) => execFile('/usr/bin/open', ['-a', 'Visual Studio Code', file], (err) => resolve(!err)));
+    if (opened) return { ok: true };
+  } else {
+    const exe = findVsCode();
+    if (exe && (await start(exe, ['-g', target]))) return { ok: true };
+  }
+  const err = await shell.openPath(file);
+  return err ? { ok: false, error: err } : { ok: true };
+}
+
 // A folder passed on the command line: `claude-bench.exe C:\some\project`.
 // In dev the app's own folder ("electron .") is also an argument, so skip that one.
 function pathFromArgv(argv) {
@@ -1246,6 +1295,14 @@ function registerIpc() {
     });
     const added = r.canceled ? [] : r.filePaths.map(addProject).filter(Boolean);
     return { projects: state.projects, added };
+  });
+
+  ipcMain.handle('projects:reorder', (_e, paths) => {
+    if (!Array.isArray(paths)) return state.projects;
+    const rank = (p) => { const i = paths.findIndex((x) => typeof x === 'string' && samePath(x, p.path)); return i < 0 ? Infinity : i; };
+    state.projects = state.projects.map((p, i) => [p, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([p]) => p);
+    saveState();
+    return state.projects;
   });
 
   ipcMain.handle('projects:remove', (_e, p) => {
@@ -1329,6 +1386,21 @@ function registerIpc() {
       child.on('spawn', () => { child.unref(); resolve({ ok: true }); });
     });
   });
+
+  // File links in the terminal: which of these candidate paths (absolute, or relative to the tab's folder) are files.
+  ipcMain.handle('files:resolve', (_e, cwd, list) => {
+    if (typeof cwd !== 'string' || !Array.isArray(list)) return [];
+    return list.slice(0, 50).map((f) => {
+      if (typeof f !== 'string' || !f || f.length > 1000) return null;
+      try {
+        const abs = path.resolve(cwd, f);
+        return fs.statSync(abs).isFile() ? abs : null;
+      } catch {
+        return null;
+      }
+    });
+  });
+  ipcMain.handle('shell:openFile', (_e, file, line, col) => openFileAt(file, line, col));
 
   ipcMain.handle('clipboard:read', () => clipboard.readText());
   ipcMain.on('clipboard:write', (_e, text) => clipboard.writeText(String(text)));

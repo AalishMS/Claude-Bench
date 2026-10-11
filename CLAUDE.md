@@ -80,10 +80,17 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   `saveTabs` (key-diffed; called from `activate`, `closeTab`, `assignSessions`, `toFront`), never on a timer. Claude tabs
   without a transcript yet are not saved. At launch `state:get` returns `restore` = `restorableTabs()` (drops entries whose
   project is gone or whose `<uuid>.jsonl` is missing, one try/catch per entry); `restoreTabs` creates all tabs, starts the
-  active one first, then the rest 400 ms apart (Claude tabs via `--resume <uuid>`, shells fresh). Split view is not saved.
+  active one first, then the panes on screen with it, then the rest 400 ms apart (Claude tabs via `--resume <uuid>`, shells fresh).
+  Split groups are saved with them: `state.splits` = `[{ tabs: [index into state.tabs], cx, ry, v }]` (sent in the same
+  `saveTabs` payload; also saved at the end of a divider drag, `nudgeSplit`, `unsplit`). `restorableTabs` remaps the indices
+  past dropped tabs and keeps groups that still have two members; colors are reassigned.
 - **Sessions**: `cmd.exe /d /c claude [--continue|--resume]` for Claude tabs (resolves `claude.cmd` and
-  `claude.exe`), `powershell.exe -NoLogo` for shell tabs. Exit shows a Restart / Close overlay.
-  Claude args are allow-listed in main.js.
+  `claude.exe`), `powershell.exe -NoLogo` for shell tabs.
+  Claude args are allow-listed in main.js. `fork: true` with a `resumeId` adds `--fork-session` (Fork session in a session
+  row's right-click menu, `sessionMenu`, and `cloneBeside`): the tab keeps `resumeId` but starts with `sessionId` null and is
+  matched to its new transcript by `assignSessions` like a fresh tab; its placeholder says "Forked session".
+  Exit shows Restart / Close; a Claude tab with a transcript gets Resume (`--resume <sessionId>`, follows `/clear`) and
+  New session instead (`restartTab(tab, 'resume' | 'fresh')`).
 - **macOS** (`IS_MAC` in main.js, `IS_MAC`/`mod(e)`/`kbd()` in renderer.js; `api.platform` from preload). Windows code
   stays as is; Mac branches sit next to it and fail soft.
   - Sessions: `claude` is spawned directly, shell tabs run `$SHELL -l`. Both (and `claude mcp list`) wait for
@@ -98,6 +105,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     Windows uses `assets/icon.ico` for the window and taskbar; macOS uses `assets/icon-mac.png` (padded to Apple's 824/1024 grid so the Dock icon matches its neighbours).
     A minimal app menu (appMenu + editMenu) replaces Electron's default, whose Cmd+W/R/= would clash; the Edit roles
     give Cmd+C/V/A to xterm and inputs. VS Code opens via `open -a "Visual Studio Code"`.
+  - File links: `openFileAt` tries `code -g` (after `shellEnvReady`), then `open -a "Visual Studio Code" <file>`, then `shell.openPath`.
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
   - Notifications: plain Electron `Notification` (no registry step). An unsigned app may show as "Electron" from
@@ -137,7 +145,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   `renderSettings`): for now only Shortcuts. Clicking a chip (or +) records the next combo with Ctrl/Alt/Cmd (or an F key);
   a combo another action uses is moved over (`keysNote` says so). Esc cancels recording, then closes the page; activating
   any tab closes it too.
-- **Split view** (runtime only, not saved): `splits` = a list of groups `{ ids, cx, ry, v, color }` (newest first, a tab in at
+- **Split view** (saved with the tabs, see "Restore tabs"): `splits` = a list of groups `{ ids, cx, ry, v, color }` (newest first, a tab in at
   most one; `groupOf(id)`, `curSplit()` = the active tab's group). The group on screen shows 2-4 tabs as a grid in `#terminals`
   (2 = A|B, 3 = A|(B over C), 4 = 2x2; `v` = stacked, started by "New session below": 2 = A over B, 3 = A over (B|C), which
   `paneCell` / `cellRect` get by transposing) with draggable dividers. `focusPane(dir)` picks the nearest pane that way,
@@ -148,10 +156,10 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   polling keep following one tab. `visibleIds()` = the active tab's group, else just the active tab (focusing a member of another group
   switches the terminal area to that group). `addToSplit` adds to the visible group or starts a new one with the active tab;
   a tab moving in leaves its old group, and a group of one is dropped. Entry: top-bar button / `Ctrl+\` (`splitHere`, new session beside),
-  Ctrl+click a sidebar row (`besideRow`), or drag a sidebar row onto the terminal area or the home screen: `#dropzone` (shown only while
+  Shift+click a sidebar row (`besideRow`), or drag a sidebar row onto the terminal area or the home screen: `#dropzone` (shown only while
   dragging, `rowDrag` / `wireDropZone`) previews the pane in the resulting layout (`cellRect`; the slot whose pane centre is nearest
-  the pointer wins) and the drop places it (`addToSplit(id, at)`). A session already on screen is opened again beside itself (`cloneBeside`: the same
-  Claude session resumed in a second pane, or another shell). On the home screen a drop just opens it. `renderSidebar` is paused while dragging. `autoRside` hides the right sidebar while a split pane is under 100 cols and
+  the pointer wins) and the drop places it (`addToSplit(id, at)`). A session already on screen is opened again beside itself (`cloneBeside`: a fork of the
+  Claude session, since resuming one transcript in two processes has both append to it; or another shell). On the home screen a drop just opens it. `renderSidebar` is paused while dragging. `autoRside` hides the right sidebar while a split pane is under 100 cols and
   restores it at 106+ (predicted from the current cols), without touching `ui.servers`; opening it by hand in a split sets
   `rsideForced` until the split's membership changes. `fitActive` fits every visible pane.
 - **Tab order** = order of the `tabs` Map, newest first (Ctrl+Tab, Alt+1..9, saved order). `createTab` puts a new tab
@@ -190,7 +198,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   - Running: dev listeners only, from one PowerShell call (`Get-NetTCPConnection` + `Get-CimInstance Win32_Process`) every 6 s, only while the right sidebar is shown (`closeTab` / `onCloseRequest` rescan when the last scan is over 10 s old). A listener
     belongs to a tab if a session's pty pid is an ancestor; otherwise it is matched to a project if its command line contains the project path
     outside `--flag=` values (Antigravity's `agy.exe --add-dir=<project>` is no server). Rows are status dot, short name, port; clicking a row
-    copies `http://localhost:<port>` (rows without a port, or emulators, do nothing). No kill, no "Show all". The scan still walks
+    copies `http://localhost:<port>`, Shift+click opens it with `openExternal` (rows without a port, or emulators, do nothing). No kill, no "Show all". The scan still walks
     session children for MCP/browser processes (`procs`), which the UI no longer shows.
 - **Sessions and usage**: read-only from `~/.claude/projects/<cwd, non-alphanumerics -> "-">/<uuid>.jsonl`. The sidebar lists a
   project's sessions (title = last `ai-title`, else first prompt) under it; clicking one focuses its tab or opens
@@ -206,6 +214,16 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
 - **Scrollbar**: our own `.vbar` replaces xterm's. Normal buffer = real position. Claude's `"tui": "fullscreen"` uses the
   alternate screen (no scrollback), so there the strip forwards synthetic wheel events to `.xterm-screen` (Claude has mouse
   tracking on) and the thumb rests in the middle.
+- **File links** (`fileLinks(tab)`, an xterm `registerLinkProvider` per terminal): `FILE_RE` matches paths with an extension
+  and optional `:line[:col]` on one buffer line (`lineCells` maps characters to cells, so wide characters don't shift the
+  range; wrapped paths are not links; URL ranges are skipped). Main's `files:resolve` stats them relative to the project
+  (cached 10 s in `fileCache`); only existing files become links. Ctrl+click (`mod(e)`, also for web links) = `shell:openFile` (`openFileAt`): Windows
+  `Code.exe -g file:line:col` (`findVsCode`), macOS the `code` CLI on the login PATH, then `open -a "Visual Studio Code"`
+  (no line); last resort `shell.openPath`.
+- **Projects**: order = `state.projects`, changed by dragging project rows (`projDragProps`, `projDrag` pauses `renderSidebar`
+  like a session drag) or "Move to top" in the `…` menu; both call `moveProject` -> `projects:reorder`. Same-name folders:
+  `projParent(p)` = the fewest parent folders that tell it apart, `projName(p)` = `app (clients)` for tab labels,
+  notifications and split-group rows; the project row shows the parent as a muted `.p-parent`.
 - Renderer builds DOM with the `h()` helper. User/process text always goes in as text nodes. `html:` is only for
   static icon SVG.
 

@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('api', {
   getState: () => ipcRenderer.invoke('state:get'),
   addProjects: () => ipcRenderer.invoke('projects:add'),
   removeProject: (p) => ipcRenderer.invoke('projects:remove', p),
+  reorderProjects: (paths) => ipcRenderer.invoke('projects:reorder', paths),
   setUi: (patch) => ipcRenderer.invoke('ui:set', patch),
   saveTabs: (payload) => ipcRenderer.send('tabs:set', payload),
 
@@ -33,6 +34,8 @@ contextBridge.exposeInMainWorld('api', {
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   openFolder: (p) => ipcRenderer.invoke('shell:showInFolder', p),
   openInCode: (p) => ipcRenderer.invoke('shell:openInCode', p),
+  resolveFiles: (cwd, list) => ipcRenderer.invoke('files:resolve', cwd, list),
+  openFile: (file, line, col) => ipcRenderer.invoke('shell:openFile', file, line, col),
   readClipboard: () => ipcRenderer.invoke('clipboard:read'),
   writeClipboard: (text) => ipcRenderer.send('clipboard:write', text),
   flash: () => ipcRenderer.send('win:flash'),

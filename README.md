@@ -13,7 +13,15 @@ genuine Claude Code session, so slash commands, permissions and speed are unchan
 - **Newest first**: open sessions sit at the top of their project's list, the newest on top; `Alt+1` is the newest tab.
   The order is kept across restarts.
 - **Split groups**: you can have several splits at once. Each shows as a box in the sidebar (its own color when there
-  are several); clicking one of its sessions brings that split back on screen.
+  are several); clicking one of its sessions brings that split back on screen. Splits come back after a restart too.
+- **File links**: paths Claude prints (`src/main.js:123`, `C:\code\app\x.ts:4:2`) open with Ctrl+click (⌘-click on macOS, like web links) when the file exists
+  in the project, and open in VS Code at that line (else in the default app).
+- **Fork a session**: right-click a session in the sidebar for "Fork session" (`claude --resume <id> --fork-session`), a
+  copy under a new id to try another approach. Opening a session that is already on screen beside itself forks it too.
+- **Resume after exit**: when a Claude tab exits, the overlay offers Resume (the same session) or New session.
+- **Projects**: drag a project row to reorder the list (or "Move to top" in its `…` menu). Two folders with the same
+  name show their parent folder (`app (clients)`), also in tab labels and notifications.
+- **Running servers**: click a row to copy `http://localhost:<port>`, Shift+click to open it in the browser.
 - **Notifications**: a Claude session in the background (or any session while the window is unfocused) notifies
   "Needs input" when it shows a permission prompt or a question, and "Done" when a task of 10 s or more finishes.
   Click it to jump to that tab. Mute them in the OS notification settings.
@@ -46,6 +54,8 @@ npm run package:mac      # build dist/mac-*/Claude Bench.app (unsigned, for your
 - Claude and shell tabs use the PATH of your login shell (`$SHELL -l`), so the app finds `claude` and `node` even when
   started from Finder. A shell startup file that blocks delays the first tab by at most 5 s.
 - Open tabs are restored on relaunch as on Windows; restored Claude tabs wait for the login shell's PATH like new ones.
+- File links open with the `code` command if it is on your login shell's PATH (VS Code: "Shell Command: Install 'code'
+  command in PATH"), at the line; otherwise VS Code opens the file without the line, or the default app.
 - Notifications use macOS Notification Center; allow them for the app (or Electron, under `npm start`) when asked.
 - The macOS app icon uses `assets/icon-mac.png` (the tile padded to Apple's 824/1024 grid); Windows uses the multi-size ICO for its window and taskbar.
 - Plan limits in the footer read Claude Code's token from the Keychain; macOS may ask once for access.
