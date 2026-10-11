@@ -1074,7 +1074,7 @@ function createWindow() {
     titleBarStyle: 'hidden',
     ...(IS_MAC
       ? { trafficLightPosition: { x: 14, y: 13 } } // centred in the 40 px top row; #brand leaves room (body.mac in styles.css)
-      : { titleBarOverlay: { color: '#0a0a0a', symbolColor: '#a1a1a1', height: 40 } }), // sits on the top bar (--background)
+      : { titleBarOverlay: { color: '#0a0a0a', symbolColor: '#a1a1a1', height: 39 } }), // sits on the top bar (--background), 1 px short so the bar's border-bottom (row 40) runs under it to the edge
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
