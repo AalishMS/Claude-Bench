@@ -797,7 +797,9 @@ function fitTab(tab) {
     const box = tab.host.querySelector('.xterm');
     const screen = tab.host.querySelector('.xterm-screen');
     const rowH = screen && tab.term.rows ? screen.offsetHeight / tab.term.rows : 0;
-    if (box && rowH && rows > 1 && rows * rowH > box.clientHeight) rows--;
+    // the fit addon reads the host's border-box height (padding included, 30px more in a split pane) and the
+    // unrounded cell height, so its row count can be several too many: count the rows that fit the .xterm box
+    if (box && rowH && rows * rowH > box.clientHeight) rows = Math.max(1, Math.floor(box.clientHeight / rowH));
     if (cols !== tab.term.cols || rows !== tab.term.rows) tab.term.resize(cols, rows);
   } catch { /* not measurable yet */ }
 }
