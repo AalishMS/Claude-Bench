@@ -1665,19 +1665,19 @@ function renderInfo() {
   ].filter(Boolean));
 }
 
-let infoBusy = false;
+const infoBusy = new Set(); // per tab, so a slow poll of one tab never drops the poll of the tab just focused
 async function pollInfo() {
   const tab = activeTab();
   if (!tab || tab.kind !== 'claude') { renderInfo(); return; }
-  if (infoBusy || document.hidden) return;
-  infoBusy = true;
+  if (infoBusy.has(tab.id) || document.hidden) return;
+  infoBusy.add(tab.id);
   try {
     const next = await api.sessionInfo(tab.project.path, tab.sessionId);
     if (tabs.has(tab.id)) infoBy.set(tab.id, next);
     renderInfo(); // key-diffed
     renderRside();
   } finally {
-    infoBusy = false;
+    infoBusy.delete(tab.id);
   }
 }
 
