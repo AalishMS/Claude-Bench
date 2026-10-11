@@ -1467,7 +1467,8 @@ const fmtAgo = (ms) => {
 const saveExpanded = () => api.setUi({ expanded: [...expanded] });
 
 function toggleExpand(p) {
-  if (!expanded.delete(p.path)) expanded.add(p.path);
+  if (expanded.delete(p.path)) showMore.delete(p.path); // collapsing folds the list again: reopening shows the first few
+  else expanded.add(p.path);
   saveExpanded();
   renderSidebar(true);
 }
