@@ -93,7 +93,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   - Usage token: Keychain item `Claude Code-credentials` (`security find-generic-password -w`) when the file token is
     missing or expired; a failed read is not retried for 10 minutes (no repeated access dialogs).
   - Window: traffic lights via `trafficLightPosition` (no `titleBarOverlay`); `body.mac` moves the padding to `#brand`.
-    Windows uses `assets/icon.ico` for the window and taskbar relaunch icon (copied outside asar); macOS keeps `assets/icon.png`.
+    Windows uses `assets/icon.ico` for the window and taskbar; macOS keeps `assets/icon.png`.
     A minimal app menu (appMenu + editMenu) replaces Electron's default, whose Cmd+W/R/= would clash; the Edit roles
     give Cmd+C/V/A to xterm and inputs. VS Code opens via `open -a "Visual Studio Code"`.
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default

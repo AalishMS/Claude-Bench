@@ -242,4 +242,4 @@ Per-line font size is impossible in a terminal grid, and the app never re-parses
 - `src/main.js`: `backgroundColor` and `titleBarOverlay.color` = `#0a0a0a` (they paint before CSS loads; the
   window controls sit on the top bar). Keep them equal to `--background`.
 - `XTERM_THEME.brightBlack` (renderer.js) is tuned against `--background` (see section 5).
-- `assets/icon-source.png` (1024 px master) → `assets/icon.png` (512 px, renderer/macOS window and package) and `assets/icon.ico` (PNG frames: 16, 24, 32, 48, 64, 128, 256 px, Windows window/taskbar/package). Windows taskbar relaunch metadata points to a refreshed copy in userData, outside asar. Replace derived assets together; the old code generator has been removed.
+- `assets/icon-source.png` (1024 px master) → `assets/icon.png` (512 px, renderer/macOS window and package) and `assets/icon.ico` (PNG frames: 16, 24, 32, 48, 64, 128, 256 px, Windows window/taskbar/package). Replace derived assets together; the old code generator has been removed.

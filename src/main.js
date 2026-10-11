@@ -24,7 +24,6 @@ function registerToastIdentity() {
   try {
     const icon = path.join(app.getPath('userData'), 'toast-icon.png');
     fs.copyFileSync(ICON_PNG, icon); // Refresh existing profiles when the app logo changes.
-    fs.copyFileSync(ICON, path.join(app.getPath('userData'), 'app-icon.ico')); // Windows can't read inside asar.
     const key = `HKCU\\Software\\Classes\\AppUserModelId\\${AUMID}`;
     for (const [name, value] of [['DisplayName', 'Claude Bench'], ['IconUri', icon]]) {
       execFile('reg.exe', ['add', key, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'], { windowsHide: true }, () => {});
@@ -1034,14 +1033,6 @@ function createWindow() {
       sandbox: true,
     },
   });
-  if (!IS_MAC) {
-    mainWindow.setAppDetails({
-      appId: AUMID,
-      appIconPath: path.join(app.getPath('userData'), 'app-icon.ico'),
-      relaunchCommand: `"${process.execPath}"${app.isPackaged ? '' : ` "${path.join(__dirname, '..')}"`}`,
-      relaunchDisplayName: 'Claude Bench',
-    });
-  }
   if (state.maximized) mainWindow.maximize();
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
