@@ -211,11 +211,22 @@ const mcpBy = new Map(); // project path -> { ok, servers: [{ name, status, labe
 const definedBy = new Map(); // project path -> [{ name, model }] subagents defined in ~/.claude/agents and <project>/.claude/agents
 
 const SESSIONS_SHOWN = 8;
-// The window size is not stored in transcripts: 1M for Opus (what /context reports) or a "[1m]" model, else 200k
-// until a session has gone past it.
+// The window size is not stored in transcripts, so it is derived from the model: 1M for current models (Opus/Sonnet
+// 4.6+, Haiku 5+, Fable, Mythos, unknown newer ones) or a "[1m]" model, 200k for older ones (Claude 3, Haiku 4.x,
+// Opus/Sonnet up to 4.5) until a session has gone past it.
 const CONTEXT_WINDOW = 200000;
 const CONTEXT_WINDOW_LARGE = 1000000;
-const largeWindow = (model) => /opus|\[1m\]/i.test(model || '');
+function contextWindow(model, used) {
+  const m = String(model || '').toLowerCase();
+  if (used > CONTEXT_WINDOW || m.includes('[1m]')) return CONTEXT_WINDOW_LARGE;
+  if (/claude-(instant|2|3)\b/.test(m)) return CONTEXT_WINDOW;
+  // "claude-sonnet-4-5-20250929", "Sonnet 4.5", "claude-haiku-5-5"; the (?!\d) keeps a date out of the minor version
+  const v = /(haiku|sonnet|opus)[- ]?(\d+)(?:[-.](\d)(?!\d))?/.exec(m);
+  if (!v) return CONTEXT_WINDOW_LARGE;
+  const ver = Number(v[2]) + Number(v[3] || 0) / 10;
+  return (v[1] === 'haiku' ? ver < 5 : ver < 4.6) ? CONTEXT_WINDOW : CONTEXT_WINDOW_LARGE;
+}
+const WINDOW_NOTE = 'Approximate: the window size is assumed from the model (1M for current models, 200k for Haiku 4.x and Opus/Sonnet up to 4.5). Type /context in the tab for exact numbers.';
 
 // Terminal typography. A light body weight with a clearly heavier bold, and generous line spacing, so
 // headings, prose, code and dim "thinking"/tool lines stay distinguishable. Size is user-adjustable (Ctrl +/-/0).
@@ -320,7 +331,7 @@ async function agentDialog(a, tab) {
   const runs = res?.runs || [];
   const ctxLine = (r) => {
     if (!r.ctx) return null;
-    const win = r.ctx > CONTEXT_WINDOW || largeWindow(r.model || a.model) ? CONTEXT_WINDOW_LARGE : CONTEXT_WINDOW;
+    const win = contextWindow(r.model || a.model, r.ctx);
     const pct = Math.min(100, Math.round((r.ctx / win) * 100));
     return h('div', { class: 'ag-ctx' }, h('div', { class: 'ctx-line' }, h('span', { class: 'ctx-title' }, 'Context'),
       h('span', { class: 'ctx-val' }, `${fmtTok(r.ctx)} / ${fmtTok(win)} (${pct}%)`)),
@@ -1553,7 +1564,7 @@ function contextInfo() {
   const session = (sessionsBy[tab.project.path] || []).find((s) => s.id === tab.sessionId) || null;
   if (!session?.ctx) return { tab, session, pct: null };
   const model = infoBy.get(tab.id)?.model || session.model;
-  const win = session.ctx > CONTEXT_WINDOW || largeWindow(model) ? CONTEXT_WINDOW_LARGE : CONTEXT_WINDOW;
+  const win = contextWindow(model, session.ctx);
   return { tab, session, win, pct: Math.min(100, Math.round((session.ctx / win) * 100)) };
 }
 
@@ -1637,7 +1648,7 @@ const DETAILS = {
       h('span', { class: `meter big ${levelOf(c.pct)}` }, h('i', { style: `width:${c.pct}%` })),
       dRow('Used', `${fmtTok(c.session.ctx)} of ${fmtTok(c.win)} (${c.pct}%)`),
       dRow('Model', modelName(c.session.model)),
-      dNote('Approximate: the window size is assumed (1M for Opus, else 200k until a session passes it). Type /context in the tab for exact numbers.'));
+      dNote(WINDOW_NOTE));
   },
 
   state() {
@@ -1931,7 +1942,7 @@ function renderRside(force = false) {
 
   const lvl = ctx?.pct != null ? levelOf(ctx.pct) : '';
   const head = ctx?.pct != null
-    ? h('div', { class: 'ctx-head', title: 'Approximate: the window size is assumed (1M for Opus, else 200k until a session passes it). Type /context in the tab for exact numbers.' },
+    ? h('div', { class: 'ctx-head', title: WINDOW_NOTE },
         h('div', { class: 'ctx-line' },
           h('span', { class: 'ctx-title' }, 'Context'),
           h('span', { class: 'ctx-val' }, `${fmtTok(ctx.session.ctx)} / ${fmtTok(ctx.win)}`)),
