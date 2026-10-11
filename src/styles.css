@@ -1,9 +1,9 @@
 /* shadcn/ui dark (neutral) tokens. See DESIGN.md. --primary is the only accent literal; tints use color-mix(). */
 :root {
-  --background: #171717; /* terminal, top bar, status bar, dialogs: one step lighter than the sidebar */
+  --background: #0a0a0a; /* terminal, top bar, status bar, right panel, dialogs */
   --foreground: #fafafa;
-  --card: #171717;
-  --popover: #171717;
+  --card: #0a0a0a;
+  --popover: #0a0a0a;
   --primary: #2850a5;
   --primary-foreground: #fafafa;
   --primary-hover: color-mix(in srgb, var(--primary) 85%, white);
@@ -19,11 +19,11 @@
   --destructive: #ff6467;
   --success: #7fb77e;
   --warning: #d6b25e;
-  --sidebar: #0a0a0a; /* the darkest surface: a quiet frame around the terminal */
+  --sidebar: #030303; /* the darkest surface: only the left sidebar (plus faint noise, see #sidebar) */
   --sidebar-foreground: #fafafa;
   --sidebar-accent: #262626; /* selected row */
   --sidebar-hover: color-mix(in srgb, var(--sidebar-accent) 50%, transparent); /* hovered row: a softer selected */
-  --sidebar-border: rgb(255 255 255 / 10%);
+  --sidebar-border: #1d1d1d; /* 1px dividers: sidebar / terminal / right panel */
   --radius: 10px;
   --radius-sm: 6px;
   --radius-md: 8px;
@@ -108,9 +108,13 @@ body.sidebar-collapsed .brand-name { display: none; }
 
 /* --------------------------------------------------------------- body --- */
 #body { display: flex; min-height: 0; }
-#sidebar, #rside { background: var(--sidebar); color: var(--sidebar-foreground); display: flex; flex-direction: column; min-height: 0; flex: none; }
-#sidebar { width: var(--sidebar-w); } /* no divider: the shade step to --background separates it */
-#rside { width: var(--rside-w); border-left: 1px solid var(--sidebar-border); display: none; overflow-x: hidden; overflow-y: auto; padding-bottom: 12px; }
+#sidebar, #rside { color: var(--sidebar-foreground); display: flex; flex-direction: column; min-height: 0; flex: none; }
+/* only the left sidebar is dark: #030303 with faint white noise (alpha <= 0.8% = up to ~#050505); the right panel matches the terminal */
+#sidebar {
+  width: var(--sidebar-w); border-right: 1px solid var(--sidebar-border);
+  background: var(--sidebar) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .008 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+#rside { width: var(--rside-w); background: var(--background); border-left: 1px solid var(--sidebar-border); display: none; overflow-x: hidden; overflow-y: auto; padding-bottom: 12px; }
 body.sidebar-collapsed #sidebar { display: none; }
 body.rside-open #rside { display: flex; }
 #main { position: relative; flex: 1; min-width: 0; background: var(--background); }

@@ -15,10 +15,10 @@ a token, never a scattered value. Dark only: there is no light theme.
 
 | Token | Value | Used for |
 |---|---|---|
-| `--background` | `#171717` | terminal, top bar, status bar, dialogs (one step lighter than `--sidebar`, a tweak) |
+| `--background` | `#0a0a0a` | terminal, top bar, status bar, right panel, dialogs (lighter than `--sidebar`, a tweak) |
 | `--foreground` | `#fafafa` | body text |
-| `--card` | `#171717` | card surface (same as the background) |
-| `--popover` | `#171717` | footer detail popover, `…` menu, exit overlay |
+| `--card` | `#0a0a0a` | card surface (same as the background) |
+| `--popover` | `#0a0a0a` | footer detail popover, `…` menu, exit overlay |
 | `--primary` | `#2850a5` | **the one accent** (royal blue, a tweak: shadcn's own primary is near-white) |
 | `--primary-foreground` | `#fafafa` | text on primary |
 | `--secondary`, `--muted`, `--accent` | `#262626` | tab list, kbd, meter track, hover surfaces |
@@ -30,11 +30,11 @@ a token, never a scattered value. Dark only: there is no light theme.
 | `--destructive` | `#ff6467` | destructive actions, conflicts, critical meters |
 | `--success` | `#7fb77e` | running |
 | `--warning` | `#d6b25e` | uncommitted changes, background activity |
-| `--sidebar` | `#0a0a0a` | project sidebar, right sidebar: the darkest surface, a quiet frame (tweak) |
+| `--sidebar` | `#030303` | left project sidebar only: the darkest surface, plus faint white noise (up to ~`#050505`, an SVG data-URI on `#sidebar`) (tweak) |
 | `--sidebar-foreground` | `#fafafa` | |
 | `--sidebar-accent` | `#262626` | selected sidebar row |
 | `--sidebar-hover` | `color-mix(--sidebar-accent 50%, transparent)` | hovered sidebar row: a softer selected |
-| `--sidebar-border` | `rgb(255 255 255 / 10%)` | |
+| `--sidebar-border` | `#1d1d1d` | the 1 px dividers: sidebar / terminal, terminal / right panel |
 | `--radius` | `10px` | base radius |
 | `--radius-sm` / `-md` / `-lg` / `-xl` | `6` / `8` / `10` / `14px` | shadcn's `rounded-sm/md/lg/xl` |
 | `--shadow-sm` / `-md` / `-lg` | | chips, popovers, dialogs (barely visible on dark, as in shadcn) |
@@ -100,8 +100,8 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 (no grey placeholder).
 
 ### Sidebar: shadcn `Sidebar`, lightened
-- `#sidebar` is a full-height column: bg `--sidebar` (the darkest surface), width 256. **No divider** on the
-  terminal side: the step to `--background` separates them. Nothing inside has its own box, card, tint or border.
+- `#sidebar` is a full-height column: bg `--sidebar` (the darkest surface), width 256, 1 px `--sidebar-border` on the
+  terminal side. Nothing inside has its own box, card, tint or border.
 - Top row (40 px, draggable): sidebar toggle, logo, app name (`#brand`). While collapsed, `#brand` moves to the start
   of the top bar so the toggle stays reachable.
 - Search: a plain 32 px row (search icon + "Search" placeholder), no border; hover/focus = `--sidebar-hover`.
@@ -121,7 +121,7 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   gauge + `10%`, context as the pie icon + `24%`, running as a status dot + `3 running`. Icons `--faint`, values
   `--foreground`, colored only at warn/crit levels. Weekly usage lives in the tooltip and the popover. Each opens its
   `#detail` popover; hover `--sidebar-hover`, `.on` = bg `--sidebar-accent`.
-- The right sidebar (`#rside`, 300 px) uses the same `--sidebar` surface with a hairline `--sidebar-border` on its terminal side.
+- The right sidebar (`#rside`, 300 px) uses the `--background` surface (same as the terminal) with a 1 px `--sidebar-border` on its terminal side.
   Top: **Context** header (12 px muted title + `150k / 200k`, the % at 20 px/600 colored only at warn/crit, a `.meter.big`).
   Then collapsible sections (32 px muted 12 px/500 header with a chevron and a faint count; open by default): **MCPs**,
   **Subagents**, **Running**. Rows are the same flat 30 px inset rows: 8 px circular status dot (or a 14 px check for finished
@@ -181,7 +181,7 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 ## 4. Layout and behavior (tweaks kept from before)
 
 - **Terminal first.** The terminal gets the space and the focus. The chrome around it stays quiet: the top bar and
-  status bar are `--background` like the terminal, and the sidebars are one step **darker** (`--sidebar`), a frame
+  status bar are `--background` like the terminal, and only the left sidebar is **darker** (`--sidebar`), a frame
   around the work rather than a panel competing with it (a tweak: shadcn's sidebar is the lighter side).
 - Two columns: the full-height sidebar, then the workspace (top bar, terminal + right sidebar, status bar). The top
   bar and status bar never run under the sidebar.
@@ -204,7 +204,7 @@ Per-line font size is impossible in a terminal grid, and the app never re-parses
   secondary/meta text and rules, `white`+dim = diff context, `brightWhite` on `brightBlack` bg = the user's message bar,
   `brightBlue` = inline code, `brightGreen` = bullets and diff +, `brightRed` = diff -, bold = headings/strong, italic
   = emphasis/quotes, H1 = bold+italic+underline.
-- Keep `white` mid-grey (hierarchy) and `brightBlack` dark (a quiet message bar): `#333333`, one step above
+- Keep `white` mid-grey (hierarchy) and `brightBlack` dark (a quiet message bar): `#262626`, one step above
   `--background`. If the background moves, move `brightBlack` with it so the bar stays visible but quiet. `minimumContrastRatio: 3` keeps
   PowerShell's brightBlack flags readable.
 - The terminal background **is** `--background`: `XTERM_THEME.background` and `cursorAccent` are read from the CSS
@@ -212,7 +212,7 @@ Per-line font size is impossible in a terminal grid, and the app never re-parses
 
 ## 6. Sync points (literals that can't read CSS)
 
-- `src/main.js`: `backgroundColor` and `titleBarOverlay.color` = `#171717` (they paint before CSS loads; the
+- `src/main.js`: `backgroundColor` and `titleBarOverlay.color` = `#0a0a0a` (they paint before CSS loads; the
   window controls sit on the top bar). Keep them equal to `--background`.
 - `XTERM_THEME.brightBlack` (renderer.js) is tuned against `--background` (see section 5).
 - `scripts/make-icon.js` ↔ `LOGO_SVG`.

@@ -105,7 +105,8 @@ const XTERM_THEME = {
   selectionBackground: 'rgba(255, 255, 255, 0.22)',
   black: '#2a2a2a', red: '#e5736f', green: '#86c06c', yellow: '#e2b657',
   blue: '#6fa8dc', magenta: '#c490d1', cyan: '#6ec5c0', white: '#b0b0b0',
-  brightBlack: '#333333', // the user's message bar: one step above --background (#171717) brightRed: '#f0908c', brightGreen: '#a3d58b', brightYellow: '#efce7d',
+  brightBlack: '#262626', // the user's message bar: one step above --background (#0a0a0a)
+  brightRed: '#f0908c', brightGreen: '#a3d58b', brightYellow: '#efce7d',
   brightBlue: '#8cc2f0', brightMagenta: '#d8aee3', brightCyan: '#92d9d4', brightWhite: '#ffffff',
 };
 

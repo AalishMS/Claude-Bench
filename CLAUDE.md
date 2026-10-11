@@ -37,7 +37,7 @@ The UI follows **shadcn/ui** (dark theme, neutral base) with a few deliberate tw
 truth: read it before any UI change** and update it in the same change when a rule moves. shadcn is copied as CSS
 tokens and component recipes, never installed (no React/Tailwind/Radix).
 
-- Tokens use shadcn names (`--background #171717`, `--sidebar #0a0a0a` = the darker frame, `--foreground`, `--muted`, `--accent` = neutral hover surface,
+- Tokens use shadcn names (`--background #0a0a0a`, `--sidebar #030303` = the darker left frame, `--foreground`, `--muted`, `--accent` = neutral hover surface,
   `--border`, `--input`, `--ring`, `--sidebar`...) as CSS variables at the top of `src/styles.css`. Change tokens,
   not scattered values.
 - **`--primary` (royal blue `#2850a5`) is the single accent variable.** Hover and ring tints derive from it with
@@ -47,7 +47,7 @@ tokens and component recipes, never installed (no React/Tailwind/Radix).
 - Buttons are `.btn` + `primary|outline|ghost|destructive` + `sm|icon` (rounded-md, no pills). There is no tab
   strip: sidebar session rows are the tabs. Sidebar rows are flat 32 px rounded rows with no borders or boxes.
 - Terminal typography and the ANSI palette rules are in DESIGN.md section 5. `XTERM_THEME.background` reads
-  `--background`; `titleBarOverlay` / `backgroundColor` in main.js are literals that must match it (`#171717`).
+  `--background`; `titleBarOverlay` / `backgroundColor` in main.js are literals that must match it (`#0a0a0a`).
 
 ## Architecture
 
