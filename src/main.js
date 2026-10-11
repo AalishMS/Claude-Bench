@@ -587,6 +587,8 @@ function firstPrompt(text) {
 
 const sessionCache = new Map(); // file -> { sig, info }
 
+const usageTokens = (u) => u ? (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.output_tokens || 0) : 0;
+
 async function readSession(file, st) {
   const sig = `${st.mtimeMs}:${st.size}`;
   const hit = sessionCache.get(file);
@@ -613,7 +615,7 @@ async function readSession(file, st) {
       mtime: Math.round(st.mtimeMs),
       birth: Math.round(st.birthtimeMs),
       model: t.model,
-      ctx: u ? (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.output_tokens || 0) : 0,
+      ctx: usageTokens(u),
     };
   }
   sessionCache.set(file, { sig, info });
@@ -850,7 +852,9 @@ async function agentPrompts(cwd, sessionId, name) {
           const first = (await readRange(file, 0, 512 * 1024)).split('\n')[0];
           const c = JSON.parse(first).message?.content;
           const prompt = typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => x.text || '').join('\n') : '';
-          out.runs.push({ description: oneLine(meta.description), prompt: prompt.trim().slice(0, PROMPT_CAP), start: Math.round((await fs.promises.stat(file)).birthtimeMs) });
+          const st = await fs.promises.stat(file);
+          const t = parseTail(await readTail(file, st.size, TAIL_BYTES)); // each subagent has its own context window
+          out.runs.push({ description: oneLine(meta.description), prompt: prompt.trim().slice(0, PROMPT_CAP), start: Math.round(st.birthtimeMs), ctx: usageTokens(t.usage), model: t.model });
         } catch { /* partial first line or unreadable */ }
       }
     } catch { /* no subagents */ }

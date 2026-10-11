@@ -318,7 +318,15 @@ async function agentDialog(a, tab) {
   const parts = [];
   if (res?.definition) parts.push(sec('Agent prompt', res.definition));
   const runs = res?.runs || [];
-  runs.slice(0, 5).forEach((r) => parts.push(sec(runs.length > 1 || res?.definition ? `Prompt given${r.description ? `: ${r.description}` : ''}` : (r.description ? `Prompt given: ${r.description}` : 'Prompt given'), r.prompt || '(empty)')));
+  const ctxLine = (r) => {
+    if (!r.ctx) return null;
+    const win = r.ctx > CONTEXT_WINDOW || largeWindow(r.model || a.model) ? CONTEXT_WINDOW_LARGE : CONTEXT_WINDOW;
+    const pct = Math.min(100, Math.round((r.ctx / win) * 100));
+    return h('div', { class: 'ag-ctx' }, h('div', { class: 'ctx-line' }, h('span', { class: 'ctx-title' }, 'Context'),
+      h('span', { class: 'ctx-val' }, `${fmtTok(r.ctx)} / ${fmtTok(win)} (${pct}%)`)),
+      h('span', { class: `meter big ${levelOf(pct)}`.trim() }, h('i', { style: `width:${pct}%` })));
+  };
+  runs.slice(0, 5).forEach((r) => parts.push(h('div', {}, ctxLine(r), sec(runs.length > 1 || res?.definition ? `Prompt given${r.description ? `: ${r.description}` : ''}` : (r.description ? `Prompt given: ${r.description}` : 'Prompt given'), r.prompt || '(empty)'))));
   if (runs.length > 5) parts.push(h('div', { class: 'rnote' }, `${runs.length - 5} older runs not shown.`));
   body.replaceChildren(...(parts.length ? parts : [h('div', { class: 'rnote' }, 'No prompt found: this agent is not defined in a file and has not run in this session.')]));
 }
