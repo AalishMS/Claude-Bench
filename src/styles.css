@@ -1,9 +1,9 @@
 /* shadcn/ui dark (neutral) tokens. See DESIGN.md. --primary is the only accent literal; tints use color-mix(). */
 :root {
-  --background: #171717; /* terminal, top bar, status bar, dialogs: one step lighter than the sidebar */
+  --background: #0a0a0a; /* terminal, top bar, status bar, right panel, dialogs */
   --foreground: #fafafa;
-  --card: #171717;
-  --popover: #171717;
+  --card: #0a0a0a;
+  --popover: #0a0a0a;
   --primary: #2850a5;
   --primary-foreground: #fafafa;
   --primary-hover: color-mix(in srgb, var(--primary) 85%, white);
@@ -19,11 +19,11 @@
   --destructive: #ff6467;
   --success: #7fb77e;
   --warning: #d6b25e;
-  --sidebar: #0a0a0a; /* the darkest surface: a quiet frame around the terminal */
+  --sidebar: #030303; /* the darkest surface: only the left sidebar (plus faint noise, see #sidebar) */
   --sidebar-foreground: #fafafa;
   --sidebar-accent: #262626; /* selected row */
   --sidebar-hover: color-mix(in srgb, var(--sidebar-accent) 50%, transparent); /* hovered row: a softer selected */
-  --sidebar-border: rgb(255 255 255 / 10%);
+  --sidebar-border: #1d1d1d; /* 1px dividers: sidebar / terminal / right panel */
   --radius: 10px;
   --radius-sm: 6px;
   --radius-md: 8px;
@@ -32,9 +32,9 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 5%);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 10%), 0 2px 4px -2px rgb(0 0 0 / 10%);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
-  --sidebar-w: 256px;
-  --servers-w: 330px;
-  --mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  --sidebar-w: 232px; /* both widths are user-resizable (ui.sidebarW / ui.rsideW) */
+  --rside-w: 300px;
+  --mono: "Cascadia Mono", "Cascadia Code", Consolas, Menlo, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -52,7 +52,7 @@ button { font: inherit; color: inherit; }
 ::-webkit-scrollbar-thumb:hover { background: var(--input); background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* two columns: the full-height sidebar, and the workspace (top bar, terminal + servers panel, status bar) */
+/* two columns: the full-height sidebar, and the workspace (top bar, terminal + right sidebar, status bar) */
 #app { display: flex; height: 100%; }
 #workspace { flex: 1; min-width: 0; display: grid; grid-template-rows: 40px 1fr 24px; }
 
@@ -85,7 +85,7 @@ button { font: inherit; color: inherit; }
 .btn:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
 .btn.outline:focus-visible { border-color: var(--ring); }
 /* ghost buttons sitting on a hovered/active row (same surface as the button hover): use a foreground tint */
-.project .btn:hover, .session .btn:hover, .srv .btn:hover { background: color-mix(in srgb, var(--foreground) 10%, transparent); }
+.project .btn:hover, .session .btn:hover { background: color-mix(in srgb, var(--foreground) 10%, transparent); }
 
 /* ------------------------------------------------------------- top bar --- */
 #topbar {
@@ -98,31 +98,45 @@ button { font: inherit; color: inherit; }
 #topbar .btn, #brand .btn { -webkit-app-region: no-drag; }
 
 /* toggle + logo + name: the sidebar's top row (draggable), or the top bar's start while the sidebar is collapsed */
-#brand { display: flex; align-items: center; gap: 8px; flex: none; height: 40px; padding: 0 8px; -webkit-app-region: drag; }
+#brand { display: flex; align-items: center; gap: 8px; flex: none; height: 40px; padding: 0 8px 0 4px; -webkit-app-region: drag; }
 #brand .logo { width: 20px; height: 20px; display: inline-flex; }
 #brand .logo svg { width: 100%; height: 100%; }
 .brand-name { font-weight: 500; white-space: nowrap; }
 #topbar #brand { padding: 0; }
+/* macOS: window buttons (traffic lights) sit at the top-left, where #brand always is, instead of the top-right */
+body.mac #topbar { padding-right: 8px; }
+body.mac #brand, body.mac #topbar #brand { padding-left: 72px; }
 body.sidebar-collapsed .brand-name { display: none; }
 @keyframes pulse { 50% { opacity: 0.3; } }
 
 /* --------------------------------------------------------------- body --- */
 #body { display: flex; min-height: 0; }
-#sidebar, #servers { background: var(--sidebar); color: var(--sidebar-foreground); display: flex; flex-direction: column; min-height: 0; flex: none; }
-#sidebar { width: var(--sidebar-w); } /* no divider: the shade step to --background separates it */
-#servers { width: var(--servers-w); border-left: 1px solid var(--sidebar-border); display: none; }
+#sidebar, #rside { color: var(--sidebar-foreground); display: flex; flex-direction: column; min-height: 0; flex: none; }
+/* only the left sidebar is dark: #030303 with faint white noise (alpha <= 0.8% = up to ~#050505); the right panel matches the terminal */
+#sidebar {
+  width: var(--sidebar-w); border-right: 1px solid var(--sidebar-border);
+  background: var(--sidebar) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .008 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+#rside { width: var(--rside-w); background: var(--background); border-left: 1px solid var(--sidebar-border); display: none; overflow-x: hidden; overflow-y: auto; padding-bottom: 12px; }
 body.sidebar-collapsed #sidebar { display: none; }
-body.servers-open #servers { display: flex; }
+body.rside-open #rside { display: flex; }
+/* drag handles on the two dividers: 4px overlaying the panel edge, zero layout width */
+.rz { position: relative; z-index: 6; flex: none; width: 4px; cursor: col-resize; -webkit-app-region: no-drag; transition: background-color 0.15s; }
+#rz-left { margin-left: -4px; }
+#rz-right { margin-right: -4px; display: none; }
+body.rside-open #rz-right { display: block; }
+body.sidebar-collapsed #rz-left { display: none; }
+.rz:hover, .rz.drag { background: color-mix(in srgb, var(--primary) 60%, transparent); }
+body.resizing { cursor: col-resize; }
+body.resizing * { pointer-events: none; }
+body.resizing .rz { pointer-events: auto; }
 #main { position: relative; flex: 1; min-width: 0; background: var(--background); }
 
-.side-head { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 8px 0 16px; }
-.section-title { font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
 
 /* ----------------------------------------------------------- projects --- */
 /* Flat rows, no boxes or guide lines. Columns line up: a project's name and its sessions' titles both start at
    52px, and a session's status dot sits under the project's folder icon. 2px between rows, 12px between groups. */
-#projects { flex: 1; display: flex; flex-direction: column; gap: 12px; overflow-x: hidden; overflow-y: auto; padding: 0 8px 12px; }
-#server-list { flex: 1; overflow-x: hidden; overflow-y: auto; padding: 0 0 12px; }
+#projects { flex: 1; display: flex; flex-direction: column; gap: 12px; overflow-x: hidden; overflow-y: auto; padding: 0 8px 12px 4px; }
 .group, .sessions { display: flex; flex-direction: column; gap: 2px; flex: none; }
 .project { display: flex; align-items: center; gap: 6px; height: 32px; flex: none; padding: 0 4px 0 6px; border-radius: var(--radius-md); cursor: pointer; }
 .project:hover { background: var(--sidebar-hover); }
@@ -157,7 +171,7 @@ body.servers-open #servers { display: flex; }
 .g.muted { color: var(--faint); }
 
 /* session search: a plain row (no input box); hover/focus get the row highlight */
-.search { display: flex; align-items: center; gap: 8px; height: 32px; flex: none; margin: 0 8px 8px; padding: 0 8px 0 9px; border-radius: var(--radius-md); color: var(--faint); cursor: text; }
+.search { display: flex; align-items: center; gap: 8px; height: 32px; flex: none; margin: 0 8px 8px 4px; padding: 0 8px 0 9px; border-radius: var(--radius-md); color: var(--faint); cursor: text; }
 .search:hover, .search:focus-within { background: var(--sidebar-hover); color: var(--muted-foreground); }
 .search .ico { width: 14px; height: 14px; }
 .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--foreground); font: inherit; user-select: text; }
@@ -185,7 +199,7 @@ body.servers-open #servers { display: flex; }
 
 /* footer: one slim row, icon buttons left, compact usage / context / running text right (each opens #detail) */
 /* every stat is icon (14px slot) + value, same height and padding, 2px apart; the row aligns with the list's 8px inset */
-#side-foot { display: flex; align-items: center; gap: 2px; height: 44px; flex: none; padding: 0 8px; }
+#side-foot { display: flex; align-items: center; gap: 2px; height: 44px; flex: none; padding: 0 8px 0 4px; }
 .fstats { display: flex; align-items: center; gap: 2px; min-width: 0; margin-left: auto; }
 .fstat { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--foreground); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; transition: background-color 0.15s, color 0.15s; }
 .fstat:hover { background: var(--sidebar-hover); }
@@ -248,6 +262,29 @@ body.servers-open #servers { display: flex; }
 .term-host .xterm-viewport { background-color: var(--background) !important; }
 /* our scrollbar (.vbar) replaces xterm's; it sits in the gutter xterm's fit already leaves on the right */
 .term-host .xterm-scrollable-element > .scrollbar { display: none !important; }
+/* split view: #terminals becomes a grid (templates set from renderer.js); hairline gaps show --border */
+#terminals.split { display: grid; gap: 1px; background: var(--border); }
+.term-host.pane { position: relative; inset: auto; display: block; min-width: 0; min-height: 0; padding-top: 30px; }
+.pane-head { display: none; }
+.pane .pane-head { position: absolute; top: 0; left: 0; right: 0; height: 26px; z-index: 5; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 12px; color: var(--faint); font-size: 12px; box-shadow: inset 0 1px 0 transparent; }
+.pane.focus .pane-head { color: var(--foreground); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--primary) 70%, transparent); }
+.pane-head .s-mark { width: 10px; }
+.ph-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pane-head .btn { opacity: 0; }
+.pane:hover .pane-head .btn { opacity: 1; }
+.pane .vbar { top: 30px; }
+.pz { position: absolute; z-index: 6; background: transparent; transition: background-color 0.15s; }
+.pz[hidden] { display: none; }
+#pz-v { top: 0; bottom: 0; width: 4px; cursor: col-resize; }
+#pz-h { right: 0; height: 4px; cursor: row-resize; }
+.pz:hover, .pz.drag { background: color-mix(in srgb, var(--primary) 60%, transparent); }
+body.resizing .pz { pointer-events: auto; }
+/* drag a sidebar session onto the terminals: the preview marks the pane it would become */
+#dropzone { position: absolute; inset: 0; z-index: 7; display: none; }
+body.dragging-session #dropzone { display: block; }
+body.no-tabs #close-tab, body.no-tabs #split-tab { display: none; }
+#drop-preview { position: absolute; box-sizing: border-box; pointer-events: none; border-radius: var(--radius-lg); border: 1px solid color-mix(in srgb, var(--primary) 70%, transparent); background: color-mix(in srgb, var(--primary) 18%, transparent); transition: left 0.12s, top 0.12s, width 0.12s, height 0.12s; }
+#drop-preview[hidden] { display: none; }
 .vbar { position: absolute; top: 10px; bottom: 6px; right: 2px; width: 8px; z-index: 4; cursor: default; }
 .vbar.empty { display: none; }
 .vthumb { position: absolute; left: 1px; right: 1px; top: 0; border-radius: 999px; background: var(--input); }
@@ -293,25 +330,45 @@ body.no-tabs #welcome { display: flex; flex-direction: column; }
 .hint { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 16px; margin-top: 40px; color: var(--faint); font-size: 12px; }
 kbd { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: var(--radius-sm); background: var(--muted); color: var(--muted-foreground); font: 11px var(--mono); vertical-align: middle; }
 
-/* ------------------------------------------------------------ servers --- */
-.toggle { display: inline-flex; align-items: center; gap: 8px; padding-right: 8px; color: var(--muted-foreground); font-size: 12px; cursor: pointer; }
-.toggle input { appearance: none; -webkit-appearance: none; position: relative; flex: none; width: 16px; height: 16px; margin: 0; border: 1px solid var(--input); border-radius: 4px; background: color-mix(in srgb, var(--input) 30%, transparent); cursor: pointer; transition: background-color 0.15s, border-color 0.15s; }
-.toggle input:checked { background: var(--primary); border-color: var(--primary); }
-.toggle input:checked::after { content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid var(--primary-foreground); border-width: 0 2px 2px 0; transform: rotate(45deg); }
-.toggle input:focus-visible { outline: 0; border-color: var(--ring); box-shadow: var(--focus-ring); }
-.group-title { display: flex; align-items: center; gap: 6px; padding: 12px 16px 4px; font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
-.group-title .ico { width: 12px; height: 12px; }
-.session.pending .s-title { font-style: italic; }
-/* one line per item: icon, name, meta on the right (covered by the actions on hover, same row: no shift) */
-.srv { position: relative; display: flex; align-items: center; gap: 10px; height: 30px; margin: 0 8px; padding: 0 8px; border-radius: var(--radius-md); }
-.srv:hover { background: var(--sidebar-accent); }
-.srv > .ico { width: 14px; height: 14px; color: var(--faint); }
-.srv .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.srv .meta { flex: none; font: 12px var(--mono); color: var(--faint); }
-.srv .meta.exposed { color: var(--warning); }
-.srv .acts { position: absolute; right: 0; top: 0; bottom: 0; display: none; align-items: center; gap: 2px; padding: 0 4px 0 8px; border-radius: var(--radius-md); background: var(--sidebar-accent); }
-.srv:hover .acts { display: flex; }
-.scan-error { padding: 12px 16px; color: var(--destructive); }
+/* -------------------------------------------------------- right sidebar --- */
+/* Context header, then collapsible sections (MCPs, Subagents, Running). Flat 30 px rows on the 8px list inset. */
+.ctx-head { flex: none; padding: 14px 16px 12px; }
+.ctx-head .ctx-line { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+.ctx-head .ctx-title { font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
+.ctx-head .ctx-val { font-size: 12px; color: var(--foreground); }
+.ctx-head .ctx-pct { font-size: 20px; font-weight: 600; line-height: 1.2; }
+.ctx-head .ctx-pct.warn { color: var(--warning); }
+.ctx-head .ctx-pct.crit { color: var(--destructive); }
+.ctx-head .meter.big { margin: 8px 0 0; }
+.rsec { flex: none; padding-bottom: 4px; }
+.rsec-head { display: flex; align-items: center; gap: 4px; width: calc(100% - 16px); height: 32px; margin: 4px 8px 0; padding: 0 8px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--muted-foreground); font: inherit; font-size: 12px; font-weight: 500; text-align: left; cursor: pointer; }
+.rsec-head:hover { color: var(--foreground); }
+.rsec-head:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+.rsec-head .ico { width: 14px; height: 14px; color: var(--faint); transition: transform 0.12s; }
+.rsec-head.open .ico { transform: rotate(90deg); }
+.rsec-head .count { margin-left: auto; font-weight: 400; color: var(--faint); font-variant-numeric: tabular-nums; }
+.rrow { display: flex; align-items: center; gap: 10px; height: 30px; margin: 0 8px; padding: 0 8px; border-radius: var(--radius-md); }
+.rrow .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rrow .meta { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--faint); }
+.rrow .meta.mono { font-family: var(--mono); }
+.rrow .ico { width: 14px; height: 14px; flex: none; }
+.rrow.copy { cursor: pointer; }
+.rrow.copy:hover { background: var(--sidebar-accent); }
+.rrow.copied .meta { color: var(--success); }
+.rrow.rmore { padding-left: 32px; font-size: 12px; color: var(--faint); cursor: pointer; }
+.rrow.rmore:hover { color: var(--foreground); }
+.rnote { padding: 6px 16px; font-size: 12px; color: var(--faint); }
+/* circular status (8px): color only carries the state */
+.dot.s { width: 8px; height: 8px; margin: 0 3px; }
+.dot.ok { background: var(--success); }
+.dot.err { background: var(--destructive); }
+.dot.warn { background: var(--warning); }
+.dot.mute { background: var(--faint); }
+.dot.wait { background: var(--faint); animation: pulse 1s ease-in-out infinite; }
+#rside .t-ok { color: var(--success); }
+#rside .t-err { color: var(--destructive); }
+#rside .t-warn { color: var(--warning); }
+#rside .t-mute { color: var(--muted-foreground); }
 
 /* ---------------------------------------------------------- status bar --- */
 #statusbar {

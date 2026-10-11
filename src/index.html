@@ -25,34 +25,31 @@
       <div id="projects"></div>
       <div id="side-foot"></div>
     </aside>
+    <div class="rz" id="rz-left" title="Drag to resize (double-click resets)"></div>
 
     <div id="workspace">
       <header id="topbar">
         <button id="new-tab" class="btn ghost icon" title="New Claude session in current project (Ctrl+T)"></button>
         <div class="spacer"></div>
-        <button id="open-code" class="btn ghost icon" title="Open project in VS Code"></button>
+        <button id="close-tab" class="btn ghost icon" title="Close session (Ctrl+W)"></button>
+        <button id="split-tab"class="btn ghost icon" title="New session beside this one (Ctrl+\)"></button>
+        <button id="open-code"class="btn ghost icon" title="Open project in VS Code"></button>
         <button id="open-shell" class="btn ghost icon" title="New PowerShell tab in project"></button>
         <button id="open-folder" class="btn ghost icon" title="Show project in Explorer"></button>
-        <button id="toggle-servers" class="btn outline sm" title="Running servers, MCP servers and browsers (Ctrl+Shift+S)">
-          <span id="servers-icon"></span><span id="servers-count">0</span>
-        </button>
+        <button id="toggle-rside" class="btn ghost icon" title="Context, MCPs, subagents and running servers (Ctrl+Shift+S)"></button>
       </header>
 
       <div id="body">
         <main id="main">
-          <div id="terminals"></div>
+          <div id="terminals">
+            <div class="pz" id="pz-v" title="Drag to resize (double-click resets)" hidden></div>
+            <div class="pz" id="pz-h" title="Drag to resize (double-click resets)" hidden></div>
+          </div>
+          <div id="dropzone"><div id="drop-preview" hidden></div></div>
           <div id="welcome"></div>
         </main>
-
-        <aside id="servers">
-          <div class="side-head">
-            <span class="section-title">Running</span>
-            <label class="toggle" title="Include system and unrelated listeners">
-              <input type="checkbox" id="show-all" /><span>Show all</span>
-            </label>
-          </div>
-          <div id="server-list"></div>
-        </aside>
+        <div class="rz" id="rz-right" title="Drag to resize (double-click resets)"></div>
+        <aside id="rside"></aside>
       </div>
 
       <footer id="statusbar">

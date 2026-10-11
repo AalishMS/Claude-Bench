@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const on = (channel, cb) => ipcRenderer.on(channel, (_e, ...args) => cb(...args));
 
 contextBridge.exposeInMainWorld('api', {
+  platform: process.platform,
   getState: () => ipcRenderer.invoke('state:get'),
   addProjects: () => ipcRenderer.invoke('projects:add'),
   removeProject: (p) => ipcRenderer.invoke('projects:remove', p),
@@ -20,9 +21,10 @@ contextBridge.exposeInMainWorld('api', {
   gitStatus: (paths) => ipcRenderer.invoke('git:status', paths),
   listSessions: (paths) => ipcRenderer.invoke('sessions:list', paths),
   sessionInfo: (cwd, sessionId) => ipcRenderer.invoke('session:info', cwd, sessionId),
+  mcpList: (cwd) => ipcRenderer.invoke('mcp:list', cwd),
+  definedAgents: (cwd) => ipcRenderer.invoke('agents:defined', cwd),
   getUsage: () => ipcRenderer.invoke('usage:get'),
   listPorts: () => ipcRenderer.invoke('ports:list'),
-  killProcess: (pid) => ipcRenderer.invoke('ports:kill', pid),
 
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   openFolder: (p) => ipcRenderer.invoke('shell:showInFolder', p),

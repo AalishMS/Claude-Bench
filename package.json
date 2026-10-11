@@ -7,6 +7,7 @@
     "start": "electron .",
     "icon": "node scripts/make-icon.js",
     "package": "electron-builder --win dir",
+    "package:mac": "electron-builder --mac dir",
     "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-shortcut.ps1"
   },
   "license": "MIT",
@@ -31,6 +32,11 @@
     "win": {
       "icon": "assets/icon.ico",
       "target": ["dir"]
+    },
+    "mac": {
+      "icon": "assets/icon.png",
+      "target": ["dir"],
+      "category": "public.app-category.developer-tools"
     }
   }
 }

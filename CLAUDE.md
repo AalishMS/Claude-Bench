@@ -1,17 +1,20 @@
 # Claude Bench
 
-Windows desktop wrapper around the real `claude` CLI. Electron + xterm.js + ConPTY (`@lydell/node-pty`).
+Desktop wrapper around the real `claude` CLI (Windows first, macOS best effort). Electron + xterm.js + `@lydell/node-pty`
+(ConPTY on Windows).
 Each tab is a genuine Claude Code session, so never re-implement CLI features (slash commands, permissions,
 model switching). The app only adds what the terminal lacks: a project sidebar, tabs, live git status per
 project, and a running-servers panel.
 
-Personal tool for one user on Windows 11. No macOS/Linux support, no auto-update, no telemetry.
+Personal tool for one user on Windows 11. macOS is best effort (a friend runs it; never tested here): small
+`IS_MAC` branches next to the Windows code, which must stay unchanged. No Linux, no auto-update, no telemetry.
 
 ## Commands
 
 ```
 npm start            # run from source (fastest loop)
 npm run package      # build dist\win-unpacked\Claude Bench.exe (fails if that exe is running)
+npm run package:mac  # macOS only: dist/mac-*/Claude Bench.app (unsigned)
 npm run shortcut     # Desktop + Start menu shortcuts -> packaged exe
 npm run icon         # regenerate assets/icon.png + icon.ico (pure Node, no deps)
 ```
@@ -27,8 +30,9 @@ There is no test suite and no linter. Verify changes by running the app (see "Te
   Terminal output is coalesced (6 ms) before IPC. Git/port polling skip overlapping runs. Only re-render DOM
   when data actually changed (`lastSidebarKey`, `JSON.stringify` diffs).
 - **Terminal first.** The terminal gets the space and the focus. Chrome around it stays quiet.
-- **Don't fight Claude Code.** Our shortcuts mostly avoid keys it uses (`Ctrl+B/W/J`...); `Ctrl+T` (new session) and `Ctrl+S` (sidebar) are deliberate exceptions. They are `Ctrl+T`, `Ctrl+S`, `Ctrl+Shift+W/S` (close tab, servers),
-  `Ctrl+Tab`, `Alt+1..9`.
+- **Don't fight Claude Code.** Our shortcuts mostly avoid keys it uses (`Ctrl+B/W/J`...); `Ctrl+T` (new session), `Ctrl+S` (sidebar) and `Ctrl+W` (close session; costs Claude's delete-word) are deliberate exceptions. They are `Ctrl+T`, `Ctrl+S`, `Ctrl+W` (also `Ctrl+Shift+W`), `Ctrl+Shift+S` (servers),
+  `Ctrl+Tab`, `Alt+1..9`, and for split view `Ctrl+\` (new session beside), `Ctrl+Shift+\` (unsplit), `Ctrl+Alt+Left/Right` (move pane focus).
+  On macOS the same shortcuts use Cmd (`mod(e)`; `⌘1..9` for `Alt+1..9`), so Ctrl stays entirely Claude's; `Ctrl+Tab` stays.
 - Prefer the smallest change that works. No speculative settings screens, plugin systems or abstractions.
 
 ## Design rules
@@ -37,7 +41,7 @@ The UI follows **shadcn/ui** (dark theme, neutral base) with a few deliberate tw
 truth: read it before any UI change** and update it in the same change when a rule moves. shadcn is copied as CSS
 tokens and component recipes, never installed (no React/Tailwind/Radix).
 
-- Tokens use shadcn names (`--background #171717`, `--sidebar #0a0a0a` = the darker frame, `--foreground`, `--muted`, `--accent` = neutral hover surface,
+- Tokens use shadcn names (`--background #0a0a0a`, `--sidebar #030303` = the darker left frame, `--foreground`, `--muted`, `--accent` = neutral hover surface,
   `--border`, `--input`, `--ring`, `--sidebar`...) as CSS variables at the top of `src/styles.css`. Change tokens,
   not scattered values.
 - **`--primary` (royal blue `#2850a5`) is the single accent variable.** Hover and ring tints derive from it with
@@ -47,7 +51,7 @@ tokens and component recipes, never installed (no React/Tailwind/Radix).
 - Buttons are `.btn` + `primary|outline|ghost|destructive` + `sm|icon` (rounded-md, no pills). There is no tab
   strip: sidebar session rows are the tabs. Sidebar rows are flat 32 px rounded rows with no borders or boxes.
 - Terminal typography and the ANSI palette rules are in DESIGN.md section 5. `XTERM_THEME.background` reads
-  `--background`; `titleBarOverlay` / `backgroundColor` in main.js are literals that must match it (`#171717`).
+  `--background`; `titleBarOverlay` / `backgroundColor` in main.js are literals that must match it (`#0a0a0a`).
 
 ## Architecture
 
@@ -60,22 +64,53 @@ DESIGN.md        design system (shadcn/ui + tweaks): tokens, component recipes, 
 scripts/         make-icon.js, create-shortcut.ps1
 ```
 
-- **State** lives in `%APPDATA%\claude-bench\state.json` (projects, ui flags, window bounds). Written
+- **State** lives in `%APPDATA%\claude-bench\state.json`, on macOS in Electron's userData under `~/Library/Application Support` (projects, ui flags incl. sidebar widths, window bounds). Written
   synchronously via tmp file + rename. The app used to be "Claude Terminal": if no state exists yet, the loader
   reads `%APPDATA%\claude-terminal\state.json` once (`legacyStateFile`).
 - **Sessions**: `cmd.exe /d /c claude [--continue|--resume]` for Claude tabs (resolves `claude.cmd` and
   `claude.exe`), `powershell.exe -NoLogo` for shell tabs. Exit shows a Restart / Close overlay.
   Claude args are allow-listed in main.js.
+- **macOS** (`IS_MAC` in main.js, `IS_MAC`/`mod(e)`/`kbd()` in renderer.js; `api.platform` from preload). Windows code
+  stays as is; Mac branches sit next to it and fail soft.
+  - Sessions: `claude` is spawned directly, shell tabs run `$SHELL -l`. Both (and `claude mcp list`) wait for
+    `shellEnvReady`: the login shell's PATH, since Finder launches get a bare PATH. Capped at 5 s because rc files can
+    block (stdin closed, own process group, SIGKILLed on timeout); common folders (Homebrew, `~/.local/bin`) are appended.
+  - Port scan: `lsof -F pcn` + `ps -o pid,ppid,etime,args` mapped to the Windows scan's shape (`macScan`; `T` from
+    `etime`), so ownership logic and the `parentPid` guard are shared. `macDevName` maps `python3.12` -> `python.exe`
+    for `DEV_PROCESSES`.
+  - Usage token: Keychain item `Claude Code-credentials` (`security find-generic-password -w`) when the file token is
+    missing or expired; a failed read is not retried for 10 minutes (no repeated access dialogs).
+  - Window: traffic lights via `trafficLightPosition` (no `titleBarOverlay`); `body.mac` moves the padding to `#brand`.
+    A minimal app menu (appMenu + editMenu) replaces Electron's default, whose Cmd+W/R/= would clash; the Edit roles
+    give Cmd+C/V/A to xterm and inputs. VS Code opens via `open -a "Visual Studio Code"`.
+  - Terminal: `macOptionIsMeta` (Claude's Option shortcuts), `rightClickSelectsWord: false` (right-click pastes);
+    the custom Ctrl+C/V handler is skipped. Labels say "Shell" / "Finder"; tooltips go through `kbd()` (⌘ ⇧ ⌥).
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled every 4 s from the renderer.
-- **Servers panel**: one PowerShell call (`Get-NetTCPConnection` + `Get-CimInstance Win32_Process`) every 6 s.
-  A listener belongs to a tab if a session's pty pid is an ancestor; otherwise it is matched to a project if
-  its command line contains the project path outside `--flag=` values (Antigravity's `agy.exe --add-dir=<project>` is no server).
-  Rows are one line (icon, short name, port); details are in the tooltip. Default view hides non-dev processes ("Show all" reveals them).
-  The same process list is walked from each session's pty pid for MCP servers (Claude tabs only: command line contains
-  "mcp", not under a bash/PowerShell tool shell; topmost of the chain) and browsers (chrome/msedge/... without `--type=`).
-  A new session-owned port, MCP server or browser opens the panel (`revealNewOwned`); since Claude starts its local MCP
-  servers at launch, every new Claude tab opens it once.
-  Kill is restricted to PIDs from the last scan and uses `taskkill /T /F`.
+- **Split view** (runtime only, not saved): `split = { ids, cx, ry }` in renderer.js shows 2-4 tabs as a grid in `#terminals`
+  (2 = A|B, 3 = A|(B over C), 4 = 2x2) with draggable dividers. `activeId` is the focused pane, so status bar, right sidebar and
+  polling keep following one tab. `visibleIds()` = the split if the active tab is in it, else just the active tab (a non-member
+  shows alone and the split returns when a member is focused). Entry: top-bar button / `Ctrl+\` (`splitHere`, new session beside),
+  Ctrl+click a sidebar row (`besideRow`), or drag a sidebar row onto the terminal area or the home screen: `#dropzone` (shown only while
+  dragging, `rowDrag` / `wireDropZone`) previews the pane in the resulting layout (`cellRect`; the slot whose pane centre is nearest
+  the pointer wins) and the drop places it (`addToSplit(id, at)`). A session already on screen is opened again beside itself (`cloneBeside`: the same
+  Claude session resumed in a second pane, or another shell). On the home screen a drop just opens it. `renderSidebar` is paused while dragging. `autoRside` hides the right sidebar while a split pane is under 100 cols and
+  restores it at 106+ (predicted from the current cols), without touching `ui.servers`; opening it by hand in a split sets
+  `rsideForced` until the split's membership changes. `fitActive` fits every visible pane.
+- **Closing**: `Ctrl+W`, the top-bar `×` (`#close-tab`) and each pane header's `×` all call `closeTab`. It only asks "End this session?" when
+  Claude is working in the tab (`isWorking`) or a dev server started from it is listening (`ports`, owner = this tab); idle tabs close silently.
+- **Right sidebar** (`#rside`, toggled by the top-bar button or `Ctrl+Shift+S`, saved as `ui.servers`; `renderRside`): the active tab's
+  **Context** (`x / yk` + %, same numbers as the footer tile), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**.
+  - MCPs: only connected ones are listed; the rest are behind a "Show N more" row (`mcpMore`, not persisted). `claude mcp list` run in the project folder (main `mcpList`, `cmd.exe /c claude mcp list`, cached 30 s, never overlapping;
+    it health-checks every server, so it takes seconds). Output lines `name: target - ✔ Connected | ! Needs authentication | ...` map to
+    connected (success) / failed + needs_client_registration (destructive) / needs_auth (warning) / disabled + unknown (muted).
+  - Subagents: definitions from `~/.claude/agents/*.md` and `<project>/.claude/agents/*.md` (frontmatter `name`, `model`; `inherit` shows the
+    session model) merged with this session's runs from `session:info` (`running` = working dot, finished = check, else idle). A run's
+    real model (last `"model"` in its transcript tail) beats the definition's.
+  - Running: dev listeners only, from one PowerShell call (`Get-NetTCPConnection` + `Get-CimInstance Win32_Process`) every 6 s. A listener
+    belongs to a tab if a session's pty pid is an ancestor; otherwise it is matched to a project if its command line contains the project path
+    outside `--flag=` values (Antigravity's `agy.exe --add-dir=<project>` is no server). Rows are status dot, short name, port; clicking a row
+    copies `http://localhost:<port>` (rows without a port, or emulators, do nothing). No kill, no "Show all". The scan still walks
+    session children for MCP/browser processes (`procs`), which the UI no longer shows.
 - **Sessions and usage**: read-only from `~/.claude/projects/<cwd, non-alphanumerics -> "-">/<uuid>.jsonl`. The sidebar lists a
   project's sessions (title = last `ai-title`, else first prompt) under it; clicking one focuses its tab or opens
   `claude --resume <uuid>` (main accepts only a bare UUID as `resumeId`). Lists read just the file tail and cache by
@@ -96,6 +131,9 @@ scripts/         make-icon.js, create-shortcut.ps1
 ## Gotchas (learned the hard way)
 
 - **`pty.pid` is 0 right after spawn** on ConPTY. Read `s.pty.pid` lazily at scan time; never cache it.
+- **Windows never clears `ParentProcessId`**: when a parent exits, its pid can be reused by an unrelated process, which then looks like
+  the child's ancestor (Discord showed up as a dev server of a session this way). The port scan carries each process's creation time
+  (`T`) and `parentPid` in main.js ignores a "parent" created after its child. Any new ancestor walk must use it.
 - **Strip session markers from the child env** (`STRIP_ENV` in main.js: `CLAUDECODE`, `CLAUDE_CODE_*` session
   vars). If the app is started from inside a Claude Code session, nested `claude` otherwise misbehaves
   ("transcript saving is off"). Don't strip user config like `ANTHROPIC_*` or `CLAUDE_CODE_USE_*`.
@@ -115,6 +153,8 @@ scripts/         make-icon.js, create-shortcut.ps1
 - A hidden window (`document.hidden`) skips all polling, so when driving a test instance over CDP, override `document.hidden`
   and call `pollSessions()` yourself. Start the test instance with PowerShell `Start-Process`; a plain bash `&` dies with the tool call.
 - Windows paths and quoting: PowerShell mangles inline JS with quotes. Put test scripts in files.
+- macOS can't be tested here: keep Mac branches plain and fail-soft, and run `node --check` plus a parser test on sample
+  `lsof`/`ps` output. On Mac, node-pty's `spawn-helper` may lose its execute bit after install (`posix_spawnp failed`).
 
 ## Testing (no framework; drive the real app)
 

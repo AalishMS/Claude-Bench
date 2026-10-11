@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, shell, clipboard } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -8,14 +8,49 @@ const { execFile, spawn } = require('child_process');
 const pty = require('@lydell/node-pty');
 
 const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
+// Windows is the main platform. macOS gets small `IS_MAC` branches next to the Windows code (best effort, untested here).
+const IS_MAC = process.platform === 'darwin';
 
-app.setAppUserModelId('com.local.claudebench');
+if (!IS_MAC) app.setAppUserModelId('com.local.claudebench');
+
+// An app started from Finder gets PATH=/usr/bin:/bin:/usr/sbin:/sbin, which misses claude, node (nvm, Homebrew) and code.
+// Ask the user's login shell for its PATH once; sessions and `claude mcp list` wait for it.
+// An rc file can block (an "update? [Y/n]" prompt, `exec tmux`) and interactive shells ignore SIGTERM, so stdin is closed,
+// the shell gets its own process group, and after 5 s the whole group is SIGKILLed and we go on with the fallback folders.
+const shellEnvReady = !IS_MAC ? Promise.resolve() : new Promise((resolve) => {
+  let out = '';
+  let done = false;
+  let child = null;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
+    const found = /__CB_PATH__=(.+)/.exec(out)?.[1]?.trim();
+    if (found && found.includes(':')) process.env.PATH = found; // a single entry means the shell printed something else
+    // Also add the usual folders when the shell's PATH lacks them (or the shell never answered).
+    const have = new Set((process.env.PATH || '').split(':'));
+    const extra = ['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local', 'bin'), path.join(os.homedir(), '.claude', 'local')];
+    process.env.PATH = [...have, ...extra.filter((d) => !have.has(d))].filter(Boolean).join(':');
+    resolve();
+  };
+  const timer = setTimeout(finish, 5000);
+  try {
+    child = spawn(process.env.SHELL || '/bin/zsh', ['-ilc', 'echo "__CB_PATH__=$PATH"'], { stdio: ['ignore', 'pipe', 'ignore'], detached: true });
+    child.stdout.on('data', (d) => { out += d; if (/__CB_PATH__=.*\n/.test(out)) finish(); });
+    child.on('error', finish);
+    child.on('close', finish);
+  } catch {
+    finish();
+  }
+});
+if (IS_MAC && !process.env.LANG) process.env.LANG = 'en_US.UTF-8'; // Finder launches have no locale; claude and zsh want UTF-8
 
 // ---------------------------------------------------------------- state ----
 
 const defaults = {
   projects: [], // [{ path, name }]
-  ui: { sidebar: true, servers: false, fontSize: 14, expanded: [] }, // expanded: project paths showing sessions
+  ui: { sidebar: true, servers: false, sidebarW: 232, rsideW: 300, fontSize: 14, expanded: [], collapsed: [] }, // expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut
   bounds: null,
   maximized: false,
 };
@@ -108,9 +143,18 @@ function createSession({ id, cwd, kind, args, resumeId, cols, rows }) {
   let argv;
   if (kind === 'claude') {
     const extra = resumeId ? ['--resume', resumeId] : (args || []).filter((a) => ALLOWED_CLAUDE_ARGS.has(a));
-    // cmd resolves both claude.cmd (npm) and claude.exe (native installer).
-    file = 'cmd.exe';
-    argv = ['/d', '/c', 'claude', ...extra];
+    if (IS_MAC) {
+      // Found on the login shell's PATH (shellEnvReady); the tab ends when claude exits, like cmd /c.
+      file = 'claude';
+      argv = extra;
+    } else {
+      // cmd resolves both claude.cmd (npm) and claude.exe (native installer).
+      file = 'cmd.exe';
+      argv = ['/d', '/c', 'claude', ...extra];
+    }
+  } else if (IS_MAC) {
+    file = process.env.SHELL || '/bin/zsh';
+    argv = ['-l'];
   } else {
     file = 'powershell.exe';
     argv = ['-NoLogo'];
@@ -209,7 +253,7 @@ const PORT_SCRIPT = `
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $c = Get-NetTCPConnection -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess
-$p = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, CommandLine
+$p = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, CommandLine, @{ n = 'T'; e = { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } }
 @{ c = @($c); p = @($p) } | ConvertTo-Json -Compress -Depth 4
 `;
 
@@ -228,11 +272,22 @@ function mcpLabel(cmd) {
   return name.replace(/(.)@[^/@]*$/, '$1').replace(/\.(js|cmd|exe|py)$/i, '');
 }
 
+/**
+ * A process's real parent pid, or 0. Windows never clears ParentProcessId, so once the parent exits its pid can be
+ * reused by an unrelated process; a parent that was created after its child cannot be the real one.
+ */
+function parentPid(procs, p) {
+  const parent = procs.get(p.ParentProcessId);
+  return parent && parent.T > p.T ? 0 : p.ParentProcessId;
+}
+
 function sessionProcesses(procs, sessionByPid) {
   const children = new Map();
   for (const p of procs.values()) {
-    if (!children.has(p.ParentProcessId)) children.set(p.ParentProcessId, []);
-    children.get(p.ParentProcessId).push(p);
+    const parent = parentPid(procs, p);
+    if (!parent) continue;
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(p);
   }
   const items = [];
   const seen = new Set();
@@ -260,10 +315,10 @@ function sessionProcesses(procs, sessionByPid) {
   return items;
 }
 
-let knownPortPids = new Set();
 let portScan = null;
 
-async function scanPorts() {
+/** Listeners and processes as { c: [{ LocalAddress, LocalPort, OwningProcess }], p: [{ ProcessId, ParentProcessId, Name, CommandLine, T }] }. */
+async function winScan() {
   const out = await run(
     'powershell.exe',
     ['-NoProfile', '-NonInteractive', '-Command', PORT_SCRIPT],
@@ -271,12 +326,79 @@ async function scanPorts() {
   );
   if (!out) return { ok: false, error: 'Could not read listening ports' };
 
-  let data;
   try {
-    data = JSON.parse(out);
+    return { ok: true, data: JSON.parse(out) };
   } catch {
     return { ok: false, error: 'Could not parse port scan output' };
   }
+}
+
+/** ps etime "[[dd-]hh:]mm:ss" -> seconds */
+function etimeSeconds(s) {
+  const [days, rest] = s.includes('-') ? s.split('-') : ['0', s];
+  return rest.split(':').reduce((acc, n) => acc * 60 + (+n || 0), 0) + (+days || 0) * 86400;
+}
+
+/** `lsof -F pcn` records -> [{ LocalAddress, LocalPort, OwningProcess }], plus pid -> command name. */
+function parseLsof(out) {
+  const conns = [];
+  const names = new Map();
+  let pid = 0;
+  for (const line of out.split('\n')) {
+    const v = line.slice(1).trim();
+    if (line[0] === 'p') pid = +v;
+    else if (line[0] === 'c') names.set(pid, v);
+    else if (line[0] === 'n') {
+      const m = /^(.*):(\d+)$/.exec(v); // 127.0.0.1:3000, *:3000, [::1]:3000
+      if (!m) continue;
+      const addr = m[1].replace(/^\[|\]$/g, '');
+      conns.push({ LocalAddress: addr === '*' ? '0.0.0.0' : addr, LocalPort: +m[2], OwningProcess: pid });
+    }
+  }
+  return { conns, names };
+}
+
+/** `ps -o pid=,ppid=,etime=,args=` lines -> processes in the Windows scan's shape. */
+function parsePs(out, names, now) {
+  const procs = [];
+  for (const line of out.split('\n')) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(line);
+    if (!m) continue;
+    const pid = +m[1];
+    const cmd = m[4].trim();
+    procs.push({
+      ProcessId: pid,
+      ParentProcessId: +m[2],
+      Name: names.get(pid) || path.basename(cmd.split(' ')[0]),
+      CommandLine: cmd,
+      T: now - etimeSeconds(m[3]) * 1000, // creation time, so parentPid's pid-reuse guard works here too
+    });
+  }
+  return procs;
+}
+
+function macScan() {
+  const exec = (file, args) => new Promise((resolve) => {
+    execFile(file, args, { timeout: 20000, maxBuffer: 32 * 1024 * 1024 }, (err, stdout) => resolve({ err, stdout: stdout || '' }));
+  });
+  return Promise.all([
+    exec('/usr/sbin/lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn', '+c', '0']),
+    exec('/bin/ps', ['-axww', '-o', 'pid=,ppid=,etime=,args=']),
+  ]).then(([l, p]) => {
+    // lsof exits with 1 when nothing is listening; that is an empty list, not a failure.
+    if ((l.err && l.err.code !== 1) || p.err) return { ok: false, error: 'Could not read listening ports' };
+    const { conns, names } = parseLsof(l.stdout);
+    return { ok: true, data: { c: conns, p: parsePs(p.stdout, names, Date.now()) } };
+  });
+}
+
+/** "python3.12" -> "python.exe", so DEV_PROCESSES serves both platforms. */
+const macDevName = (name) => `${name.toLowerCase().replace(/[\d.]+$/, '')}.exe`;
+
+async function scanPorts() {
+  const scan = await (IS_MAC ? macScan() : winScan());
+  if (!scan.ok) return scan;
+  const data = scan.data;
 
   const procs = new Map();
   for (const p of data.p || []) procs.set(p.ProcessId, p);
@@ -295,7 +417,8 @@ async function scanPorts() {
     for (let i = 0; i < 40 && cur; i++) {
       const s = sessionByPid.get(cur);
       if (s) return { type: 'session', sessionId: s.id, projectPath: s.cwd, kind: s.kind };
-      cur = procs.get(cur)?.ParentProcessId;
+      const p = procs.get(cur);
+      cur = p && parentPid(procs, p);
     }
     // 2. Its executable or a script argument points inside a known project folder. Paths in flags don't count:
     //    editor helpers (e.g. Antigravity's `agy.exe --add-dir=<project>`) mention projects without serving them.
@@ -328,13 +451,12 @@ async function scanPorts() {
       cmd: proc?.CommandLine || '',
       exposed: !loopback,
       owner,
-      dev: !!owner || DEV_PROCESSES.has(name.toLowerCase()),
+      dev: !!owner || DEV_PROCESSES.has(IS_MAC ? macDevName(name) : name.toLowerCase()),
     });
   }
 
   const servers = [...byKey.values()].sort((a, b) => a.port - b.port);
   const children = sessionProcesses(procs, sessionByPid);
-  knownPortPids = new Set([...servers, ...children].map((s) => s.pid));
   return { ok: true, servers, procs: children };
 }
 
@@ -533,9 +655,11 @@ async function readAgent(dir, name) {
     const c = j.type === 'assistant' && j.message?.content;
     done = Array.isArray(c) && c.some((x) => x.type === 'text') && !c.some((x) => x.type === 'tool_use');
   } catch { /* last line longer than the tail, or still being written: working */ }
+  const models = tail.match(/"model":"([^"]+)"/g);
   const agent = {
     id: name.slice(6, -6),
     type: oneLine(meta.agentType) || 'agent',
+    model: models ? models[models.length - 1].slice(9, -1) : null,
     description: oneLine(meta.description),
     done,
     start: Math.round(st.birthtimeMs),
@@ -569,6 +693,70 @@ async function sessionInfo(cwd, sessionId) {
   return { model, effort, agents };
 }
 
+// Right sidebar data. MCP health comes from `claude mcp list` (the transcript does not store it): it health-checks every
+// configured server, so it is slow (seconds), cached per folder and never run twice at once.
+const MCP_TTL_MS = 30 * 1000;
+const mcpCache = new Map(); // cwd -> { at, value } | { pending }
+
+/** "name: target - ✔ Connected" -> { name, status, label }. Names can contain ":" (plugin:design:slack), target is after ": ". */
+function parseMcpList(out) {
+  const servers = [];
+  for (const line of out.split(/\r?\n/)) {
+    const cut = line.lastIndexOf(' - ');
+    const sep = line.indexOf(': ');
+    if (cut < 0 || sep < 0 || sep > cut) continue;
+    const label = line.slice(cut + 3).replace(/^[^\w]+/, '').trim().toLowerCase();
+    const status = /needs? client registration/.test(label) ? 'needs_client_registration'
+      : /needs? auth/.test(label) ? 'needs_auth'
+      : /fail|error/.test(label) ? 'failed'
+      : /disabled/.test(label) ? 'disabled'
+      : /^connected/.test(label) ? 'connected'
+      : 'unknown';
+    servers.push({ name: line.slice(0, sep).trim(), status, label });
+  }
+  return servers;
+}
+
+function mcpList(cwd) {
+  if (typeof cwd !== 'string' || !fs.existsSync(cwd)) return Promise.resolve({ ok: false, servers: [] });
+  const hit = mcpCache.get(cwd);
+  if (hit?.pending) return hit.pending;
+  if (hit && Date.now() - hit.at < MCP_TTL_MS) return Promise.resolve(hit.value);
+  const [file, args] = IS_MAC ? ['claude', ['mcp', 'list']] : ['cmd.exe', ['/d', '/c', 'claude', 'mcp', 'list']];
+  const pending = shellEnvReady.then(() => new Promise((resolve) => {
+    const env = { ...process.env }; // after shellEnvReady, so macOS gets the login shell's PATH
+    for (const k of STRIP_ENV) delete env[k];
+    execFile(file, args,
+      { cwd, env, windowsHide: true, timeout: 60000, maxBuffer: 4 * 1024 * 1024 },
+      (err, stdout) => resolve(err && !stdout ? { ok: false, servers: [] } : { ok: true, servers: parseMcpList(stdout) }));
+  })).then((value) => {
+    mcpCache.set(cwd, { at: Date.now(), value });
+    return value;
+  });
+  mcpCache.set(cwd, { ...hit, pending });
+  return pending;
+}
+
+/** Subagents the user has defined: ~/.claude/agents/*.md and <project>/.claude/agents/*.md (frontmatter name + model). */
+async function definedAgents(cwd) {
+  const dirs = [path.join(os.homedir(), '.claude', 'agents')];
+  if (typeof cwd === 'string') dirs.push(path.join(cwd, '.claude', 'agents'));
+  const out = new Map();
+  for (const dir of dirs) {
+    let names = [];
+    try { names = (await fs.promises.readdir(dir)).filter((n) => n.endsWith('.md')); } catch { continue; }
+    for (const n of names) {
+      try {
+        const head = (await fs.promises.readFile(path.join(dir, n), 'utf8')).replace(/^﻿/, '').split(/\r?\n---/)[0];
+        const field = (k) => new RegExp(`^${k}:\s*(.+)$`, 'm').exec(head)?.[1].trim().replace(/^["']|["']$/g, '');
+        const name = oneLine(field('name') || n.slice(0, -3));
+        out.set(name, { name, model: oneLine(field('model')) || 'inherit' }); // project agents override user ones
+      } catch { /* unreadable file */ }
+    }
+  }
+  return [...out.values()];
+}
+
 // Plan limits (session, weekly, per-model weekly) come from the same endpoint Claude Code's /usage reads, using the
 // OAuth token Claude Code keeps in ~/.claude/.credentials.json. The token only goes to api.anthropic.com.
 // Claude Code refreshes the token while it runs; we never write the credentials file.
@@ -576,11 +764,33 @@ const CREDENTIALS_FILE = path.join(os.homedir(), '.claude', '.credentials.json')
 let limitsCache = { at: 0, value: null };
 let limitsFetch = null;
 
+/**
+ * On macOS Claude Code keeps the same JSON in the login Keychain instead of the file. Read only. A failed read (no item,
+ * or the user denied/ignored the access dialog) is not retried for 10 minutes, so the dialog can't keep coming back.
+ */
+const KEYCHAIN_RETRY_MS = 10 * 60 * 1000;
+let keychainFailedAt = 0;
+function keychainOauth() {
+  if (Date.now() - keychainFailedAt < KEYCHAIN_RETRY_MS) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    execFile('/usr/bin/security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'], { timeout: 5000 }, (err, stdout) => {
+      let oauth = null;
+      try { oauth = err ? null : JSON.parse(stdout).claudeAiOauth; } catch { /* not JSON */ }
+      if (!oauth?.accessToken) keychainFailedAt = Date.now();
+      resolve(oauth);
+    });
+  });
+}
+
 async function fetchLimits() {
   let oauth;
   try {
     oauth = JSON.parse((await fs.promises.readFile(CREDENTIALS_FILE, 'utf8')).replace(/^﻿/, '')).claudeAiOauth;
   } catch { /* handled below */ }
+  // macOS: the Keychain is the live copy; a leftover file may hold a token that is no longer refreshed.
+  if (IS_MAC && (!oauth?.accessToken || (oauth.expiresAt && oauth.expiresAt < Date.now()))) {
+    oauth = (await keychainOauth()) || oauth;
+  }
   if (!oauth?.accessToken) return { ok: false, error: 'Not signed in. Run claude and log in.' };
   if (oauth.expiresAt && oauth.expiresAt < Date.now()) return { ok: false, error: 'Login expired. Open a Claude tab to refresh it.' };
   try {
@@ -624,11 +834,13 @@ function createWindow() {
     y: b?.y,
     minWidth: 900,
     minHeight: 560,
-    backgroundColor: '#171717', // = --background (DESIGN.md sync point)
+    backgroundColor: '#0a0a0a', // = --background (DESIGN.md sync point)
     title: 'Claude Bench',
     icon: ICON,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#171717', symbolColor: '#a1a1a1', height: 40 }, // sits on the top bar (--background)
+    ...(IS_MAC
+      ? { trafficLightPosition: { x: 14, y: 13 } } // centred in the 40 px top row; #brand leaves room (body.mac in styles.css)
+      : { titleBarOverlay: { color: '#0a0a0a', symbolColor: '#a1a1a1', height: 40 } }), // sits on the top bar (--background)
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -648,7 +860,8 @@ function createWindow() {
   mainWindow.webContents.on('will-navigate', (e) => e.preventDefault());
 
   mainWindow.webContents.on('before-input-event', (e, input) => {
-    const devtools = input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i');
+    const devtools = input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')
+      || (IS_MAC && input.meta && input.alt && input.code === 'KeyI');
     if (devtools && input.type === 'keyDown') mainWindow.webContents.toggleDevTools();
   });
 
@@ -696,6 +909,9 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     loadState();
     registerIpc();
+    // macOS: Electron's default menu binds Cmd+W, Cmd+R and Cmd+=/- (our shortcuts). Keep Quit/Hide and the Edit roles,
+    // which give Cmd+C/V/A to the terminal and to inputs. Windows keeps its default menu (hidden with the title bar).
+    if (IS_MAC) Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }]));
     createWindow();
     const p = pathFromArgv(process.argv);
     if (p) {
@@ -734,7 +950,10 @@ function registerIpc() {
 
   ipcMain.handle('ui:set', (_e, patch) => {
     for (const k of Object.keys(defaults.ui)) {
-      if (k !== 'expanded' && typeof patch?.[k] === typeof defaults.ui[k]) state.ui[k] = patch[k];
+      if (k !== 'expanded' && k !== 'collapsed' && typeof patch?.[k] === typeof defaults.ui[k]) state.ui[k] = patch[k];
+    }
+    if (Array.isArray(patch?.collapsed)) {
+      state.ui.collapsed = patch.collapsed.filter((k) => typeof k === 'string').slice(0, 20);
     }
     if (Array.isArray(patch?.expanded)) {
       state.ui.expanded = patch.expanded.filter((p) => typeof p === 'string').slice(0, 200);
@@ -743,7 +962,7 @@ function registerIpc() {
     saveState();
   });
 
-  ipcMain.handle('pty:create', (_e, opts) => createSession(opts));
+  ipcMain.handle('pty:create', (_e, opts) => (IS_MAC ? shellEnvReady.then(() => createSession(opts)) : createSession(opts)));
   ipcMain.on('pty:write', (_e, id, data) => sessions.get(id)?.pty.write(data));
   ipcMain.on('pty:resize', (_e, id, cols, rows) => {
     try { sessions.get(id)?.pty.resize(Math.max(cols, 2), Math.max(rows, 2)); } catch { /* exited */ }
@@ -762,15 +981,11 @@ function registerIpc() {
     return Object.fromEntries(entries);
   });
   ipcMain.handle('session:info', (_e, cwd, sessionId) => sessionInfo(cwd, sessionId));
+  ipcMain.handle('mcp:list', (_e, cwd) => mcpList(cwd));
+  ipcMain.handle('agents:defined', (_e, cwd) => definedAgents(cwd));
   ipcMain.handle('usage:get', () => getLimits());
 
   ipcMain.handle('ports:list', () => listPorts());
-  ipcMain.handle('ports:kill', async (_e, pid) => {
-    // Only processes we just showed the user as listening can be killed.
-    if (!knownPortPids.has(pid)) return { ok: false, error: 'Process is no longer listening' };
-    const out = await run('taskkill', ['/PID', String(pid), '/T', '/F']);
-    return out == null ? { ok: false, error: 'taskkill failed (access denied?)' } : { ok: true };
-  });
 
   ipcMain.handle('shell:openExternal', (_e, url) => {
     if (/^https?:\/\//i.test(url)) return shell.openExternal(url);
@@ -781,6 +996,11 @@ function registerIpc() {
 
   ipcMain.handle('shell:openInCode', (_e, p) => {
     if (!isDir(p)) return { ok: false, error: 'Folder not found' };
+    if (IS_MAC) {
+      return new Promise((resolve) => {
+        execFile('/usr/bin/open', ['-a', 'Visual Studio Code', p], (err) => resolve(err ? { ok: false, error: 'Could not start VS Code' } : { ok: true }));
+      });
+    }
     return new Promise((resolve) => {
       // `code` is a .cmd shim on PATH; fall back to the per-user install when PATH lacks it.
       const exe = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code', 'Code.exe');

@@ -50,6 +50,9 @@ const ICONS = {
   zap: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
   users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   globe: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+  panelRight: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/>',
+  columns: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
   box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
 };
 const ico = (name) =>
@@ -59,15 +62,27 @@ const LOGO_SVG = `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="3" y="3" 
 
 const baseName = (p) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
 
+// macOS: app shortcuts use Cmd so Ctrl stays Claude's (Ctrl+Tab stays, Cmd+Tab is the OS switcher; Alt+1..9 is Cmd+1..9).
+const IS_MAC = api.platform === 'darwin';
+const mod = (e) => (IS_MAC ? e.metaKey : e.ctrlKey);
+/** Shortcut text for tooltips: "Ctrl+Shift+S" on Windows, "⌘⇧S" on macOS. */
+const kbd = (s) => (IS_MAC
+  ? s.replace(/Ctrl\+Alt\+/g, '⌘⌥').replace(/Alt\+/g, '⌘').replace(/Ctrl\+(?!Tab)/g, '⌘').replace(/Shift\+/g, '⇧')
+  : s);
+const SHELL_LABEL = IS_MAC ? 'Shell' : 'PowerShell';
+const FILES_APP = IS_MAC ? 'Finder' : 'Explorer';
+
 // --------------------------------------------------------------- state ----
 
 let projects = [];
-let ui = { sidebar: true, servers: false, fontSize: 14 }; // replaced by the saved state in init()
+let ui = { sidebar: true, servers: false, fontSize: 14, collapsed: [] }; // replaced by the saved state in init()
 const tabs = new Map(); // id -> tab
 let activeId = null;
+let split = null; // { ids: [tab id, 2-4 of them], cx, ry } side-by-side panes (runtime only); activeId is the focused pane
+let rsideAuto = false; // the right sidebar was hidden by autoRside (ui.servers still holds the user's choice)
+let rsideForced = false; // the user reopened it by hand in a cramped split: leave it alone until the split changes
 let git = {}; // projectPath -> info | null
 let ports = { ok: true, servers: [] };
-let showAll = false;
 let sessionsBy = {}; // projectPath -> [{ id, title, mtime, birth, model, ctx }], newest first
 let usage = null; // { ok, limits: [{ kind, label, percent, resetsAt }] } plan limits from Anthropic
 const expanded = new Set(); // project paths whose sessions are shown
@@ -77,7 +92,8 @@ let lastActiveProject = null;
 let detailKind = null; // which footer popover is open: 'usage' | 'context' | 'state'
 let menuFor = null; // project path whose "…" menu is open
 const infoBy = new Map(); // tab id -> { model, effort, agents } for the bar under the terminal
-const seenOwned = new Set(); // servers/MCPs/browsers of our sessions already seen; a new one opens the panel
+const mcpBy = new Map(); // project path -> { ok, servers: [{ name, status, label }] } from `claude mcp list`
+const definedBy = new Map(); // project path -> [{ name, model }] subagents defined in ~/.claude/agents and <project>/.claude/agents
 
 const SESSIONS_SHOWN = 8;
 const CONTEXT_WINDOW = 200000; // not stored in transcripts: assume 200k, or 1M once a session has gone past it
@@ -86,7 +102,7 @@ const CONTEXT_WINDOW_LARGE = 1000000;
 // Terminal typography. A light body weight with a clearly heavier bold, and generous line spacing, so
 // headings, prose, code and dim "thinking"/tool lines stay distinguishable. Size is user-adjustable (Ctrl +/-/0).
 const TERM_FONT = {
-  fontFamily: '"Cascadia Mono", Consolas, monospace',
+  fontFamily: '"Cascadia Mono", Consolas, Menlo, monospace', // Menlo: macOS
   fontWeight: '300',
   fontWeightBold: '700',
   minimumContrastRatio: 3, // keeps brightBlack text (shell flags, hints) readable now that brightBlack is a dark bar
@@ -103,7 +119,8 @@ const XTERM_THEME = {
   selectionBackground: 'rgba(255, 255, 255, 0.22)',
   black: '#2a2a2a', red: '#e5736f', green: '#86c06c', yellow: '#e2b657',
   blue: '#6fa8dc', magenta: '#c490d1', cyan: '#6ec5c0', white: '#b0b0b0',
-  brightBlack: '#333333', // the user's message bar: one step above --background (#171717) brightRed: '#f0908c', brightGreen: '#a3d58b', brightYellow: '#efce7d',
+  brightBlack: '#262626', // the user's message bar: one step above --background (#0a0a0a)
+  brightRed: '#f0908c', brightGreen: '#a3d58b', brightYellow: '#efce7d',
   brightBlue: '#8cc2f0', brightMagenta: '#d8aee3', brightCyan: '#92d9d4', brightWhite: '#ffffff',
 };
 
@@ -170,11 +187,14 @@ function tabLabel(tab) {
   return same.length > 1 ? `${tab.project.name} ${n}` : tab.project.name;
 }
 
-async function openSession(project, { kind = 'claude', args = [], resumeId = null } = {}) {
+async function openSession(project, { kind = 'claude', args = [], resumeId = null, beside = false, at } = {}) {
   if (resumeId) args = ['--resume']; // main builds the real argv from resumeId; this only labels the tab
   const id = crypto.randomUUID();
-  const host = h('div', { class: 'term-host' });
+  const head = h('div', { class: 'pane-head' });
+  const host = h('div', { class: 'term-host' }, head);
   $('#terminals').append(host);
+  hostObserver.observe(host);
+  host.addEventListener('mousedown', () => { if (split?.ids.includes(id) && activeId !== id) activate(id); }, true);
 
   const term = new Terminal({
     ...TERM_FONT,
@@ -183,6 +203,10 @@ async function openSession(project, { kind = 'claude', args = [], resumeId = nul
     scrollback: 20000,
     allowProposedApi: true,
     theme: XTERM_THEME,
+    // macOS (both are already the defaults on Windows): right-click must not select a word, or the contextmenu
+    // handler copies it instead of pasting; Option acts as Meta so Claude's Option+P/T/B/F shortcuts work.
+    rightClickSelectsWord: false,
+    macOptionIsMeta: IS_MAC,
   });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
@@ -197,7 +221,7 @@ async function openSession(project, { kind = 'claude', args = [], resumeId = nul
   }
 
   const tab = {
-    id, project, kind, args, term, fit, host,
+    id, project, kind, args, term, fit, host, head,
     resumeId, sessionId: resumeId, startedAt: Date.now(), // sessionId of fresh tabs is matched later (assignSessions)
     status: 'starting', exitCode: null, title: '',
     lastActive: 0, lastOutput: 0, attention: false, busy: false, busyTimer: null,
@@ -206,6 +230,7 @@ async function openSession(project, { kind = 'claude', args = [], resumeId = nul
   wireTerminal(tab);
   wireScrollbar(tab);
 
+  if (beside) addToSplit(id, at);
   activate(id);
   fitTab(tab);
   await startPty(tab);
@@ -232,7 +257,7 @@ function wireTerminal(tab) {
   const { term, host } = tab;
 
   term.onData((d) => api.ptyWrite(tab.id, d));
-  term.onResize(({ cols, rows }) => api.ptyResize(tab.id, cols, rows));
+  term.onResize(({ cols, rows }) => { api.ptyResize(tab.id, cols, rows); autoRside(); });
   term.onTitleChange((t) => { tab.title = t; });
   term.onBell(() => {
     if (tab.id === activeId && document.hasFocus()) return;
@@ -247,7 +272,8 @@ function wireTerminal(tab) {
       if (e.type === 'keydown') { e.preventDefault(); api.ptyWrite(tab.id, '\n'); }
       return false;
     }
-    if (e.type !== 'keydown' || !e.ctrlKey || e.altKey) return true;
+    // macOS: Ctrl+C/V belong to Claude (interrupt, image paste); Cmd+C/V come through the Edit menu as native copy/paste.
+    if (IS_MAC || e.type !== 'keydown' || !e.ctrlKey || e.altKey) return true;
     const k = e.key.toLowerCase();
     if (k === 'c' && (term.hasSelection() || e.shiftKey)) {
       e.preventDefault();
@@ -414,27 +440,42 @@ async function closeTab(id) {
   const tab = tabs.get(id);
   if (!tab) return;
   if (tab.status === 'running') {
-    const ok = await confirmDialog({
-      title: 'End this session?',
-      message: `"${tabLabel(tab)}" is still running. Closing it ends the session and any servers it started.`,
-      okLabel: 'End session',
-      danger: true,
-    });
-    if (!ok) return;
+    // Only ask if closing interrupts something: Claude mid-task or a dev server this tab started.
+    let scan = ports;
+    if (Date.now() - portsAt > 10000) scan = await api.listPorts();
+    const servers = scan.ok ? scan.servers.filter((s) => s.owner?.type === 'session' && s.owner.sessionId === id) : [];
+    const working = isWorking(tab);
+    if (working || servers.length) {
+      const ok = await confirmDialog({
+        title: 'End this session?',
+        message: `Closing "${tabLabel(tab)}" will stop:`,
+        items: [
+          ...(working ? [{ name: 'Claude', sub: 'is working in this session' }] : []),
+          ...servers.map((s) => ({ name: `:${s.port}`, sub: s.name })),
+        ],
+        okLabel: 'End session',
+        danger: true,
+      });
+      if (!ok) return;
+    }
   }
   api.ptyKill(id);
   clearTimeout(tab.busyTimer);
   tab.term.dispose();
   tab.host.remove();
   infoBy.delete(id);
+  hostObserver.unobserve(tab.host);
   const order = [...tabs.keys()];
   const idx = order.indexOf(id);
+  const slot = split ? split.ids.indexOf(id) : -1;
   tabs.delete(id);
+  const mates = removeFromSplit(id);
   if (activeId === id) {
     activeId = null;
-    const next = [...tabs.keys()][Math.min(idx, tabs.size - 1)];
+    // closing a focused pane hands focus to its neighbour in the split, else to the nearest tab
+    const next = slot >= 0 && mates.length ? mates[Math.min(slot, mates.length - 1)] : [...tabs.keys()][Math.min(idx, tabs.size - 1)];
     if (next) activate(next);
-  }
+  } else syncVisible();
   renderAll();
 }
 
@@ -444,13 +485,8 @@ function activate(id) {
   activeId = id;
   tab.lastActive = Date.now();
   tab.attention = false;
-  for (const t of tabs.values()) t.host.classList.toggle('active', t.id === id);
-  requestAnimationFrame(() => {
-    fitActive();
-    tab.term.refresh(0, tab.term.rows - 1);
-    tab.syncScrollbar();
-    tab.term.focus();
-  });
+  syncVisible();
+  requestAnimationFrame(() => tab.term.focus());
   document.body.classList.toggle('no-tabs', tabs.size === 0);
   if (tab.project.path !== lastActiveProject) { // entering a project reveals its sessions
     lastActiveProject = tab.project.path;
@@ -460,8 +496,11 @@ function activate(id) {
   renderStatus();
   renderFoot();
   renderInfo();
+  renderRside();
   pollGit();
   pollInfo();
+  pollMcp();
+  pollDefinedAgents();
 }
 
 /** Fit, then drop a row if the renderer's rounded cell height made the screen taller than its box (covers the status bar). */
@@ -476,11 +515,309 @@ function fitTab(tab) {
   } catch { /* not measurable yet */ }
 }
 
+/** Fit every visible pane (just the active tab when not split). */
 function fitActive() {
-  const tab = activeTab();
-  if (!tab || !tab.host.offsetWidth) return;
-  fitTab(tab);
+  for (const id of visibleIds()) {
+    const tab = tabs.get(id);
+    if (tab?.host.offsetWidth) fitTab(tab);
+  }
 }
+
+// ---------------------------------------------------------------- split ----
+// Up to 4 tabs side by side. 2 = A|B, 3 = A|(B over C), 4 = (A B)/(C D). cx / ry are the column and row ratios.
+// A tab outside the split shows alone and the split returns when one of its members is focused again.
+
+const SPLIT_MAX = 4;
+const SPLIT_MIN_W = 240; // px a pane keeps when a divider is dragged
+const SPLIT_MIN_H = 120;
+const RSIDE_MIN_COLS = 100; // below this a pane is hard to read: the right sidebar steps aside
+const RSIDE_BACK_COLS = RSIDE_MIN_COLS + 6; // ...and returns only with this much room, so it can't flap
+
+const visibleIds = () => (split && split.ids.includes(activeId) ? split.ids : activeId ? [activeId] : []);
+
+/** Put a tab that is not on screen yet into the split at position `at` (default: last), next to the visible panes. */
+function addToSplit(id, at) {
+  if (!activeId || !tabs.has(id)) return;
+  const base = [...visibleIds()];
+  if (base.includes(id) || base.length >= SPLIT_MAX) return;
+  base.splice(at ?? base.length, 0, id);
+  split = { ids: base, cx: split?.cx ?? 0.5, ry: split?.ry ?? 0.5 };
+  rsideForced = false;
+}
+
+/** Drops a tab from the split state (the tab itself stays open); a split of one is no split. Returns the remaining members. */
+function removeFromSplit(id) {
+  if (!split || !split.ids.includes(id)) return split ? split.ids : [];
+  const rest = split.ids.filter((x) => x !== id);
+  rsideForced = false;
+  split = rest.length < 2 ? null : { ...split, ids: rest };
+  return rest;
+}
+
+function unsplit() {
+  if (!split) return;
+  split = null;
+  rsideForced = false;
+  syncVisible();
+}
+
+/** Show exactly the visible tabs (all split members, or just the active one), then refit them. */
+function syncVisible() {
+  const shown = visibleIds();
+  for (const t of tabs.values()) t.host.classList.toggle('active', shown.includes(t.id));
+  renderSplit();
+  requestAnimationFrame(() => {
+    fitActive();
+    for (const id of shown) {
+      const t = tabs.get(id);
+      if (!t) continue;
+      t.term.refresh(0, t.term.rows - 1);
+      t.syncScrollbar();
+    }
+  });
+}
+
+function splitHere() {
+  const tab = activeTab();
+  if (!tab) return newSessionHere();
+  if (split?.ids.includes(tab.id) && split.ids.length >= SPLIT_MAX) return;
+  openSession(tab.project, { beside: true });
+}
+
+/** Another copy of what a tab runs, opened beside: the same Claude session resumed (once it has a transcript), or a fresh shell. */
+function cloneBeside(tab, at) {
+  if (tab.kind === 'shell') return openSession(tab.project, { kind: 'shell', beside: true, at });
+  return openSession(tab.project, { resumeId: tab.sessionId || null, beside: true, at });
+}
+
+/** Ctrl+click on a session row: show it beside the focused pane instead of replacing it. A session already on screen is opened a second time. */
+function besideRow(open, openNew) {
+  if (!open) openNew();
+  else if (visibleIds().includes(open.id)) cloneBeside(open);
+  else { addToSplit(open.id); activate(open.id); }
+}
+
+// ------------------------------------------------------- drag and drop ----
+// Drag a session row from the sidebar onto the terminal area (or the home screen): a preview shows the pane it would
+// become in the resulting layout. The drop slot is the one (among all positions) whose pane centre is nearest the pointer.
+// A session that is already on screen is opened again beside it (the same Claude session resumed in a second pane).
+
+let dragSrc = null; // { id: tab id | null, project, resumeId } while a session row is being dragged
+let dropAt = null; // the slot under the pointer, or null when nothing can be dropped
+
+/** Pixel rect of pane `i` in an `n`-pane layout inside a W x H area. */
+function cellRect(n, i, cx, ry, W, H) {
+  if (n === 1) return { x: 0, y: 0, w: W, h: H };
+  const col = n === 2 ? i : n === 3 ? (i === 0 ? 0 : 1) : i % 2;
+  const row = n === 2 || (n === 3 && i === 0) ? -1 : n === 3 ? i - 1 : i >> 1;
+  return {
+    x: col ? cx * W : 0, w: col ? (1 - cx) * W : cx * W,
+    y: row === 1 ? ry * H : 0, h: row < 0 ? H : row === 1 ? (1 - ry) * H : ry * H,
+  };
+}
+
+function rowDrag(src) {
+  return {
+    draggable: 'true',
+    ondragstart: (e) => {
+      dragSrc = src;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', src.resumeId || src.id || '');
+      setTimeout(() => document.body.classList.toggle('dragging-session', !!dragSrc)); // after the drag image is taken
+    },
+    ondragend: endDrag,
+  };
+}
+
+function endDrag() {
+  const was = dragSrc;
+  dragSrc = dropAt = null;
+  document.body.classList.remove('dragging-session');
+  $('#drop-preview').hidden = true;
+  if (was) renderSidebar(true); // renders were held back while dragging
+}
+
+function wireDropZone() {
+  const zone = $('#dropzone');
+  const preview = $('#drop-preview');
+  const box = $('#terminals');
+
+  zone.addEventListener('dragover', (e) => {
+    if (!dragSrc) return;
+    const base = visibleIds(); // empty on the home screen: the whole area is the target
+    if (base.length >= SPLIT_MAX) { dropAt = null; preview.hidden = true; e.dataTransfer.dropEffect = 'none'; return; }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const r = box.getBoundingClientRect();
+    const n = base.length + 1;
+    const cx = split?.cx ?? 0.5, ry = split?.ry ?? 0.5;
+    let best = null;
+    for (let k = 0; k < n; k++) {
+      const c = cellRect(n, k, cx, ry, r.width, r.height);
+      const d = Math.hypot(e.clientX - r.left - (c.x + c.w / 2), e.clientY - r.top - (c.y + c.h / 2));
+      if (!best || d < best.d) best = { k, c, d };
+    }
+    dropAt = best.k;
+    preview.hidden = false;
+    const { x, y, w, h } = best.c; // inset 4px so the outline sits inside the pane
+    Object.assign(preview.style, { left: `${x + 4}px`, top: `${y + 4}px`, width: `${w - 8}px`, height: `${h - 8}px` });
+  });
+  zone.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget && zone.contains(e.relatedTarget)) return;
+    dropAt = null;
+    preview.hidden = true;
+  });
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const src = dragSrc, at = dropAt;
+    endDrag();
+    if (!src || at == null) return;
+    const tab = src.id && tabs.get(src.id);
+    if (!activeId) { // home screen: just open it
+      if (tab) activate(tab.id);
+      else openSession(src.project, { resumeId: src.resumeId });
+    } else if (!tab) openSession(src.project, { resumeId: src.resumeId, beside: true, at });
+    else if (visibleIds().includes(tab.id)) cloneBeside(tab, at);
+    else { addToSplit(tab.id, at); activate(tab.id); }
+  });
+}
+
+function focusPane(dir) {
+  const ids = visibleIds();
+  if (ids.length < 2) return;
+  activate(ids[(ids.indexOf(activeId) + dir + ids.length) % ids.length]);
+}
+
+/** [grid-column, grid-row] of pane `i` in an `n`-pane split. */
+function paneCell(n, i) {
+  if (n === 2) return [String(i + 1), '1'];
+  if (n === 3) return i === 0 ? ['1', '1 / span 2'] : ['2', String(i)];
+  return [String((i % 2) + 1), String(Math.floor(i / 2) + 1)];
+}
+
+/** Grid placement, dividers and pane headers for the current split (or back to the plain single-terminal layout). */
+function renderSplit() {
+  const box = $('#terminals');
+  const ids = split && split.ids.includes(activeId) ? split.ids : [];
+  const n = ids.length;
+  box.classList.toggle('split', n > 1);
+  $('#split-tab').classList.toggle('on', !!split);
+  $('#split-tab').title = kbd(split ? 'Back to one terminal (Ctrl+Shift+\\)' : 'New session beside this one (Ctrl+\\)');
+
+  for (const t of tabs.values()) {
+    const i = ids.indexOf(t.id);
+    t.host.classList.toggle('pane', i >= 0);
+    t.host.classList.toggle('focus', i >= 0 && t.id === activeId);
+    const [col, row] = i < 0 ? ['', ''] : paneCell(n, i);
+    t.host.style.gridColumn = col;
+    t.host.style.gridRow = row;
+  }
+
+  const vz = $('#pz-v'), hz = $('#pz-h');
+  vz.hidden = n < 2;
+  hz.hidden = n < 3;
+  if (n > 1) {
+    const { cx, ry } = split;
+    box.style.gridTemplateColumns = `${cx}fr ${1 - cx}fr`;
+    box.style.gridTemplateRows = n === 2 ? '1fr' : `${ry}fr ${1 - ry}fr`;
+    vz.style.left = `calc(${cx * 100}% - 2px)`;
+    hz.style.top = `calc(${ry * 100}% - 2px)`;
+    hz.style.left = n === 3 ? `${cx * 100}%` : '0';
+  } else {
+    box.style.gridTemplateColumns = box.style.gridTemplateRows = '';
+  }
+  renderPanes();
+  autoRside();
+}
+
+/** Pane headers: status dot, title, and a button that takes the pane out of the split. Key-diffed. */
+let lastPanesKey = '';
+function renderPanes() {
+  const ids = split && split.ids.includes(activeId) ? split.ids : [];
+  const key = JSON.stringify([ids.map((id) => { const t = tabs.get(id); return [id, tabDot(t), paneTitle(t)]; }), activeId, sessionsVer]);
+  if (key === lastPanesKey) return;
+  lastPanesKey = key;
+  for (const id of ids) {
+    const t = tabs.get(id);
+    t.head.replaceChildren(
+      h('span', { class: 's-mark' }, tabDot(t) ? h('i', { class: `dot ${tabDot(t)}` }) : null),
+      h('span', { class: 'ph-title' }, paneTitle(t)),
+      h('button', {
+        class: 'btn ghost icon sm', title: kbd('Close session (Ctrl+W)'),
+        onclick: (e) => { e.stopPropagation(); closeTab(id); },
+      }, ico('x')));
+  }
+}
+
+/** A tab's name in the sidebar and pane headers: its transcript title once known, else a placeholder. */
+function paneTitle(t) {
+  const known = t.sessionId && (sessionsBy[t.project.path] || []).find((s) => s.id === t.sessionId);
+  if (known) return known.title;
+  if (t.kind === 'shell') {
+    const shells = tabsOf(t.project.path).filter((x) => x.kind === 'shell');
+    return `${SHELL_LABEL}${shells.length > 1 ? ' ' + (shells.indexOf(t) + 1) : ''}`;
+  }
+  return t.resumeId ? 'Resumed session' : t.args[0] === '--continue' ? 'Continued session' : 'New session';
+}
+
+/**
+ * Hide the right sidebar when a split would leave a pane under RSIDE_MIN_COLS columns, bring it back when
+ * there is room again (or the split ends). It never touches ui.servers, so the saved choice survives.
+ */
+let autoQueued = false;
+function autoRside() {
+  if (autoQueued) return;
+  autoQueued = true;
+  requestAnimationFrame(() => {
+    autoQueued = false;
+    const open = document.body.classList.contains('rside-open');
+    const panes = visibleIds().map((id) => tabs.get(id)).filter((t) => t?.host.offsetWidth);
+    const cramped = panes.length >= 2;
+    if (!cramped && rsideAuto) { rsideAuto = false; applyRside(ui.servers); return; }
+    if (!cramped || rsideForced) return;
+    const cols = Math.min(...panes.map((t) => t.term.cols));
+    if (open && ui.servers && cols < RSIDE_MIN_COLS) {
+      rsideAuto = true;
+      applyRside(false);
+    } else if (!open && rsideAuto) {
+      const main = $('#terminals').offsetWidth;
+      if ((cols * (main - ui.rsideW)) / main >= RSIDE_BACK_COLS) { rsideAuto = false; applyRside(ui.servers); }
+    }
+  });
+}
+
+/** Dividers: drag to resize (ratio of the grid), double-click to reset. */
+function wireDivider(el, axis) {
+  const box = $('#terminals');
+  const apply = (v) => {
+    const r = box.getBoundingClientRect();
+    if (axis === 'x') split.cx = Math.min(1 - SPLIT_MIN_W / r.width, Math.max(SPLIT_MIN_W / r.width, v));
+    else split.ry = Math.min(1 - SPLIT_MIN_H / r.height, Math.max(SPLIT_MIN_H / r.height, v));
+    renderSplit();
+  };
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    el.setPointerCapture(e.pointerId);
+    el.classList.add('drag');
+    document.body.classList.add('resizing');
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!split || !el.hasPointerCapture(e.pointerId)) return;
+    const r = box.getBoundingClientRect();
+    apply(axis === 'x' ? (e.clientX - r.left) / r.width : (e.clientY - r.top) / r.height);
+  });
+  const end = (e) => {
+    if (!el.hasPointerCapture(e.pointerId)) return;
+    el.releasePointerCapture(e.pointerId);
+    el.classList.remove('drag');
+    document.body.classList.remove('resizing');
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('dblclick', () => split && apply(0.5));
+}
+
+const hostObserver = new ResizeObserver(() => requestAnimationFrame(fitActive));
 
 function cycleTab(dir) {
   const ids = [...tabs.keys()];
@@ -584,7 +921,7 @@ const dotMark = (state) => h('span', { class: 's-mark' }, state ? h('i', { class
 /** Rows backed by an open tab show × in place of their time on hover; middle-click closes too, as on the old tabs. */
 function closeButton(t) {
   return h('button', {
-    class: 'btn ghost icon sm s-close', title: 'Close (Ctrl+Shift+W)',
+    class: 'btn ghost icon sm s-close', title: kbd('Close (Ctrl+W)'),
     onclick: (e) => { e.stopPropagation(); closeTab(t.id); },
   }, ico('x'));
 }
@@ -594,8 +931,11 @@ function sessionRow(p, s, activeSession) {
   const t = tabOfSession(s.id);
   return h('div', {
     class: `session${s.id === activeSession ? ' active' : ''}${t ? ' has-tab' : ''}`,
-    title: `${s.title}\n${new Date(s.mtime).toLocaleString()}`,
-    onclick: () => openSessionRow(p, s),
+    ...rowDrag({ id: t?.id || null, project: p, resumeId: s.id }),
+    title: `${s.title}\n${new Date(s.mtime).toLocaleString()}\nDrag onto the terminal (or ${IS_MAC ? '⌘' : 'Ctrl+'}click) to open beside the current session`,
+    onclick: (e) => (mod(e) && activeId
+      ? besideRow(t, () => openSession(p, { resumeId: s.id, beside: true }))
+      : openSessionRow(p, s)),
     onauxclick: auxClose(t),
   },
     dotMark(t ? tabDot(t) : ''),
@@ -612,18 +952,15 @@ const pendingTabs = (projectPath) => tabsOf(projectPath).filter((t) => t.kind ==
   || !(t.sessionId && (sessionsBy[projectPath] || []).some((s) => s.id === t.sessionId)));
 
 function pendingRow(t) {
-  const shells = tabsOf(t.project.path).filter((x) => x.kind === 'shell');
-  const title = t.kind === 'shell'
-    ? `PowerShell${shells.length > 1 ? ' ' + (shells.indexOf(t) + 1) : ''}`
-    : t.resumeId ? 'Resumed session' : t.args[0] === '--continue' ? 'Continued session' : 'New session';
   return h('div', {
     class: `session has-tab${t.kind === 'claude' ? ' pending' : ''}${t.id === activeId ? ' active' : ''}`,
-    title: t.kind === 'shell' ? `PowerShell in ${t.project.path}` : 'Its title appears after the first reply',
-    onclick: () => activate(t.id),
+    ...rowDrag({ id: t.id, project: t.project, resumeId: null }),
+    title: t.kind === 'shell' ? `${SHELL_LABEL} in ${t.project.path}` : 'Its title appears after the first reply',
+    onclick: (e) => { if (mod(e) && activeId) besideRow(t, null); else activate(t.id); },
     onauxclick: auxClose(t),
   },
     dotMark(tabDot(t)),
-    h('span', { class: 's-title' }, title),
+    h('span', { class: 's-title' }, paneTitle(t)),
     h('span', { class: 's-time' }, fmtAgo(t.startedAt)),
     closeButton(t));
 }
@@ -653,6 +990,7 @@ function gitSubLine(info) {
 let lastSidebarKey = '';
 let sessionsVer = 0; // bumped when sessionsBy changes, so the render key stays cheap
 function renderSidebar(force = false) {
+  if (dragSrc) return; // rebuilding rows mid-drag would drop the dragged element; endDrag re-renders
   document.body.classList.toggle('no-tabs', tabs.size === 0);
   const tab = activeTab();
   const activeProject = tab?.project.path;
@@ -661,6 +999,7 @@ function renderSidebar(force = false) {
     [...tabs.values()].map((t) => [t.id, t.project.path, t.kind, t.sessionId, tabDot(t)])]);
   if (!force && key === lastSidebarKey) return;
   lastSidebarKey = key;
+  renderPanes();
 
   const root = $('#projects');
   if (!projects.length) {
@@ -734,8 +1073,8 @@ function toggleMenu(p, anchor) {
   const el = $('#menu');
   el.replaceChildren(
     item('redo', 'Continue last conversation', () => openSession(p, { args: ['--continue'] })),
-    item('terminal', 'Open PowerShell here', () => openSession(p, { kind: 'shell' })),
-    item('folder', 'Show in Explorer', () => api.openFolder(p.path)),
+    item('terminal', `Open ${SHELL_LABEL} here`, () => openSession(p, { kind: 'shell' })),
+    item('folder', `Show in ${FILES_APP}`, () => api.openFolder(p.path)),
     h('div', { class: 'menu-sep' }),
     item('trash', 'Remove from list', () => removeProject(p), true));
   el.hidden = false;
@@ -919,10 +1258,10 @@ function renderWelcome() {
                 h('span', { class: 'proj-go' }, ico('arrowRight')))))
         : h('button', { class: 'btn primary', onclick: addProjects }, ico('folderPlus'), 'Add project'),
       h('div', { class: 'hint' },
-        h('span', {}, h('kbd', {}, 'Ctrl+T'), ' new session'),
+        h('span', {}, h('kbd', {}, kbd('Ctrl+T')), ' new session'),
         h('span', {}, h('kbd', {}, 'Ctrl+Tab'), ' switch'),
-        h('span', {}, h('kbd', {}, 'Ctrl+S'), ' sidebar'),
-        h('span', {}, h('kbd', {}, 'Ctrl+Shift+S'), ' servers'))));
+        h('span', {}, h('kbd', {}, kbd('Ctrl+S')), ' sidebar'),
+        h('span', {}, h('kbd', {}, kbd('Ctrl+Shift+S')), ' side panel'))));
 }
 
 function renderStatus() {
@@ -946,81 +1285,156 @@ function renderStatus() {
     h('span', { class: 'stat' }, `${running} session${running === 1 ? '' : 's'} running`));
 }
 
-const sessionProcs = () => (ports.ok && ports.procs) || []; // MCP servers and browsers under our sessions
+// ------------------------------------------------------------ right sidebar ----
+// Active tab's context fill, MCP health, subagents, and the running dev servers. Each section folds shut (ui.collapsed).
 
-/** Short display names: "@playwright/mcp" -> "playwright", node running vite -> "vite", chrome.exe -> "chrome". */
+/** "node_modules/vite/bin/vite.js" -> "vite", python.exe -> "python". */
 function itemName(s) {
-  if (s.kind === 'mcp') {
-    const words = s.label.replace(/^@/, '').split(/[/-]/).filter((w) => w && !/^(mcp|server)$/i.test(w));
-    return [...new Set(words)].join('-') || s.label;
-  }
-  if (s.kind === 'browser') return s.label;
   const pkg = /node_modules[\\/](?:\.bin[\\/])?((?:@[^\\/\s"]+[\\/])?[^\\/\s"]+)/i.exec(s.cmd || '')?.[1];
   return pkg ? pkg.replace('\\', '/') : s.name.replace(/\.exe$/i, '');
 }
 
-function serverRow(s) {
-  const sessionTab = s.owner?.type === 'session' ? tabs.get(s.owner.sessionId) : null;
-  const kind = s.kind === 'mcp' ? 'MCP server' : s.kind === 'browser' ? (s.headless ? 'Headless browser' : 'Browser') : 'Server';
-  // Everything but the name lives in the tooltip.
-  const tip = [
-    `${kind}${s.port ? ` on :${s.port}` : ''}${s.debugPort ? ` (debug :${s.debugPort})` : ''}`,
-    s.exposed ? 'Listening on all network interfaces' : null,
-    sessionTab ? `Started in ${tabLabel(sessionTab)}` : null,
-    `pid ${s.pid}`,
-    s.cmd || null,
-  ].filter(Boolean).join('\n');
-  const meta = s.port ? `:${s.port}` : s.debugPort ? `:${s.debugPort}` : '';
-  return h('div', { class: 'srv', title: tip },
-    ico(s.kind === 'mcp' ? 'box' : s.kind === 'browser' ? 'globe' : 'server'),
-    h('span', { class: 'name' }, itemName(s)),
-    meta ? h('span', { class: `meta${s.exposed ? ' exposed' : ''}` }, meta) : null,
-    h('div', { class: 'acts' },
-      s.port ? h('button', { class: 'btn ghost icon sm', title: `Open http://localhost:${s.port}`, onclick: () => api.openExternal(`http://localhost:${s.port}`) }, ico('link')) : null,
-      h('button', { class: 'btn ghost icon sm danger', title: 'Stop', onclick: () => killServer(s) }, ico('power'))));
+const MCP_STATUS = { // status -> [color class, label]
+  connected: ['ok', 'connected'],
+  failed: ['err', 'failed'],
+  needs_client_registration: ['err', 'needs registration'],
+  needs_auth: ['warn', 'needs auth'],
+  disabled: ['mute', 'disabled'],
+  unknown: ['mute', 'unknown'],
+};
+/** "plugin:design:slack" -> "slack"; the full name stays in the tooltip. */
+const mcpName = (n) => (n.startsWith('plugin:') ? n.split(':').pop() : n);
+
+const statusDot = (cls) => h('i', { class: `dot s ${cls}` });
+let mcpMore = false; // MCPs that are not connected stay folded behind a "Show N more" row
+let copiedPort = null; // port whose address was just copied (its row says "Copied" for a moment)
+
+function rsection(id, title, count, ...body) {
+  const open = !ui.collapsed.includes(id);
+  return h('section', { class: 'rsec' },
+    h('button', { class: `rsec-head${open ? ' open' : ''}`, 'aria-expanded': String(open), onclick: () => toggleRsection(id) },
+      ico('chevron'), title, count != null ? h('span', { class: 'count' }, count) : null),
+    open ? body.flat(2) : null);
 }
 
-function renderServers() {
-  const procPids = new Set(sessionProcs().map((p) => p.pid)); // a browser's debug port is shown on its own row
-  const visible = [...ports.servers.filter((s) => (showAll || s.dev) && !procPids.has(s.pid)), ...sessionProcs()];
-  $('#servers-count').textContent = String(ports.servers.filter((s) => s.dev && !procPids.has(s.pid)).length + sessionProcs().length);
-
-  const root = $('#server-list');
-  if (!ports.ok) {
-    root.replaceChildren(h('div', { class: 'scan-error' }, ports.error || 'Port scan failed'));
-    return;
-  }
-  if (!visible.length) {
-    root.replaceChildren(h('div', { class: 'empty-note' }, 'Nothing running.', h('br'),
-      'Dev servers, MCP servers and browsers started from a session show up here.'));
-    return;
-  }
-
-  const groups = new Map();
-  for (const s of visible) {
-    const key = s.owner?.projectPath || '';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(s);
-  }
-  const nodes = [];
-  const keys = [...groups.keys()].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)));
-  for (const key of keys) {
-    nodes.push(h('div', { class: 'group-title' }, ico(key ? 'folder' : 'server'), key ? baseName(key) : 'Other'));
-    nodes.push(...groups.get(key).map(serverRow)); // ports first (sorted), then MCP servers and browsers
-  }
-  root.replaceChildren(...nodes);
+function toggleRsection(id) {
+  const set = new Set(ui.collapsed);
+  if (!set.delete(id)) set.add(id);
+  ui.collapsed = [...set];
+  api.setUi({ collapsed: ui.collapsed });
+  renderRside(true);
 }
 
-/** Open the panel when one of our sessions starts something new (a server, MCP server or browser). */
-function revealNewOwned() {
-  if (!ports.ok) return;
-  const keys = [
-    ...ports.servers.filter((s) => s.owner?.type === 'session').map((s) => `port:${s.pid}:${s.port}`),
-    ...sessionProcs().map((p) => `${p.kind}:${p.pid}`),
-  ];
-  const fresh = keys.filter((k) => !seenOwned.has(k));
-  for (const k of fresh) seenOwned.add(k);
-  if (fresh.length && !ui.servers) setServers(true);
+function copyServer(s) {
+  api.writeClipboard(`http://localhost:${s.port}`);
+  copiedPort = s.port;
+  renderRside();
+  setTimeout(() => { if (copiedPort === s.port) { copiedPort = null; renderRside(); } }, 1200);
+}
+
+/** Subagents: everything defined for the project, plus built-in/plugin types that ran in this session. */
+function agentRows(proj, tab) {
+  const info = tab?.kind === 'claude' ? infoBy.get(tab.id) : null;
+  const rows = new Map((definedBy.get(proj?.path) || []).map((d) => [d.name, { name: d.name, model: d.model, running: 0, done: 0 }]));
+  for (const a of info?.agents || []) { // newest first
+    if (!rows.has(a.type)) rows.set(a.type, { name: a.type, model: null, running: 0, done: 0 });
+    const r = rows.get(a.type);
+    if (a.running) r.running++; else r.done++;
+    if (a.model && !r.live) { r.model = a.model; r.live = true; } // the model it actually ran with beats the definition's
+  }
+  const rank = (r) => (r.running ? 0 : r.done ? 1 : 2);
+  return [...rows.values()]
+    .map((r) => ({ ...r, model: !r.model || r.model === 'inherit' ? info?.model || null : r.model }))
+    .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+}
+
+let lastRsideKey = '';
+function renderRside(force = false) {
+  const proj = currentProject();
+  const ctx = contextInfo();
+  const mcp = proj && mcpBy.get(proj.path);
+  const agents = agentRows(proj, activeTab());
+  const servers = ports.ok ? ports.servers.filter((s) => s.dev) : [];
+
+  const key = JSON.stringify([ctx && [ctx.session?.ctx, ctx.pct, ctx.win], proj?.path, mcp, agents, ports.ok && servers, ports.error, ui.collapsed, copiedPort, mcpMore]);
+  if (!force && key === lastRsideKey) return;
+  lastRsideKey = key;
+
+  const lvl = ctx?.pct != null ? levelOf(ctx.pct) : '';
+  const head = h('div', { class: 'ctx-head', title: 'Approximate: the window size is assumed (200k, or 1M once a session passes 200k). Type /context in the tab for exact numbers.' },
+    h('div', { class: 'ctx-line' },
+      h('span', { class: 'ctx-title' }, 'Context'),
+      h('span', { class: 'ctx-val' }, ctx?.pct != null ? `${fmtTok(ctx.session.ctx)} / ${fmtTok(ctx.win)}` : '—')),
+    h('div', { class: `ctx-pct ${lvl}`.trim() }, ctx?.pct != null ? `${ctx.pct}%` : '—'),
+    h('span', { class: `meter big ${lvl}`.trim() }, h('i', { style: `width:${ctx?.pct ?? 0}%` })));
+
+  const mcpBody = !proj ? h('div', { class: 'rnote' }, 'Select a project.')
+    : !mcp ? h('div', { class: 'rrow' }, statusDot('wait'), h('span', { class: 'name' }, 'Checking…'))
+    : !mcp.ok ? h('div', { class: 'rnote' }, 'Could not read MCP status.')
+    : !mcp.servers.length ? h('div', { class: 'rnote' }, 'No MCP servers configured.')
+    : (() => {
+        const mcpRow = (m) => {
+          const [cls, label] = MCP_STATUS[m.status] || MCP_STATUS.unknown;
+          return h('div', { class: 'rrow', title: `${m.name}: ${m.label || label}` },
+            statusDot(cls), h('span', { class: 'name' }, mcpName(m.name)),
+            h('span', { class: `meta t-${cls}` }, m.status === 'unknown' && m.label ? m.label : label));
+        };
+        const rest = mcp.servers.filter((m) => m.status !== 'connected');
+        return [
+          ...mcp.servers.filter((m) => m.status === 'connected').map(mcpRow),
+          rest.length ? h('div', { class: 'rrow rmore', title: rest.map((m) => `${mcpName(m.name)}: ${m.label || m.status}`).join('\n'),
+            onclick: () => { mcpMore = !mcpMore; renderRside(true); } }, mcpMore ? 'Show less' : `Show ${rest.length} more`) : null,
+          ...(mcpMore ? rest.map(mcpRow) : []),
+        ];
+      })();
+
+  const agentBody = agents.length ? agents.map((a) => {
+    const st = a.running ? 'working' : a.done ? 'done' : 'idle';
+    const tip = `${a.name}: ${st}${a.running > 1 ? ` (${a.running} running)` : ''}${a.done ? `, ${a.done} finished this session` : ''}`;
+    return h('div', { class: 'rrow', title: tip },
+      st === 'working' ? h('i', { class: 'dot s working' }) : st === 'done' ? h('span', { class: 't-ok' }, ico('check')) : statusDot('mute'),
+      h('span', { class: 'name' }, a.name),
+      h('span', { class: 'meta mono' }, a.model ? prettyModel(a.model) : '—'));
+  }) : h('div', { class: 'rnote' }, 'No subagents defined.');
+
+  const runBody = !ports.ok ? h('div', { class: 'rnote t-err' }, ports.error || 'Port scan failed')
+    : !servers.length ? h('div', { class: 'rnote' }, 'Nothing running.')
+    : servers.map((s) => {
+        const copyable = !!s.port && !/emulator|qemu|adb/i.test(`${s.name} ${s.cmd || ''}`);
+        return h('div', {
+          class: `rrow${copyable ? ' copy' : ''}${copiedPort === s.port ? ' copied' : ''}`,
+          title: copyable ? `Copy http://localhost:${s.port}` : (s.cmd || s.name),
+          onclick: copyable ? () => copyServer(s) : null,
+        }, statusDot('ok'), h('span', { class: 'name' }, itemName(s)),
+          h('span', { class: 'meta mono' }, copiedPort === s.port ? 'Copied' : s.port ? `:${s.port}` : ''));
+      });
+
+  const working = agents.filter((a) => a.running).length;
+  $('#rside').replaceChildren(head,
+    rsection('mcp', 'MCPs', mcp?.ok ? `${mcp.servers.filter((m) => m.status === 'connected').length}/${mcp.servers.length}` : null, mcpBody),
+    rsection('agents', 'Subagents', working ? `${working} working` : agents.length || null, agentBody),
+    rsection('running', 'Running', servers.length || null, runBody));
+}
+
+/** Both are slow-ish and rarely change: fetched per project, only while the panel is open and the window visible. */
+const rsideBusy = new Set();
+async function pollMcp() {
+  const proj = currentProject();
+  if (!proj || !rsideShown() || document.hidden || rsideBusy.has(proj.path)) return;
+  rsideBusy.add(proj.path);
+  try {
+    const next = await api.mcpList(proj.path);
+    if (JSON.stringify(next) !== JSON.stringify(mcpBy.get(proj.path))) { mcpBy.set(proj.path, next); renderRside(); }
+  } finally {
+    rsideBusy.delete(proj.path);
+  }
+}
+
+async function pollDefinedAgents() {
+  const proj = currentProject();
+  if (!proj || !rsideShown() || document.hidden) return;
+  const next = await api.definedAgents(proj.path);
+  if (JSON.stringify(next) !== JSON.stringify(definedBy.get(proj.path))) { definedBy.set(proj.path, next); renderRside(); }
 }
 
 // --------------------------------------------------------------- session info ----
@@ -1071,6 +1485,7 @@ async function pollInfo() {
     const next = await api.sessionInfo(tab.project.path, tab.sessionId);
     if (tabs.has(tab.id)) infoBy.set(tab.id, next);
     renderInfo(); // key-diffed
+    renderRside();
   } finally {
     infoBusy = false;
   }
@@ -1080,7 +1495,7 @@ function renderAll() {
   renderSidebar(true);
   renderWelcome();
   renderStatus();
-  renderServers();
+  renderRside();
   renderFoot();
   renderInfo();
 }
@@ -1111,28 +1526,45 @@ async function removeProject(p) {
   renderAll();
 }
 
-async function killServer(s) {
-  const ok = await confirmDialog({
-    title: `Stop ${itemName(s)}?`,
-    message: s.kind === 'mcp'
-      ? `This force-stops MCP server process ${s.pid} (and its children). Claude loses its tools until you reconnect it with /mcp.`
-      : s.kind === 'browser'
-        ? `This force-stops browser process ${s.pid} (and its children).`
-        : `This force-stops process ${s.pid} (and its children) listening on port ${s.port}.`,
-    okLabel: 'Stop process',
-    danger: true,
-  });
-  if (!ok) return;
-  const res = await api.killProcess(s.pid);
-  if (!res.ok) await confirmDialog({ title: 'Could not stop it', message: res.error, okLabel: 'OK' });
-  pollPorts();
-}
-
 function setFontSize(size) {
   ui.fontSize = Math.min(FONT_SIZE.max, Math.max(FONT_SIZE.min, size));
   for (const t of tabs.values()) t.term.options.fontSize = ui.fontSize;
   api.setUi({ fontSize: ui.fontSize });
   requestAnimationFrame(fitActive);
+}
+
+// Sidebar widths: the CSS vars hold the live value, ui.sidebarW / ui.rsideW the saved one.
+const PANEL_W = {
+  sidebarW: { min: 180, max: 480, def: 232, cssVar: '--sidebar-w' },
+  rsideW: { min: 240, max: 600, def: 300, cssVar: '--rside-w' },
+};
+const clampW = (key, w) => Math.min(PANEL_W[key].max, Math.max(PANEL_W[key].min, Math.round(w) || PANEL_W[key].def));
+function applyPanelW(key, w) {
+  ui[key] = clampW(key, w);
+  document.documentElement.style.setProperty(PANEL_W[key].cssVar, ui[key] + 'px');
+}
+
+/** Drag handle on a divider. `widthAt(clientX)` gives the panel width for a pointer position; the terminal refits via its ResizeObserver. */
+function wireResizer(el, key, widthAt) {
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    el.setPointerCapture(e.pointerId);
+    el.classList.add('drag');
+    document.body.classList.add('resizing');
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (el.hasPointerCapture(e.pointerId)) applyPanelW(key, widthAt(e.clientX));
+  });
+  const end = (e) => {
+    if (!el.hasPointerCapture(e.pointerId)) return;
+    el.releasePointerCapture(e.pointerId);
+    el.classList.remove('drag');
+    document.body.classList.remove('resizing');
+    api.setUi({ [key]: ui[key] });
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('dblclick', () => { applyPanelW(key, PANEL_W[key].def); api.setUi({ [key]: ui[key] }); });
 }
 
 /** Toggle + logo live in the sidebar's top row; while it is collapsed they move to the start of the top bar. */
@@ -1151,13 +1583,22 @@ function setSidebar(open) {
   requestAnimationFrame(fitActive);
 }
 
-function setServers(open) {
-  ui.servers = open;
-  document.body.classList.toggle('servers-open', open);
-  $('#toggle-servers').classList.toggle('on', open);
-  api.setUi({ servers: open });
-  if (open) pollPorts();
+const rsideShown = () => document.body.classList.contains('rside-open');
+
+/** Show or hide the right sidebar without touching the saved choice (autoRside uses this directly). */
+function applyRside(open) {
+  document.body.classList.toggle('rside-open', open);
+  $('#toggle-rside').classList.toggle('on', open);
+  if (open) { renderRside(); pollPorts(); pollMcp(); pollDefinedAgents(); pollInfo(); }
   requestAnimationFrame(fitActive);
+}
+
+function setServers(open) { // the user's choice for the right sidebar (ui.servers is its saved flag)
+  ui.servers = open;
+  rsideAuto = false;
+  rsideForced = open && visibleIds().length > 1; // reopened by hand in a split: don't hide it again
+  api.setUi({ servers: open });
+  applyRside(open);
 }
 
 /** Window close: only interrupt the user if quitting would stop real work. */
@@ -1243,6 +1684,7 @@ async function pollSessions() {
     assignSessions();
     renderSidebar();
     renderFoot();
+    renderRside();
     pollInfo();
   } finally {
     sessionsBusy = false;
@@ -1271,8 +1713,7 @@ async function pollPorts() {
     portsAt = Date.now();
     if (JSON.stringify(next) !== JSON.stringify(ports)) {
       ports = next;
-      renderServers();
-      revealNewOwned();
+      renderRside();
     }
   } finally {
     portsBusy = false;
@@ -1318,23 +1759,30 @@ function wireGlobalEvents() {
   });
 
   // Ctrl+T (new session) and Ctrl+S (sidebar) are taken from Claude Code on purpose; the rest avoid its keys.
+  // mod(e) is Ctrl on Windows and Cmd on macOS (see IS_MAC).
   window.addEventListener('keydown', (e) => {
     let handled = true;
     if (e.key === 'Escape' && menuFor) closeMenu();
     else if (e.key === 'Escape' && detailKind) setDetail(null);
-    else if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === '=' || e.key === '+')) setFontSize(ui.fontSize + 1);
-    else if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === '-' || e.key === '_')) setFontSize(ui.fontSize - 1);
-    else if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key === '0') setFontSize(FONT_SIZE.default);
+    else if (mod(e) && !e.altKey && !e.shiftKey && (e.key === '=' || e.key === '+')) setFontSize(ui.fontSize + 1);
+    else if (mod(e) && !e.altKey && !e.shiftKey && (e.key === '-' || e.key === '_')) setFontSize(ui.fontSize - 1);
+    else if (mod(e) && !e.altKey && !e.shiftKey && e.key === '0') setFontSize(FONT_SIZE.default);
     else if (e.ctrlKey && !e.altKey && e.key === 'Tab') cycleTab(e.shiftKey ? -1 : 1);
-    else if (e.altKey && !e.ctrlKey && !e.shiftKey && /^[1-9]$/.test(e.key)) {
+    else if (mod(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'w') { if (activeId) closeTab(activeId); }
+    else if (mod(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 't') newSessionHere();
+    else if (mod(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's') setSidebar(!ui.sidebar);
+    else if (mod(e) && !e.altKey && !e.shiftKey && e.key === '\\') splitHere();
+    else if (mod(e) && !e.altKey && e.shiftKey && (e.key === '|' || e.key === '\\')) unsplit();
+    else if (mod(e) && e.altKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) focusPane(e.key === 'ArrowRight' ? 1 : -1);
+    else if ((IS_MAC ? e.metaKey && !e.altKey : e.altKey && !e.ctrlKey) && !e.shiftKey && /^[1-9]$/.test(e.key)) {
       const id = [...tabs.keys()][Number(e.key) - 1];
       if (id) activate(id);
-    } else if (e.ctrlKey && e.shiftKey && !e.altKey) {
+    } else if (mod(e) && e.shiftKey && !e.altKey) {
       const k = e.key.toLowerCase();
       if (k === 't') newSessionHere();
       else if (k === 'w') { if (activeId) closeTab(activeId); }
       else if (k === 'b') setSidebar(!ui.sidebar);
-      else if (k === 's') setServers(!ui.servers);
+      else if (k === 's') setServers(!rsideShown());
       else if (k === 'f') { setSidebar(true); $('#session-search').focus(); $('#session-search').select(); }
       else handled = false;
     } else handled = false;
@@ -1377,8 +1825,15 @@ function wireGlobalEvents() {
   $('#open-shell').addEventListener('click', () => projectAction((p) => openSession(p, { kind: 'shell' })));
   $('#open-folder').addEventListener('click', () => projectAction((p) => api.openFolder(p.path)));
   $('#toggle-sidebar').addEventListener('click', () => setSidebar(!ui.sidebar));
-  $('#toggle-servers').addEventListener('click', () => setServers(!ui.servers));
-  $('#show-all').addEventListener('change', (e) => { showAll = e.target.checked; renderServers(); });
+  $('#toggle-rside').addEventListener('click', () => setServers(!rsideShown()));
+  $('#close-tab').addEventListener('click', () => { if (activeId) closeTab(activeId); });
+  $('#split-tab').addEventListener('click', () => (split ? unsplit() : splitHere()));
+  wireDropZone();
+  wireDivider($('#pz-v'), 'x');
+  wireDivider($('#pz-h'), 'y');
+
+  wireResizer($('#rz-left'), 'sidebarW', (x) => x);
+  wireResizer($('#rz-right'), 'rsideW', (x) => window.innerWidth - x);
 
   new ResizeObserver(() => requestAnimationFrame(fitActive)).observe($('#terminals'));
 }
@@ -1387,19 +1842,29 @@ async function init() {
   $('#logo').innerHTML = LOGO_SVG;
   $('#toggle-sidebar').append(ico('sidebar'));
   $('#new-tab').append(ico('plus'));
+  $('#close-tab').append(ico('x'));
+  $('#split-tab').append(ico('columns'));
   $('#open-code').append(ico('code'));
   $('#open-shell').append(ico('terminal'));
   $('#open-folder').append(ico('folder'));
-  $('#servers-icon').append(ico('server'));
+  $('#toggle-rside').append(ico('panelRight'));
   $('#search-icon').append(ico('search'));
+  if (IS_MAC) {
+    document.body.classList.add('mac'); // room for the traffic lights (styles.css)
+    for (const el of document.querySelectorAll('[title]')) {
+      el.title = kbd(el.title).replace('PowerShell', SHELL_LABEL).replace('Explorer', FILES_APP);
+    }
+  }
 
   const state = await api.getState();
   projects = state.projects;
   ui = state.ui;
+  ui.collapsed ||= [];
+  for (const key of Object.keys(PANEL_W)) applyPanelW(key, ui[key]);
   for (const p of ui.expanded || []) expanded.add(p);
   placeBrand();
-  document.body.classList.toggle('servers-open', ui.servers);
-  $('#toggle-servers').classList.toggle('on', ui.servers);
+  document.body.classList.toggle('rside-open', ui.servers);
+  $('#toggle-rside').classList.toggle('on', ui.servers);
 
   wireGlobalEvents();
   renderAll();
@@ -1408,10 +1873,13 @@ async function init() {
   pollPorts();
   pollSessions();
   pollUsage();
+  pollMcp();
+  pollDefinedAgents();
   setInterval(pollGit, 4000);
   setInterval(pollPorts, 6000);
   setInterval(pollSessions, 4000);
   setInterval(pollUsage, 15000);
+  setInterval(pollMcp, 30000);
   // "Working" depends on recent output, so re-check it (cheap: the renders are key-diffed).
   setInterval(() => { if (!document.hidden) { renderSidebar(); renderFoot(); } }, 1500);
 }
