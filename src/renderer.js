@@ -1677,7 +1677,7 @@ function projectRow(p, isActive, isOpen) {
   return h('div', {
     class: `project${isActive && !isOpen ? ' current' : ''}${menuFor === p.path ? ' menu-open' : ''}`,
     title: [p.path, gitSummary(git[p.path]), 'Drag to reorder'].filter(Boolean).join('\n'),
-    onclick: () => (isActive ? toggleExpand(p) : focusProject(p)), // a second click collapses
+    onclick: () => toggleExpand(p), // only collapses/expands; new sessions come from + or the shortcut
     ...projDragProps(p),
   },
     h('button', {
