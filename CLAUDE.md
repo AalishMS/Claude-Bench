@@ -248,7 +248,10 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
 - **Resize a terminal once, and only when its size changes** (`fitTab`). The renderer rounds the cell height, so the fit
   addon's row count can be one too many; `fit.fit()` followed by `rows - 1` resized every tab twice per switch, and each
   pty resize makes Claude repaint its screen (the Ctrl+Tab jitter). `fitTab` computes the final size from
-  `proposeDimensions()` and calls `term.resize` at most once.
+  `proposeDimensions()` and calls `term.resize` at most once. Its row height is xterm's cell height
+  (`_renderService.dimensions.css.cell.height`, private like the fit addon's), never `.xterm-screen` height / rows: a tab shown
+  after the window grew gets WebGL in the same frame, the screen keeps its old height until the next render, and a second fit in
+  that frame kept one row too many (the bottom row ran under the status bar). `.term-host` clips as a safety net.
 - **WebGL only on panes on screen** (`setWebgl`, from `syncVisible`): Chromium keeps 16 live WebGL contexts per page and
   silently drops the oldest, so hidden tabs use the DOM renderer. The addon's `dispose()` leaves its context to GC (Chromium
   still counts it), so `setWebgl` calls `WEBGL_lose_context.loseContext()` on the canvas that is not `.xterm-link-layer`.

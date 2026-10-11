@@ -324,7 +324,7 @@ body.resizing .rz { pointer-events: auto; }
 
 /* ----------------------------------------------------------- terminals --- */
 #terminals { position: absolute; inset: 0; }
-.term-host { position: absolute; inset: 0; padding: 10px 0 6px 14px; display: none; background: var(--background); }
+.term-host { position: absolute; inset: 0; padding: 10px 0 6px 14px; display: none; overflow: hidden; background: var(--background); }
 .term-host.active { display: block; }
 .term-host .xterm { height: 100%; }
 .term-host .xterm-viewport { background-color: var(--background) !important; }

@@ -976,10 +976,13 @@ function fitTab(tab) {
     if (!dims || !Number.isFinite(dims.cols) || !Number.isFinite(dims.rows)) return;
     let { cols, rows } = dims;
     const box = tab.host.querySelector('.xterm');
-    const screen = tab.host.querySelector('.xterm-screen');
-    const rowH = screen && tab.term.rows ? screen.offsetHeight / tab.term.rows : 0;
-    // the fit addon reads the host's border-box height (padding included, 30px more in a split pane) and the
-    // unrounded cell height, so its row count can be several too many: count the rows that fit the .xterm box
+    // Row height = xterm's measured cell height (the value the fit addon divides by, private API). Not the screen
+    // element's height / rows: right after a tab is shown that height can still be the old row count's (the WebGL
+    // renderer, loaded in the same frame, updates it on its next render), so a second fit in that frame got a tiny row
+    // height, skipped the check below and kept a row too many, which ran under the status bar.
+    const rowH = tab.term._core?._renderService?.dimensions?.css?.cell?.height || 0;
+    // the fit addon reads the host's border-box height (padding included, 30px more in a split pane), so its row
+    // count can be several too many: count the rows that fit the .xterm box
     if (box && rowH && rows * rowH > box.clientHeight) rows = Math.max(1, Math.floor(box.clientHeight / rowH));
     if (cols !== tab.term.cols || rows !== tab.term.rows) tab.term.resize(cols, rows);
   } catch { /* not measurable yet */ }
