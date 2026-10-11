@@ -1271,13 +1271,14 @@ function assignSessions() {
     if (pick) { t.sessionId = pick.id; claimed.add(pick.id); }
   }
   // /clear (and /resume inside a tab) switches to a new transcript: follow it, or the right sidebar keeps reading the old
-  // session's subagents. Only when no fresh tab of the project is still waiting for its first transcript.
+  // session's subagents. Only while the tab is idle and its old transcript went quiet when the new one began (another
+  // session of the same project writing meanwhile must not hijack it), and when no fresh tab of the project is still waiting for its first transcript.
   for (const t of tabs.values()) {
     if (t.kind !== 'claude' || !t.sessionId || t.status !== 'running') continue;
     const list = sessionsBy[t.project.path] || [];
     const cur = list.find((s) => s.id === t.sessionId);
-    if (!cur || [...tabs.values()].some((o) => o !== t && o.kind === 'claude' && !o.sessionId && o.project.path === t.project.path)) continue;
-    const next = list.filter((s) => !claimed.has(s.id) && s.birth >= t.startedAt && s.birth >= cur.mtime - 2000 && s.mtime > cur.mtime)
+    if (!cur || isWorking(t) || [...tabs.values()].some((o) => o !== t && o.kind === 'claude' && !o.sessionId && o.project.path === t.project.path)) continue;
+    const next = list.filter((s) => !claimed.has(s.id) && s.birth >= t.startedAt && s.birth >= cur.mtime - 2000 && cur.mtime <= s.birth + 2000 && s.mtime > cur.mtime)
       .sort((a, b) => a.birth - b.birth)[0];
     if (next) { t.sessionId = next.id; claimed.add(next.id); infoBy.delete(t.id); }
   }
