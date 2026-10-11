@@ -306,15 +306,13 @@ body.resizing .rz { pointer-events: auto; }
 .term-host .xterm-scrollable-element > .scrollbar { display: none !important; }
 /* split view: #terminals becomes a grid (templates set from renderer.js); hairline gaps show --border */
 #terminals.split { display: grid; gap: 1px; background: var(--border); }
-.term-host.pane { position: relative; inset: auto; display: block; min-width: 0; min-height: 0; padding-top: 30px; }
+.term-host.pane { position: relative; inset: auto; display: block; min-width: 0; min-height: 0; padding-top: 30px; overflow: hidden; }
 .pane-head { display: none; }
 .pane .pane-head { position: absolute; top: 0; left: 0; right: 0; height: 26px; z-index: 5; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 12px; color: var(--faint); font-size: 12px; }
 .pane.focus .pane-head { color: var(--foreground); }
-/* the focused pane: a 1px --primary outline drawn over its edges; the other panes' text dims */
-.pane::after { content: ''; position: absolute; inset: 0; z-index: 6; border: 1px solid transparent; pointer-events: none; transition: border-color 0.15s; }
-.pane.focus::after { border-color: var(--primary); }
-.pane .xterm { transition: opacity 0.15s; }
-.pane:not(.focus) .xterm { opacity: 0.55; }
+/* the focused pane is the bright one: no outline, the other panes' text dims */
+.pane .xterm, .pane .vbar { transition: opacity 0.15s; }
+.pane:not(.focus) .xterm, .pane:not(.focus) .vbar { opacity: 0.4; }
 .pane-head .s-mark { width: 10px; }
 .ph-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pane-head .btn { opacity: 0; }

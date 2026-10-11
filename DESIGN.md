@@ -53,8 +53,7 @@ So a future accent setting only has to call `document.documentElement.style.setP
 Never hard-code the blue, or a tint of it, anywhere else (CSS, renderer, inline styles).
 
 Primary appears **only** on: primary buttons, focus rings, progress-meter fills, the checked checkbox, the
-"needs attention" status dot, drag-and-drop targets (split drop preview, reorder insertion line), the focused split
-pane's outline and the sidebar's split group. Nothing else gets it.
+"needs attention" status dot, drag-and-drop targets (split drop preview, reorder insertion line) and the sidebar's split group. Nothing else gets it.
 
 ### Status colors
 
@@ -99,8 +98,8 @@ row, a "New session" placeholder until the first reply, or a "PowerShell" row). 
 Up to 4 tabs side by side (top-bar columns button, `Ctrl+\`, Ctrl+click a sidebar row, or dragging a row onto the
 terminal or home screen (a session already on screen is opened a second time beside itself); while dragging, a `--primary` 18% fill with a 70% 1 px outline previews the pane it would become). The terminal area becomes
 a grid with 1 px `--border` gaps, no boxes or gutters. Each pane has a 26 px header strip on the terminal background:
-status dot, title (12 px, `--faint`), and a hover-only ghost `×` that closes that pane's session. The focused pane is marked by its title going `--foreground`, a 1 px `--primary` outline drawn over all four edges, and the other panes' terminal text dimmed to 55 % opacity:
-no other color, no background change. A stacked split ("New session below") is the same grid transposed. Dividers are 4 px invisible handles that take the `.rz` hover tint. When a pane
+status dot, title (12 px, `--faint`), and a hover-only ghost `×` that closes that pane's session. The focused pane is marked only by its title going `--foreground` and the other panes' terminal text (and scrollbar) dimmed to 40 % opacity:
+no outline, no other color, no background change. Panes clip their content so nothing reaches the status bar. A stacked split ("New session below") is the same grid transposed. Dividers are 4 px invisible handles that take the `.rz` hover tint. When a pane
 would drop under ~100 columns the right sidebar hides itself and returns when there is room (see CLAUDE.md).
 
 ### Split group (sidebar)
