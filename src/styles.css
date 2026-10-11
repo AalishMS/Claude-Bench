@@ -344,6 +344,7 @@ kbd { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; b
 .ctx-head .ctx-pct.warn { color: var(--warning); }
 .ctx-head .ctx-pct.crit { color: var(--destructive); }
 .ctx-head .meter.big { margin: 8px 0 0; }
+.ctx-head .rnote { padding: 6px 0 0; }
 .rsec { flex: none; padding-bottom: 4px; }
 .rsec-head { display: flex; align-items: center; gap: 4px; width: calc(100% - 16px); height: 32px; margin: 4px 8px 0; padding: 0 8px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--muted-foreground); font: inherit; font-size: 12px; font-weight: 500; text-align: left; cursor: pointer; }
 .rsec-head:hover { color: var(--foreground); }

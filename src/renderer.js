@@ -1177,7 +1177,7 @@ function renderFoot(force = false) {
   const sessPct = sess ? limitPct(sess) : null;
   const usageTip = sess
     ? [`Session usage ${sessPct}% (${fmtReset(sess)})`, week && `Weekly ${limitPct(week)}%`].filter(Boolean).join('\n')
-    : 'Plan usage';
+    : usage && !usage.ok ? `Plan usage unavailable: ${usage.error}` : 'Plan usage';
   $('#side-foot').replaceChildren(
     h('button', { class: 'btn ghost icon sm', title: 'Add a project folder', onclick: addProjects }, ico('folderPlus')),
     h('div', { class: 'fstats' },
@@ -1379,12 +1379,16 @@ function renderRside(force = false) {
   lastRsideKey = key;
 
   const lvl = ctx?.pct != null ? levelOf(ctx.pct) : '';
-  const head = h('div', { class: 'ctx-head', title: 'Approximate: the window size is assumed (200k, or 1M once a session passes 200k). Type /context in the tab for exact numbers.' },
-    h('div', { class: 'ctx-line' },
-      h('span', { class: 'ctx-title' }, 'Context'),
-      h('span', { class: 'ctx-val' }, ctx?.pct != null ? `${fmtTok(ctx.session.ctx)} / ${fmtTok(ctx.win)}` : '—')),
-    h('div', { class: `ctx-pct ${lvl}`.trim() }, ctx?.pct != null ? `${ctx.pct}%` : '—'),
-    h('span', { class: `meter big ${lvl}`.trim() }, h('i', { style: `width:${ctx?.pct ?? 0}%` })));
+  const head = ctx?.pct != null
+    ? h('div', { class: 'ctx-head', title: 'Approximate: the window size is assumed (200k, or 1M once a session passes 200k). Type /context in the tab for exact numbers.' },
+        h('div', { class: 'ctx-line' },
+          h('span', { class: 'ctx-title' }, 'Context'),
+          h('span', { class: 'ctx-val' }, `${fmtTok(ctx.session.ctx)} / ${fmtTok(ctx.win)}`)),
+        h('div', { class: `ctx-pct ${lvl}`.trim() }, `${ctx.pct}%`),
+        h('span', { class: `meter big ${lvl}`.trim() }, h('i', { style: `width:${ctx.pct}%` })))
+    : h('div', { class: 'ctx-head' },
+        h('div', { class: 'ctx-line' }, h('span', { class: 'ctx-title' }, 'Context')),
+        h('div', { class: 'rnote' }, ctx ? 'Shown after Claude\'s first reply.' : 'Open a Claude tab to see context.'));
 
   const mcpBody = !proj ? h('div', { class: 'rnote' }, 'Select a project.')
     : !mcp ? h('div', { class: 'rrow' }, statusDot('wait'), h('span', { class: 'name' }, 'Checking…'))
@@ -1757,12 +1761,18 @@ async function pollSessions() {
 }
 
 let usageBusy = false;
+let usageRetries = 0;
 async function pollUsage() {
   if (usageBusy || document.hidden) return;
   usageBusy = true;
   try {
     const next = await api.getUsage();
     if (JSON.stringify(next) !== JSON.stringify(usage)) { usage = next; renderFoot(); }
+    // At launch the network or token may not be ready yet: retry soon instead of waiting for the 15 s poll.
+    if (!next.ok && ++usageRetries <= 5) setTimeout(pollUsage, 3000);
+    else if (next.ok) usageRetries = 0;
+  } catch {
+    if (++usageRetries <= 5) setTimeout(pollUsage, 3000);
   } finally {
     usageBusy = false;
   }
