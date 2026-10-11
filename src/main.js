@@ -24,8 +24,9 @@ function registerToastIdentity() {
     const icon = path.join(app.getPath('userData'), 'toast-icon.png');
     if (!fs.existsSync(icon)) fs.copyFileSync(ICON, icon);
     const key = `HKCU\\Software\\Classes\\AppUserModelId\\${AUMID}`;
-    execFile('reg.exe', ['add', key, '/v', 'DisplayName', '/t', 'REG_SZ', '/d', 'Claude Bench', '/f'], { windowsHide: true }, () => {});
-    execFile('reg.exe', ['add', key, '/v', 'IconUri', '/t', 'REG_SZ', '/d', icon, '/f'], { windowsHide: true }, () => {});
+    for (const [name, value] of [['DisplayName', 'Claude Bench'], ['IconUri', icon]]) {
+      execFile('reg.exe', ['add', key, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'], { windowsHide: true }, () => {});
+    }
   } catch { /* toasts still work, just under the exe's name */ }
 }
 
@@ -1011,23 +1012,39 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-// A background session needs input or finished (the renderer decides when). Clicking shows the window on that tab.
-// Shown notifications are kept referenced: a garbage-collected one loses its click handler (Windows).
-const liveNotes = new Set();
+// A background session needs input or finished (the renderer decides when). Clicking brings the window to the front on
+// that tab. (Toast-XML launch arguments + Notification.handleActivation, for clicks in Notification Center after the
+// toast is gone, delivered no clicks at all in testing, so this sticks to the plain click event.)
+const liveNotes = new Set(); // shown notifications stay referenced: a garbage-collected one loses its click handler
+
+/** Show, un-minimize and focus the window, then switch to the tab (if it still exists). */
+function showFromNotification(tabId) {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  if (IS_MAC) {
+    app.focus({ steal: true });
+  } else {
+    // Windows may refuse focus() to a background window and flash the taskbar instead; topmost for a moment wins.
+    win.setAlwaysOnTop(true);
+    win.focus();
+    win.setAlwaysOnTop(false);
+  }
+  win.focus();
+  if (tabId) send('notify:click', tabId);
+}
+
 function notify(msg) {
   try {
     if (!Notification.isSupported()) return;
-    const n = new Notification({ title: String(msg?.title || '').slice(0, 120), body: String(msg?.body || '').slice(0, 240) });
+    const title = String(msg?.title || '').slice(0, 120);
+    const body = String(msg?.body || '').slice(0, 240);
+    const tabId = typeof msg?.tabId === 'string' ? msg.tabId : '';
+    const n = new Notification({ title, body });
     const drop = () => liveNotes.delete(n);
     liveNotes.add(n);
-    n.on('click', () => {
-      drop();
-      if (!mainWindow) return;
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-      send('notify:click', msg.tabId);
-    });
+    n.on('click', () => { drop(); showFromNotification(tabId); });
     n.on('close', drop);
     n.on('failed', (_e, err) => { drop(); console.error('Notification failed:', err); });
     n.show();

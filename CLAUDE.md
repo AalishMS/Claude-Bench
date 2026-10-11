@@ -130,7 +130,10 @@ scripts/         make-icon.js, create-shortcut.ps1
   Claude is working in the tab (`isWorking`) or a dev server started from it is listening (`ports`, owner = this tab); idle tabs close silently.
 - **Notifications** (`trackTab` / `notifyTab` in renderer.js, `notify` in main.js): "<project>: Needs input" or
   "<project>: Done", body = the tab's title, only when the window is unfocused or the tab is not the active one. Clicking
-  shows the window and activates the tab (`notify:click`). `trackTab` runs every 1.5 s even while hidden. A run = a
+  (`showFromNotification`) restores/shows the window and brings it to the front (Windows: a moment of `setAlwaysOnTop`,
+  since a plain `focus()` from the background may only flash the taskbar; macOS: `app.focus({ steal: true })`), then
+  activates the tab (`notify:click`). Clicks in Notification Center after the toast has gone are not handled: toast XML
+  with a launch argument + `Notification.handleActivation` + a `CustomActivator` delivered no clicks at all in testing. `trackTab` runs every 1.5 s even while hidden. A run = a
   stretch of `isWorking`; it is Done after 4 s idle if it lasted 10 s+. Needs input = idle title (`✳`) + an
   `Esc to cancel` footer in the bottom 3 non-empty lines (permission prompt, AskUserQuestion, trust dialog), once per
   dialog; a bell / OSC 9 / OSC 777 also counts unless that idle stretch was already announced. Each notification consumes
