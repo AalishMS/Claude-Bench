@@ -9,7 +9,7 @@ const pty = require('@lydell/node-pty');
 
 // Windows is the main platform. macOS gets small `IS_MAC` branches next to the Windows code (best effort, untested here).
 const IS_MAC = process.platform === 'darwin';
-const ICON = path.join(__dirname, '..', 'assets', IS_MAC ? 'icon.png' : 'icon.ico');
+const ICON = path.join(__dirname, '..', 'assets', IS_MAC ? 'icon-mac.png' : 'icon.ico');
 const ICON_PNG = path.join(__dirname, '..', 'assets', 'icon.png');
 
 const AUMID = 'com.local.claudebench'; // = build.appId

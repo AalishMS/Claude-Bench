@@ -24,7 +24,7 @@ npm run package:mac  # macOS only: dist/mac-*/Claude Bench.app (unsigned)
 npm run shortcut     # Desktop + Start menu shortcuts -> packaged exe
 ```
 
-The logo master is `assets/icon-source.png` (1024 px); `assets/icon.png` (512 px) and the multi-size `assets/icon.ico` are derived from it. There is no `npm run icon` generator.
+The logo master is `assets/icon-source.png` (1024 px, transparent outside the rounded tile); `assets/icon.png` (512 px), the multi-size `assets/icon.ico` and the macOS `assets/icon-mac.png` (tile at 824 px on a 1024 transparent canvas, Apple's grid) are derived from it. There is no `npm run icon` generator.
 
 There is no test suite and no linter. Verify changes by running the app (see "Testing").
 
@@ -95,7 +95,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   - Usage token: Keychain item `Claude Code-credentials` (`security find-generic-password -w`) when the file token is
     missing or expired; a failed read is not retried for 10 minutes (no repeated access dialogs).
   - Window: traffic lights via `trafficLightPosition` (no `titleBarOverlay`); `body.mac` moves the padding to `#brand`.
-    Windows uses `assets/icon.ico` for the window and taskbar; macOS keeps `assets/icon.png`.
+    Windows uses `assets/icon.ico` for the window and taskbar; macOS uses `assets/icon-mac.png` (padded to Apple's 824/1024 grid so the Dock icon matches its neighbours).
     A minimal app menu (appMenu + editMenu) replaces Electron's default, whose Cmd+W/R/= would clash; the Edit roles
     give Cmd+C/V/A to xterm and inputs. VS Code opens via `open -a "Visual Studio Code"`.
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default

@@ -263,4 +263,4 @@ Per-line font size is impossible in a terminal grid, and the app never re-parses
 - `src/main.js`: `backgroundColor` and `titleBarOverlay.color` = `#0a0a0a` (they paint before CSS loads; the
   window controls sit on the top bar). Keep them equal to `--background`.
 - `XTERM_THEME.brightBlack` (renderer.js) is tuned against `--background` (see section 5).
-- `assets/icon-source.png` (1024 px master) → `assets/icon.png` (512 px, renderer/macOS window and package) and `assets/icon.ico` (PNG frames: 16, 24, 32, 48, 64, 128, 256 px, Windows window/taskbar/package). Replace derived assets together; the old code generator has been removed.
+- `assets/icon-source.png` (1024 px master) → `assets/icon.png` (512 px, renderer and Windows toasts), `assets/icon.ico` (PNG frames: 16, 24, 32, 48, 64, 128, 256 px, Windows window/taskbar/package) and `assets/icon-mac.png` (tile at 824 px centred on 1024, macOS window and package). Outside the rounded tile is transparent. Replace derived assets together; the old code generator has been removed.
