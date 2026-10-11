@@ -33,7 +33,7 @@
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 10%), 0 2px 4px -2px rgb(0 0 0 / 10%);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
   --sidebar-w: 256px;
-  --servers-w: 330px;
+  --rside-w: 300px;
   --mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
 }
 
@@ -52,7 +52,7 @@ button { font: inherit; color: inherit; }
 ::-webkit-scrollbar-thumb:hover { background: var(--input); background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* two columns: the full-height sidebar, and the workspace (top bar, terminal + servers panel, status bar) */
+/* two columns: the full-height sidebar, and the workspace (top bar, terminal + right sidebar, status bar) */
 #app { display: flex; height: 100%; }
 #workspace { flex: 1; min-width: 0; display: grid; grid-template-rows: 40px 1fr 24px; }
 
@@ -85,7 +85,7 @@ button { font: inherit; color: inherit; }
 .btn:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
 .btn.outline:focus-visible { border-color: var(--ring); }
 /* ghost buttons sitting on a hovered/active row (same surface as the button hover): use a foreground tint */
-.project .btn:hover, .session .btn:hover, .srv .btn:hover { background: color-mix(in srgb, var(--foreground) 10%, transparent); }
+.project .btn:hover, .session .btn:hover { background: color-mix(in srgb, var(--foreground) 10%, transparent); }
 
 /* ------------------------------------------------------------- top bar --- */
 #topbar {
@@ -108,21 +108,18 @@ body.sidebar-collapsed .brand-name { display: none; }
 
 /* --------------------------------------------------------------- body --- */
 #body { display: flex; min-height: 0; }
-#sidebar, #servers { background: var(--sidebar); color: var(--sidebar-foreground); display: flex; flex-direction: column; min-height: 0; flex: none; }
+#sidebar, #rside { background: var(--sidebar); color: var(--sidebar-foreground); display: flex; flex-direction: column; min-height: 0; flex: none; }
 #sidebar { width: var(--sidebar-w); } /* no divider: the shade step to --background separates it */
-#servers { width: var(--servers-w); border-left: 1px solid var(--sidebar-border); display: none; }
+#rside { width: var(--rside-w); border-left: 1px solid var(--sidebar-border); display: none; overflow-x: hidden; overflow-y: auto; padding-bottom: 12px; }
 body.sidebar-collapsed #sidebar { display: none; }
-body.servers-open #servers { display: flex; }
+body.rside-open #rside { display: flex; }
 #main { position: relative; flex: 1; min-width: 0; background: var(--background); }
 
-.side-head { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 8px 0 16px; }
-.section-title { font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
 
 /* ----------------------------------------------------------- projects --- */
 /* Flat rows, no boxes or guide lines. Columns line up: a project's name and its sessions' titles both start at
    52px, and a session's status dot sits under the project's folder icon. 2px between rows, 12px between groups. */
 #projects { flex: 1; display: flex; flex-direction: column; gap: 12px; overflow-x: hidden; overflow-y: auto; padding: 0 8px 12px; }
-#server-list { flex: 1; overflow-x: hidden; overflow-y: auto; padding: 0 0 12px; }
 .group, .sessions { display: flex; flex-direction: column; gap: 2px; flex: none; }
 .project { display: flex; align-items: center; gap: 6px; height: 32px; flex: none; padding: 0 4px 0 6px; border-radius: var(--radius-md); cursor: pointer; }
 .project:hover { background: var(--sidebar-hover); }
@@ -293,25 +290,45 @@ body.no-tabs #welcome { display: flex; flex-direction: column; }
 .hint { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 16px; margin-top: 40px; color: var(--faint); font-size: 12px; }
 kbd { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: var(--radius-sm); background: var(--muted); color: var(--muted-foreground); font: 11px var(--mono); vertical-align: middle; }
 
-/* ------------------------------------------------------------ servers --- */
-.toggle { display: inline-flex; align-items: center; gap: 8px; padding-right: 8px; color: var(--muted-foreground); font-size: 12px; cursor: pointer; }
-.toggle input { appearance: none; -webkit-appearance: none; position: relative; flex: none; width: 16px; height: 16px; margin: 0; border: 1px solid var(--input); border-radius: 4px; background: color-mix(in srgb, var(--input) 30%, transparent); cursor: pointer; transition: background-color 0.15s, border-color 0.15s; }
-.toggle input:checked { background: var(--primary); border-color: var(--primary); }
-.toggle input:checked::after { content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid var(--primary-foreground); border-width: 0 2px 2px 0; transform: rotate(45deg); }
-.toggle input:focus-visible { outline: 0; border-color: var(--ring); box-shadow: var(--focus-ring); }
-.group-title { display: flex; align-items: center; gap: 6px; padding: 12px 16px 4px; font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
-.group-title .ico { width: 12px; height: 12px; }
-.session.pending .s-title { font-style: italic; }
-/* one line per item: icon, name, meta on the right (covered by the actions on hover, same row: no shift) */
-.srv { position: relative; display: flex; align-items: center; gap: 10px; height: 30px; margin: 0 8px; padding: 0 8px; border-radius: var(--radius-md); }
-.srv:hover { background: var(--sidebar-accent); }
-.srv > .ico { width: 14px; height: 14px; color: var(--faint); }
-.srv .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.srv .meta { flex: none; font: 12px var(--mono); color: var(--faint); }
-.srv .meta.exposed { color: var(--warning); }
-.srv .acts { position: absolute; right: 0; top: 0; bottom: 0; display: none; align-items: center; gap: 2px; padding: 0 4px 0 8px; border-radius: var(--radius-md); background: var(--sidebar-accent); }
-.srv:hover .acts { display: flex; }
-.scan-error { padding: 12px 16px; color: var(--destructive); }
+/* -------------------------------------------------------- right sidebar --- */
+/* Context header, then collapsible sections (MCPs, Subagents, Running). Flat 30 px rows on the 8px list inset. */
+.ctx-head { flex: none; padding: 14px 16px 12px; }
+.ctx-head .ctx-line { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+.ctx-head .ctx-title { font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
+.ctx-head .ctx-val { font-size: 12px; color: var(--foreground); }
+.ctx-head .ctx-pct { font-size: 20px; font-weight: 600; line-height: 1.2; }
+.ctx-head .ctx-pct.warn { color: var(--warning); }
+.ctx-head .ctx-pct.crit { color: var(--destructive); }
+.ctx-head .meter.big { margin: 8px 0 0; }
+.rsec { flex: none; padding-bottom: 4px; }
+.rsec-head { display: flex; align-items: center; gap: 4px; width: calc(100% - 16px); height: 32px; margin: 4px 8px 0; padding: 0 8px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--muted-foreground); font: inherit; font-size: 12px; font-weight: 500; text-align: left; cursor: pointer; }
+.rsec-head:hover { color: var(--foreground); }
+.rsec-head:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+.rsec-head .ico { width: 14px; height: 14px; color: var(--faint); transition: transform 0.12s; }
+.rsec-head.open .ico { transform: rotate(90deg); }
+.rsec-head .count { margin-left: auto; font-weight: 400; color: var(--faint); font-variant-numeric: tabular-nums; }
+.rrow { display: flex; align-items: center; gap: 10px; height: 30px; margin: 0 8px; padding: 0 8px; border-radius: var(--radius-md); }
+.rrow .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rrow .meta { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--faint); }
+.rrow .meta.mono { font-family: var(--mono); }
+.rrow .ico { width: 14px; height: 14px; flex: none; }
+.rrow.copy { cursor: pointer; }
+.rrow.copy:hover { background: var(--sidebar-accent); }
+.rrow.copied .meta { color: var(--success); }
+.rrow.rmore { padding-left: 32px; font-size: 12px; color: var(--faint); cursor: pointer; }
+.rrow.rmore:hover { color: var(--foreground); }
+.rnote { padding: 6px 16px; font-size: 12px; color: var(--faint); }
+/* circular status (8px): color only carries the state */
+.dot.s { width: 8px; height: 8px; margin: 0 3px; }
+.dot.ok { background: var(--success); }
+.dot.err { background: var(--destructive); }
+.dot.warn { background: var(--warning); }
+.dot.mute { background: var(--faint); }
+.dot.wait { background: var(--faint); animation: pulse 1s ease-in-out infinite; }
+#rside .t-ok { color: var(--success); }
+#rside .t-err { color: var(--destructive); }
+#rside .t-warn { color: var(--warning); }
+#rside .t-mute { color: var(--muted-foreground); }
 
 /* ---------------------------------------------------------- status bar --- */
 #statusbar {

@@ -67,15 +67,19 @@ scripts/         make-icon.js, create-shortcut.ps1
   `claude.exe`), `powershell.exe -NoLogo` for shell tabs. Exit shows a Restart / Close overlay.
   Claude args are allow-listed in main.js.
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled every 4 s from the renderer.
-- **Servers panel**: one PowerShell call (`Get-NetTCPConnection` + `Get-CimInstance Win32_Process`) every 6 s.
-  A listener belongs to a tab if a session's pty pid is an ancestor; otherwise it is matched to a project if
-  its command line contains the project path outside `--flag=` values (Antigravity's `agy.exe --add-dir=<project>` is no server).
-  Rows are one line (icon, short name, port); details are in the tooltip. Default view hides non-dev processes ("Show all" reveals them).
-  The same process list is walked from each session's pty pid for MCP servers (Claude tabs only: command line contains
-  "mcp", not under a bash/PowerShell tool shell; topmost of the chain) and browsers (chrome/msedge/... without `--type=`).
-  A new session-owned port, MCP server or browser opens the panel (`revealNewOwned`); since Claude starts its local MCP
-  servers at launch, every new Claude tab opens it once.
-  Kill is restricted to PIDs from the last scan and uses `taskkill /T /F`.
+- **Right sidebar** (`#rside`, toggled by the top-bar button or `Ctrl+Shift+S`, saved as `ui.servers`; `renderRside`): the active tab's
+  **Context** (`x / yk` + %, same numbers as the footer tile), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**.
+  - MCPs: only connected ones are listed; the rest are behind a "Show N more" row (`mcpMore`, not persisted). `claude mcp list` run in the project folder (main `mcpList`, `cmd.exe /c claude mcp list`, cached 30 s, never overlapping;
+    it health-checks every server, so it takes seconds). Output lines `name: target - ✔ Connected | ! Needs authentication | ...` map to
+    connected (success) / failed + needs_client_registration (destructive) / needs_auth (warning) / disabled + unknown (muted).
+  - Subagents: definitions from `~/.claude/agents/*.md` and `<project>/.claude/agents/*.md` (frontmatter `name`, `model`; `inherit` shows the
+    session model) merged with this session's runs from `session:info` (`running` = working dot, finished = check, else idle). A run's
+    real model (last `"model"` in its transcript tail) beats the definition's.
+  - Running: dev listeners only, from one PowerShell call (`Get-NetTCPConnection` + `Get-CimInstance Win32_Process`) every 6 s. A listener
+    belongs to a tab if a session's pty pid is an ancestor; otherwise it is matched to a project if its command line contains the project path
+    outside `--flag=` values (Antigravity's `agy.exe --add-dir=<project>` is no server). Rows are status dot, short name, port; clicking a row
+    copies `http://localhost:<port>` (rows without a port, or emulators, do nothing). No kill, no "Show all". The scan still walks
+    session children for MCP/browser processes (`procs`), which the UI no longer shows.
 - **Sessions and usage**: read-only from `~/.claude/projects/<cwd, non-alphanumerics -> "-">/<uuid>.jsonl`. The sidebar lists a
   project's sessions (title = last `ai-title`, else first prompt) under it; clicking one focuses its tab or opens
   `claude --resume <uuid>` (main accepts only a bare UUID as `resumeId`). Lists read just the file tail and cache by

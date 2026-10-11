@@ -50,6 +50,8 @@ const ICONS = {
   zap: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
   users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   globe: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+  panelRight: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
   box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
 };
 const ico = (name) =>
@@ -62,12 +64,11 @@ const baseName = (p) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
 // --------------------------------------------------------------- state ----
 
 let projects = [];
-let ui = { sidebar: true, servers: false, fontSize: 14 }; // replaced by the saved state in init()
+let ui = { sidebar: true, servers: false, fontSize: 14, collapsed: [] }; // replaced by the saved state in init()
 const tabs = new Map(); // id -> tab
 let activeId = null;
 let git = {}; // projectPath -> info | null
 let ports = { ok: true, servers: [] };
-let showAll = false;
 let sessionsBy = {}; // projectPath -> [{ id, title, mtime, birth, model, ctx }], newest first
 let usage = null; // { ok, limits: [{ kind, label, percent, resetsAt }] } plan limits from Anthropic
 const expanded = new Set(); // project paths whose sessions are shown
@@ -77,7 +78,8 @@ let lastActiveProject = null;
 let detailKind = null; // which footer popover is open: 'usage' | 'context' | 'state'
 let menuFor = null; // project path whose "…" menu is open
 const infoBy = new Map(); // tab id -> { model, effort, agents } for the bar under the terminal
-const seenOwned = new Set(); // servers/MCPs/browsers of our sessions already seen; a new one opens the panel
+const mcpBy = new Map(); // project path -> { ok, servers: [{ name, status, label }] } from `claude mcp list`
+const definedBy = new Map(); // project path -> [{ name, model }] subagents defined in ~/.claude/agents and <project>/.claude/agents
 
 const SESSIONS_SHOWN = 8;
 const CONTEXT_WINDOW = 200000; // not stored in transcripts: assume 200k, or 1M once a session has gone past it
@@ -460,8 +462,11 @@ function activate(id) {
   renderStatus();
   renderFoot();
   renderInfo();
+  renderRside();
   pollGit();
   pollInfo();
+  pollMcp();
+  pollDefinedAgents();
 }
 
 /** Fit, then drop a row if the renderer's rounded cell height made the screen taller than its box (covers the status bar). */
@@ -922,7 +927,7 @@ function renderWelcome() {
         h('span', {}, h('kbd', {}, 'Ctrl+T'), ' new session'),
         h('span', {}, h('kbd', {}, 'Ctrl+Tab'), ' switch'),
         h('span', {}, h('kbd', {}, 'Ctrl+S'), ' sidebar'),
-        h('span', {}, h('kbd', {}, 'Ctrl+Shift+S'), ' servers'))));
+        h('span', {}, h('kbd', {}, 'Ctrl+Shift+S'), ' side panel'))));
 }
 
 function renderStatus() {
@@ -946,81 +951,156 @@ function renderStatus() {
     h('span', { class: 'stat' }, `${running} session${running === 1 ? '' : 's'} running`));
 }
 
-const sessionProcs = () => (ports.ok && ports.procs) || []; // MCP servers and browsers under our sessions
+// ------------------------------------------------------------ right sidebar ----
+// Active tab's context fill, MCP health, subagents, and the running dev servers. Each section folds shut (ui.collapsed).
 
-/** Short display names: "@playwright/mcp" -> "playwright", node running vite -> "vite", chrome.exe -> "chrome". */
+/** "node_modules/vite/bin/vite.js" -> "vite", python.exe -> "python". */
 function itemName(s) {
-  if (s.kind === 'mcp') {
-    const words = s.label.replace(/^@/, '').split(/[/-]/).filter((w) => w && !/^(mcp|server)$/i.test(w));
-    return [...new Set(words)].join('-') || s.label;
-  }
-  if (s.kind === 'browser') return s.label;
   const pkg = /node_modules[\\/](?:\.bin[\\/])?((?:@[^\\/\s"]+[\\/])?[^\\/\s"]+)/i.exec(s.cmd || '')?.[1];
   return pkg ? pkg.replace('\\', '/') : s.name.replace(/\.exe$/i, '');
 }
 
-function serverRow(s) {
-  const sessionTab = s.owner?.type === 'session' ? tabs.get(s.owner.sessionId) : null;
-  const kind = s.kind === 'mcp' ? 'MCP server' : s.kind === 'browser' ? (s.headless ? 'Headless browser' : 'Browser') : 'Server';
-  // Everything but the name lives in the tooltip.
-  const tip = [
-    `${kind}${s.port ? ` on :${s.port}` : ''}${s.debugPort ? ` (debug :${s.debugPort})` : ''}`,
-    s.exposed ? 'Listening on all network interfaces' : null,
-    sessionTab ? `Started in ${tabLabel(sessionTab)}` : null,
-    `pid ${s.pid}`,
-    s.cmd || null,
-  ].filter(Boolean).join('\n');
-  const meta = s.port ? `:${s.port}` : s.debugPort ? `:${s.debugPort}` : '';
-  return h('div', { class: 'srv', title: tip },
-    ico(s.kind === 'mcp' ? 'box' : s.kind === 'browser' ? 'globe' : 'server'),
-    h('span', { class: 'name' }, itemName(s)),
-    meta ? h('span', { class: `meta${s.exposed ? ' exposed' : ''}` }, meta) : null,
-    h('div', { class: 'acts' },
-      s.port ? h('button', { class: 'btn ghost icon sm', title: `Open http://localhost:${s.port}`, onclick: () => api.openExternal(`http://localhost:${s.port}`) }, ico('link')) : null,
-      h('button', { class: 'btn ghost icon sm danger', title: 'Stop', onclick: () => killServer(s) }, ico('power'))));
+const MCP_STATUS = { // status -> [color class, label]
+  connected: ['ok', 'connected'],
+  failed: ['err', 'failed'],
+  needs_client_registration: ['err', 'needs registration'],
+  needs_auth: ['warn', 'needs auth'],
+  disabled: ['mute', 'disabled'],
+  unknown: ['mute', 'unknown'],
+};
+/** "plugin:design:slack" -> "slack"; the full name stays in the tooltip. */
+const mcpName = (n) => (n.startsWith('plugin:') ? n.split(':').pop() : n);
+
+const statusDot = (cls) => h('i', { class: `dot s ${cls}` });
+let mcpMore = false; // MCPs that are not connected stay folded behind a "Show N more" row
+let copiedPort = null; // port whose address was just copied (its row says "Copied" for a moment)
+
+function rsection(id, title, count, ...body) {
+  const open = !ui.collapsed.includes(id);
+  return h('section', { class: 'rsec' },
+    h('button', { class: `rsec-head${open ? ' open' : ''}`, 'aria-expanded': String(open), onclick: () => toggleRsection(id) },
+      ico('chevron'), title, count != null ? h('span', { class: 'count' }, count) : null),
+    open ? body.flat(2) : null);
 }
 
-function renderServers() {
-  const procPids = new Set(sessionProcs().map((p) => p.pid)); // a browser's debug port is shown on its own row
-  const visible = [...ports.servers.filter((s) => (showAll || s.dev) && !procPids.has(s.pid)), ...sessionProcs()];
-  $('#servers-count').textContent = String(ports.servers.filter((s) => s.dev && !procPids.has(s.pid)).length + sessionProcs().length);
-
-  const root = $('#server-list');
-  if (!ports.ok) {
-    root.replaceChildren(h('div', { class: 'scan-error' }, ports.error || 'Port scan failed'));
-    return;
-  }
-  if (!visible.length) {
-    root.replaceChildren(h('div', { class: 'empty-note' }, 'Nothing running.', h('br'),
-      'Dev servers, MCP servers and browsers started from a session show up here.'));
-    return;
-  }
-
-  const groups = new Map();
-  for (const s of visible) {
-    const key = s.owner?.projectPath || '';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(s);
-  }
-  const nodes = [];
-  const keys = [...groups.keys()].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)));
-  for (const key of keys) {
-    nodes.push(h('div', { class: 'group-title' }, ico(key ? 'folder' : 'server'), key ? baseName(key) : 'Other'));
-    nodes.push(...groups.get(key).map(serverRow)); // ports first (sorted), then MCP servers and browsers
-  }
-  root.replaceChildren(...nodes);
+function toggleRsection(id) {
+  const set = new Set(ui.collapsed);
+  if (!set.delete(id)) set.add(id);
+  ui.collapsed = [...set];
+  api.setUi({ collapsed: ui.collapsed });
+  renderRside(true);
 }
 
-/** Open the panel when one of our sessions starts something new (a server, MCP server or browser). */
-function revealNewOwned() {
-  if (!ports.ok) return;
-  const keys = [
-    ...ports.servers.filter((s) => s.owner?.type === 'session').map((s) => `port:${s.pid}:${s.port}`),
-    ...sessionProcs().map((p) => `${p.kind}:${p.pid}`),
-  ];
-  const fresh = keys.filter((k) => !seenOwned.has(k));
-  for (const k of fresh) seenOwned.add(k);
-  if (fresh.length && !ui.servers) setServers(true);
+function copyServer(s) {
+  api.writeClipboard(`http://localhost:${s.port}`);
+  copiedPort = s.port;
+  renderRside();
+  setTimeout(() => { if (copiedPort === s.port) { copiedPort = null; renderRside(); } }, 1200);
+}
+
+/** Subagents: everything defined for the project, plus built-in/plugin types that ran in this session. */
+function agentRows(proj, tab) {
+  const info = tab?.kind === 'claude' ? infoBy.get(tab.id) : null;
+  const rows = new Map((definedBy.get(proj?.path) || []).map((d) => [d.name, { name: d.name, model: d.model, running: 0, done: 0 }]));
+  for (const a of info?.agents || []) { // newest first
+    if (!rows.has(a.type)) rows.set(a.type, { name: a.type, model: null, running: 0, done: 0 });
+    const r = rows.get(a.type);
+    if (a.running) r.running++; else r.done++;
+    if (a.model && !r.live) { r.model = a.model; r.live = true; } // the model it actually ran with beats the definition's
+  }
+  const rank = (r) => (r.running ? 0 : r.done ? 1 : 2);
+  return [...rows.values()]
+    .map((r) => ({ ...r, model: !r.model || r.model === 'inherit' ? info?.model || null : r.model }))
+    .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+}
+
+let lastRsideKey = '';
+function renderRside(force = false) {
+  const proj = currentProject();
+  const ctx = contextInfo();
+  const mcp = proj && mcpBy.get(proj.path);
+  const agents = agentRows(proj, activeTab());
+  const servers = ports.ok ? ports.servers.filter((s) => s.dev) : [];
+
+  const key = JSON.stringify([ctx && [ctx.session?.ctx, ctx.pct, ctx.win], proj?.path, mcp, agents, ports.ok && servers, ports.error, ui.collapsed, copiedPort, mcpMore]);
+  if (!force && key === lastRsideKey) return;
+  lastRsideKey = key;
+
+  const lvl = ctx?.pct != null ? levelOf(ctx.pct) : '';
+  const head = h('div', { class: 'ctx-head', title: 'Approximate: the window size is assumed (200k, or 1M once a session passes 200k). Type /context in the tab for exact numbers.' },
+    h('div', { class: 'ctx-line' },
+      h('span', { class: 'ctx-title' }, 'Context'),
+      h('span', { class: 'ctx-val' }, ctx?.pct != null ? `${fmtTok(ctx.session.ctx)} / ${fmtTok(ctx.win)}` : '—')),
+    h('div', { class: `ctx-pct ${lvl}`.trim() }, ctx?.pct != null ? `${ctx.pct}%` : '—'),
+    h('span', { class: `meter big ${lvl}`.trim() }, h('i', { style: `width:${ctx?.pct ?? 0}%` })));
+
+  const mcpBody = !proj ? h('div', { class: 'rnote' }, 'Select a project.')
+    : !mcp ? h('div', { class: 'rrow' }, statusDot('wait'), h('span', { class: 'name' }, 'Checking…'))
+    : !mcp.ok ? h('div', { class: 'rnote' }, 'Could not read MCP status.')
+    : !mcp.servers.length ? h('div', { class: 'rnote' }, 'No MCP servers configured.')
+    : (() => {
+        const mcpRow = (m) => {
+          const [cls, label] = MCP_STATUS[m.status] || MCP_STATUS.unknown;
+          return h('div', { class: 'rrow', title: `${m.name}: ${m.label || label}` },
+            statusDot(cls), h('span', { class: 'name' }, mcpName(m.name)),
+            h('span', { class: `meta t-${cls}` }, m.status === 'unknown' && m.label ? m.label : label));
+        };
+        const rest = mcp.servers.filter((m) => m.status !== 'connected');
+        return [
+          ...mcp.servers.filter((m) => m.status === 'connected').map(mcpRow),
+          rest.length ? h('div', { class: 'rrow rmore', title: rest.map((m) => `${mcpName(m.name)}: ${m.label || m.status}`).join('\n'),
+            onclick: () => { mcpMore = !mcpMore; renderRside(true); } }, mcpMore ? 'Show less' : `Show ${rest.length} more`) : null,
+          ...(mcpMore ? rest.map(mcpRow) : []),
+        ];
+      })();
+
+  const agentBody = agents.length ? agents.map((a) => {
+    const st = a.running ? 'working' : a.done ? 'done' : 'idle';
+    const tip = `${a.name}: ${st}${a.running > 1 ? ` (${a.running} running)` : ''}${a.done ? `, ${a.done} finished this session` : ''}`;
+    return h('div', { class: 'rrow', title: tip },
+      st === 'working' ? h('i', { class: 'dot s working' }) : st === 'done' ? h('span', { class: 't-ok' }, ico('check')) : statusDot('mute'),
+      h('span', { class: 'name' }, a.name),
+      h('span', { class: 'meta mono' }, a.model ? prettyModel(a.model) : '—'));
+  }) : h('div', { class: 'rnote' }, 'No subagents defined.');
+
+  const runBody = !ports.ok ? h('div', { class: 'rnote t-err' }, ports.error || 'Port scan failed')
+    : !servers.length ? h('div', { class: 'rnote' }, 'Nothing running.')
+    : servers.map((s) => {
+        const copyable = !!s.port && !/emulator|qemu|adb/i.test(`${s.name} ${s.cmd || ''}`);
+        return h('div', {
+          class: `rrow${copyable ? ' copy' : ''}${copiedPort === s.port ? ' copied' : ''}`,
+          title: copyable ? `Copy http://localhost:${s.port}` : (s.cmd || s.name),
+          onclick: copyable ? () => copyServer(s) : null,
+        }, statusDot('ok'), h('span', { class: 'name' }, itemName(s)),
+          h('span', { class: 'meta mono' }, copiedPort === s.port ? 'Copied' : s.port ? `:${s.port}` : ''));
+      });
+
+  const working = agents.filter((a) => a.running).length;
+  $('#rside').replaceChildren(head,
+    rsection('mcp', 'MCPs', mcp?.ok ? `${mcp.servers.filter((m) => m.status === 'connected').length}/${mcp.servers.length}` : null, mcpBody),
+    rsection('agents', 'Subagents', working ? `${working} working` : agents.length || null, agentBody),
+    rsection('running', 'Running', servers.length || null, runBody));
+}
+
+/** Both are slow-ish and rarely change: fetched per project, only while the panel is open and the window visible. */
+const rsideBusy = new Set();
+async function pollMcp() {
+  const proj = currentProject();
+  if (!proj || !ui.servers || document.hidden || rsideBusy.has(proj.path)) return;
+  rsideBusy.add(proj.path);
+  try {
+    const next = await api.mcpList(proj.path);
+    if (JSON.stringify(next) !== JSON.stringify(mcpBy.get(proj.path))) { mcpBy.set(proj.path, next); renderRside(); }
+  } finally {
+    rsideBusy.delete(proj.path);
+  }
+}
+
+async function pollDefinedAgents() {
+  const proj = currentProject();
+  if (!proj || !ui.servers || document.hidden) return;
+  const next = await api.definedAgents(proj.path);
+  if (JSON.stringify(next) !== JSON.stringify(definedBy.get(proj.path))) { definedBy.set(proj.path, next); renderRside(); }
 }
 
 // --------------------------------------------------------------- session info ----
@@ -1071,6 +1151,7 @@ async function pollInfo() {
     const next = await api.sessionInfo(tab.project.path, tab.sessionId);
     if (tabs.has(tab.id)) infoBy.set(tab.id, next);
     renderInfo(); // key-diffed
+    renderRside();
   } finally {
     infoBusy = false;
   }
@@ -1080,7 +1161,7 @@ function renderAll() {
   renderSidebar(true);
   renderWelcome();
   renderStatus();
-  renderServers();
+  renderRside();
   renderFoot();
   renderInfo();
 }
@@ -1111,23 +1192,6 @@ async function removeProject(p) {
   renderAll();
 }
 
-async function killServer(s) {
-  const ok = await confirmDialog({
-    title: `Stop ${itemName(s)}?`,
-    message: s.kind === 'mcp'
-      ? `This force-stops MCP server process ${s.pid} (and its children). Claude loses its tools until you reconnect it with /mcp.`
-      : s.kind === 'browser'
-        ? `This force-stops browser process ${s.pid} (and its children).`
-        : `This force-stops process ${s.pid} (and its children) listening on port ${s.port}.`,
-    okLabel: 'Stop process',
-    danger: true,
-  });
-  if (!ok) return;
-  const res = await api.killProcess(s.pid);
-  if (!res.ok) await confirmDialog({ title: 'Could not stop it', message: res.error, okLabel: 'OK' });
-  pollPorts();
-}
-
 function setFontSize(size) {
   ui.fontSize = Math.min(FONT_SIZE.max, Math.max(FONT_SIZE.min, size));
   for (const t of tabs.values()) t.term.options.fontSize = ui.fontSize;
@@ -1151,12 +1215,12 @@ function setSidebar(open) {
   requestAnimationFrame(fitActive);
 }
 
-function setServers(open) {
+function setServers(open) { // the right sidebar (ui.servers is its saved flag)
   ui.servers = open;
-  document.body.classList.toggle('servers-open', open);
-  $('#toggle-servers').classList.toggle('on', open);
+  document.body.classList.toggle('rside-open', open);
+  $('#toggle-rside').classList.toggle('on', open);
   api.setUi({ servers: open });
-  if (open) pollPorts();
+  if (open) { renderRside(); pollPorts(); pollMcp(); pollDefinedAgents(); pollInfo(); }
   requestAnimationFrame(fitActive);
 }
 
@@ -1243,6 +1307,7 @@ async function pollSessions() {
     assignSessions();
     renderSidebar();
     renderFoot();
+    renderRside();
     pollInfo();
   } finally {
     sessionsBusy = false;
@@ -1271,8 +1336,7 @@ async function pollPorts() {
     portsAt = Date.now();
     if (JSON.stringify(next) !== JSON.stringify(ports)) {
       ports = next;
-      renderServers();
-      revealNewOwned();
+      renderRside();
     }
   } finally {
     portsBusy = false;
@@ -1377,8 +1441,7 @@ function wireGlobalEvents() {
   $('#open-shell').addEventListener('click', () => projectAction((p) => openSession(p, { kind: 'shell' })));
   $('#open-folder').addEventListener('click', () => projectAction((p) => api.openFolder(p.path)));
   $('#toggle-sidebar').addEventListener('click', () => setSidebar(!ui.sidebar));
-  $('#toggle-servers').addEventListener('click', () => setServers(!ui.servers));
-  $('#show-all').addEventListener('change', (e) => { showAll = e.target.checked; renderServers(); });
+  $('#toggle-rside').addEventListener('click', () => setServers(!ui.servers));
 
   new ResizeObserver(() => requestAnimationFrame(fitActive)).observe($('#terminals'));
 }
@@ -1390,16 +1453,17 @@ async function init() {
   $('#open-code').append(ico('code'));
   $('#open-shell').append(ico('terminal'));
   $('#open-folder').append(ico('folder'));
-  $('#servers-icon').append(ico('server'));
+  $('#toggle-rside').append(ico('panelRight'));
   $('#search-icon').append(ico('search'));
 
   const state = await api.getState();
   projects = state.projects;
   ui = state.ui;
+  ui.collapsed ||= [];
   for (const p of ui.expanded || []) expanded.add(p);
   placeBrand();
-  document.body.classList.toggle('servers-open', ui.servers);
-  $('#toggle-servers').classList.toggle('on', ui.servers);
+  document.body.classList.toggle('rside-open', ui.servers);
+  $('#toggle-rside').classList.toggle('on', ui.servers);
 
   wireGlobalEvents();
   renderAll();
@@ -1408,10 +1472,13 @@ async function init() {
   pollPorts();
   pollSessions();
   pollUsage();
+  pollMcp();
+  pollDefinedAgents();
   setInterval(pollGit, 4000);
   setInterval(pollPorts, 6000);
   setInterval(pollSessions, 4000);
   setInterval(pollUsage, 15000);
+  setInterval(pollMcp, 30000);
   // "Working" depends on recent output, so re-check it (cheap: the renders are key-diffed).
   setInterval(() => { if (!document.hidden) { renderSidebar(); renderFoot(); } }, 1500);
 }

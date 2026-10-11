@@ -30,7 +30,7 @@ a token, never a scattered value. Dark only: there is no light theme.
 | `--destructive` | `#ff6467` | destructive actions, conflicts, critical meters |
 | `--success` | `#7fb77e` | running |
 | `--warning` | `#d6b25e` | uncommitted changes, background activity |
-| `--sidebar` | `#0a0a0a` | project sidebar, servers panel: the darkest surface, a quiet frame (tweak) |
+| `--sidebar` | `#0a0a0a` | project sidebar, right sidebar: the darkest surface, a quiet frame (tweak) |
 | `--sidebar-foreground` | `#fafafa` | |
 | `--sidebar-accent` | `#262626` | selected sidebar row |
 | `--sidebar-hover` | `color-mix(--sidebar-accent 50%, transparent)` | hovered sidebar row: a softer selected |
@@ -121,7 +121,15 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   gauge + `10%`, context as the pie icon + `24%`, running as a status dot + `3 running`. Icons `--faint`, values
   `--foreground`, colored only at warn/crit levels. Weekly usage lives in the tooltip and the popover. Each opens its
   `#detail` popover; hover `--sidebar-hover`, `.on` = bg `--sidebar-accent`.
-- The servers panel uses the same `--sidebar` surface with a hairline `--sidebar-border` on its terminal side.
+- The right sidebar (`#rside`, 300 px) uses the same `--sidebar` surface with a hairline `--sidebar-border` on its terminal side.
+  Top: **Context** header (12 px muted title + `150k / 200k`, the % at 20 px/600 colored only at warn/crit, a `.meter.big`).
+  Then collapsible sections (32 px muted 12 px/500 header with a chevron and a faint count; open by default): **MCPs**,
+  **Subagents**, **Running**. Rows are the same flat 30 px inset rows: 8 px circular status dot (or a 14 px check for finished
+  subagents), name, and a 12 px meta on the right (status word, model in `--mono`, `:port`).
+  Only connected MCPs are listed; the rest sit behind a muted `Show N more` row (same pattern as the session list), and the count reads `connected/total`.
+  MCP status colors: connected `--success`, failed / needs_client_registration `--destructive`, needs_auth `--warning`,
+  disabled / unknown `--muted-foreground`. Subagents: working = pulsing `--warning` dot, finished = `--success` check,
+  idle = `--faint` dot. Running rows with a port copy `http://localhost:<port>` on click (meta flips to "Copied").
 
 ### DropdownMenu: shadcn `DropdownMenu` (`#menu`)
 - On the Popover recipe: bg `--popover`, 1 px `--border`, `rounded-lg`, `shadow-md`, padding 4, min-width 210.
@@ -175,9 +183,9 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - **Terminal first.** The terminal gets the space and the focus. The chrome around it stays quiet: the top bar and
   status bar are `--background` like the terminal, and the sidebars are one step **darker** (`--sidebar`), a frame
   around the work rather than a panel competing with it (a tweak: shadcn's sidebar is the lighter side).
-- Two columns: the full-height sidebar, then the workspace (top bar, terminal + servers panel, status bar). The top
+- Two columns: the full-height sidebar, then the workspace (top bar, terminal + right sidebar, status bar). The top
   bar and status bar never run under the sidebar.
-- Top bar 40 px (draggable; new-session `+` on the left, servers toggle and the window controls on the right via
+- Top bar 40 px (draggable; new-session `+` on the left, right-sidebar toggle and the window controls on the right via
   `titleBarOverlay`). Status bar 24 px: git branch, changes and path on the left; the active Claude tab's model,
   effort and subagents, then the running count, on the right. There is no separate info bar.
 - **No badges.** Git info is plain text (`main  2 changed`), colored only by meaning.

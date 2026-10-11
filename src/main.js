@@ -15,7 +15,7 @@ app.setAppUserModelId('com.local.claudebench');
 
 const defaults = {
   projects: [], // [{ path, name }]
-  ui: { sidebar: true, servers: false, fontSize: 14, expanded: [] }, // expanded: project paths showing sessions
+  ui: { sidebar: true, servers: false, fontSize: 14, expanded: [], collapsed: [] }, // expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut
   bounds: null,
   maximized: false,
 };
@@ -260,7 +260,6 @@ function sessionProcesses(procs, sessionByPid) {
   return items;
 }
 
-let knownPortPids = new Set();
 let portScan = null;
 
 async function scanPorts() {
@@ -334,7 +333,6 @@ async function scanPorts() {
 
   const servers = [...byKey.values()].sort((a, b) => a.port - b.port);
   const children = sessionProcesses(procs, sessionByPid);
-  knownPortPids = new Set([...servers, ...children].map((s) => s.pid));
   return { ok: true, servers, procs: children };
 }
 
@@ -533,9 +531,11 @@ async function readAgent(dir, name) {
     const c = j.type === 'assistant' && j.message?.content;
     done = Array.isArray(c) && c.some((x) => x.type === 'text') && !c.some((x) => x.type === 'tool_use');
   } catch { /* last line longer than the tail, or still being written: working */ }
+  const models = tail.match(/"model":"([^"]+)"/g);
   const agent = {
     id: name.slice(6, -6),
     type: oneLine(meta.agentType) || 'agent',
+    model: models ? models[models.length - 1].slice(9, -1) : null,
     description: oneLine(meta.description),
     done,
     start: Math.round(st.birthtimeMs),
@@ -567,6 +567,69 @@ async function sessionInfo(cwd, sessionId) {
     .map((a) => ({ ...a, running: !a.done && now - a.mtime < AGENT_STALE_MS }))
     .sort((a, b) => b.start - a.start);
   return { model, effort, agents };
+}
+
+// Right sidebar data. MCP health comes from `claude mcp list` (the transcript does not store it): it health-checks every
+// configured server, so it is slow (seconds), cached per folder and never run twice at once.
+const MCP_TTL_MS = 30 * 1000;
+const mcpCache = new Map(); // cwd -> { at, value } | { pending }
+
+/** "name: target - ✔ Connected" -> { name, status, label }. Names can contain ":" (plugin:design:slack), target is after ": ". */
+function parseMcpList(out) {
+  const servers = [];
+  for (const line of out.split(/\r?\n/)) {
+    const cut = line.lastIndexOf(' - ');
+    const sep = line.indexOf(': ');
+    if (cut < 0 || sep < 0 || sep > cut) continue;
+    const label = line.slice(cut + 3).replace(/^[^\w]+/, '').trim().toLowerCase();
+    const status = /needs? client registration/.test(label) ? 'needs_client_registration'
+      : /needs? auth/.test(label) ? 'needs_auth'
+      : /fail|error/.test(label) ? 'failed'
+      : /disabled/.test(label) ? 'disabled'
+      : /^connected/.test(label) ? 'connected'
+      : 'unknown';
+    servers.push({ name: line.slice(0, sep).trim(), status, label });
+  }
+  return servers;
+}
+
+function mcpList(cwd) {
+  if (typeof cwd !== 'string' || !fs.existsSync(cwd)) return Promise.resolve({ ok: false, servers: [] });
+  const hit = mcpCache.get(cwd);
+  if (hit?.pending) return hit.pending;
+  if (hit && Date.now() - hit.at < MCP_TTL_MS) return Promise.resolve(hit.value);
+  const env = { ...process.env };
+  for (const k of STRIP_ENV) delete env[k];
+  const pending = new Promise((resolve) => {
+    execFile('cmd.exe', ['/d', '/c', 'claude', 'mcp', 'list'],
+      { cwd, env, windowsHide: true, timeout: 60000, maxBuffer: 4 * 1024 * 1024 },
+      (err, stdout) => resolve(err && !stdout ? { ok: false, servers: [] } : { ok: true, servers: parseMcpList(stdout) }));
+  }).then((value) => {
+    mcpCache.set(cwd, { at: Date.now(), value });
+    return value;
+  });
+  mcpCache.set(cwd, { ...hit, pending });
+  return pending;
+}
+
+/** Subagents the user has defined: ~/.claude/agents/*.md and <project>/.claude/agents/*.md (frontmatter name + model). */
+async function definedAgents(cwd) {
+  const dirs = [path.join(os.homedir(), '.claude', 'agents')];
+  if (typeof cwd === 'string') dirs.push(path.join(cwd, '.claude', 'agents'));
+  const out = new Map();
+  for (const dir of dirs) {
+    let names = [];
+    try { names = (await fs.promises.readdir(dir)).filter((n) => n.endsWith('.md')); } catch { continue; }
+    for (const n of names) {
+      try {
+        const head = (await fs.promises.readFile(path.join(dir, n), 'utf8')).replace(/^﻿/, '').split(/\r?\n---/)[0];
+        const field = (k) => new RegExp(`^${k}:\s*(.+)$`, 'm').exec(head)?.[1].trim().replace(/^["']|["']$/g, '');
+        const name = oneLine(field('name') || n.slice(0, -3));
+        out.set(name, { name, model: oneLine(field('model')) || 'inherit' }); // project agents override user ones
+      } catch { /* unreadable file */ }
+    }
+  }
+  return [...out.values()];
 }
 
 // Plan limits (session, weekly, per-model weekly) come from the same endpoint Claude Code's /usage reads, using the
@@ -734,7 +797,10 @@ function registerIpc() {
 
   ipcMain.handle('ui:set', (_e, patch) => {
     for (const k of Object.keys(defaults.ui)) {
-      if (k !== 'expanded' && typeof patch?.[k] === typeof defaults.ui[k]) state.ui[k] = patch[k];
+      if (k !== 'expanded' && k !== 'collapsed' && typeof patch?.[k] === typeof defaults.ui[k]) state.ui[k] = patch[k];
+    }
+    if (Array.isArray(patch?.collapsed)) {
+      state.ui.collapsed = patch.collapsed.filter((k) => typeof k === 'string').slice(0, 20);
     }
     if (Array.isArray(patch?.expanded)) {
       state.ui.expanded = patch.expanded.filter((p) => typeof p === 'string').slice(0, 200);
@@ -762,15 +828,11 @@ function registerIpc() {
     return Object.fromEntries(entries);
   });
   ipcMain.handle('session:info', (_e, cwd, sessionId) => sessionInfo(cwd, sessionId));
+  ipcMain.handle('mcp:list', (_e, cwd) => mcpList(cwd));
+  ipcMain.handle('agents:defined', (_e, cwd) => definedAgents(cwd));
   ipcMain.handle('usage:get', () => getLimits());
 
   ipcMain.handle('ports:list', () => listPorts());
-  ipcMain.handle('ports:kill', async (_e, pid) => {
-    // Only processes we just showed the user as listening can be killed.
-    if (!knownPortPids.has(pid)) return { ok: false, error: 'Process is no longer listening' };
-    const out = await run('taskkill', ['/PID', String(pid), '/T', '/F']);
-    return out == null ? { ok: false, error: 'taskkill failed (access denied?)' } : { ok: true };
-  });
 
   ipcMain.handle('shell:openExternal', (_e, url) => {
     if (/^https?:\/\//i.test(url)) return shell.openExternal(url);
