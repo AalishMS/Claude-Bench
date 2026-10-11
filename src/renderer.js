@@ -1113,7 +1113,7 @@ function closeMenu() {
 }
 
 // ---------------------------------------------------------------- footer ----
-// One slim row under the project list: add-project on the left; compact plan usage, context of the active session
+// One slim row under the project list: compact plan usage, context of the active session
 // and what is running on the right. Each stat opens a details popover (`#detail`) above it.
 
 const fmtTok = (n) => (n < 1000 ? String(n)
@@ -1179,7 +1179,6 @@ function renderFoot(force = false) {
     ? [`Session usage ${sessPct}% (${fmtReset(sess)})`, week && `Weekly ${limitPct(week)}%`].filter(Boolean).join('\n')
     : usage && !usage.ok ? `Plan usage unavailable: ${usage.error}` : 'Plan usage';
   $('#side-foot').replaceChildren(
-    h('button', { class: 'btn ghost icon sm', title: 'Add a project folder', onclick: addProjects }, ico('folderPlus')),
     h('div', { class: 'fstats' },
       fstat('usage', usageTip, gauge(sessPct), sess ? pctText(sessPct) : '—'),
       fstat('context', ctx?.pct != null ? `Context of this session: ${ctx.pct}% of ${fmtTok(ctx.win)}` : 'Context of this session',
@@ -1936,6 +1935,8 @@ async function init() {
   $('#open-folder').append(ico('folder'));
   $('#toggle-rside').append(ico('panelRight'));
   $('#search-icon').append(ico('search'));
+  $('#add-project').append(ico('folderPlus'));
+  $('#add-project').onclick = addProjects;
   if (IS_MAC) {
     document.body.classList.add('mac'); // room for the traffic lights (styles.css)
     for (const el of document.querySelectorAll('[title]')) {

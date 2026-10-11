@@ -175,6 +175,8 @@ body.resizing .rz { pointer-events: auto; }
 .g.muted { color: var(--faint); }
 
 /* session search: a plain row (no input box); hover/focus get the row highlight */
+.search-row { display: flex; align-items: center; gap: 2px; flex: none; margin: 0 8px 8px 4px; }
+.search-row .search { flex: 1; min-width: 0; margin: 0; }
 .search { display: flex; align-items: center; gap: 8px; height: 32px; flex: none; margin: 0 8px 8px 4px; padding: 0 8px 0 9px; border-radius: var(--radius-md); color: var(--faint); cursor: text; }
 .search:hover, .search:focus-within { background: var(--sidebar-hover); color: var(--muted-foreground); }
 .search .ico { width: 14px; height: 14px; }
@@ -204,7 +206,7 @@ body.resizing .rz { pointer-events: auto; }
 /* footer: one slim row, icon buttons left, compact usage / context / running text right (each opens #detail) */
 /* every stat is icon (14px slot) + value, same height and padding, 2px apart; the row aligns with the list's 8px inset */
 #side-foot { display: flex; align-items: center; gap: 2px; height: 44px; flex: none; padding: 0 8px 0 4px; }
-.fstats { display: flex; align-items: center; gap: 2px; min-width: 0; margin-left: auto; }
+.fstats { display: flex; align-items: center; justify-content: space-between; flex: 1; min-width: 0; }
 .fstat { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--foreground); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; transition: background-color 0.15s, color 0.15s; }
 .fstat:hover { background: var(--sidebar-hover); }
 .fstat.on { background: var(--sidebar-accent); }
@@ -337,9 +339,9 @@ kbd { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; b
 /* -------------------------------------------------------- right sidebar --- */
 /* Context header, then collapsible sections (MCPs, Subagents, Running). Flat 30 px rows on the 8px list inset. */
 .ctx-head { flex: none; padding: 14px 16px 12px; }
-.ctx-head .ctx-line { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
-.ctx-head .ctx-title { font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
-.ctx-head .ctx-val { font-size: 12px; color: var(--foreground); }
+.ctx-head .ctx-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+.ctx-head .ctx-title { font-size: 12px; line-height: 1.2; font-weight: 500; color: var(--muted-foreground); }
+.ctx-head .ctx-val { font-size: 12px; line-height: 1.2; color: var(--foreground); }
 .ctx-head .ctx-pct { font-size: 20px; font-weight: 600; line-height: 1.2; }
 .ctx-head .ctx-pct.warn { color: var(--warning); }
 .ctx-head .ctx-pct.crit { color: var(--destructive); }
