@@ -201,7 +201,7 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - One exception: the top bar's "Open in VS Code" button shows the official VS Code logo in its own blues
   (`VSCODE_SVG` in renderer.js), because it stands for that app. No other icon gets brand color; the Update
   button's `--primary` tint is the accent, not a brand color, and it only appears when there is something to do.
-- Logo: a dark tile with a light "C3" (C = Claude, the 3 is a mirrored B for Bench; styled after the T3 Code mark). `LOGO_SVG` in renderer.js and `scripts/make-icon.js` must stay in sync.
+- Logo: a black rounded tile with metallic silver beveled "C3" lettering, matching the supplied T3 Code reference with T replaced by C. `LOGO_IMG` in renderer.js uses `assets/icon.png` in the sidebar (20 px) and welcome screen (44 px).
 
 ## 4. Layout and behavior (tweaks kept from before)
 
@@ -242,4 +242,4 @@ Per-line font size is impossible in a terminal grid, and the app never re-parses
 - `src/main.js`: `backgroundColor` and `titleBarOverlay.color` = `#0a0a0a` (they paint before CSS loads; the
   window controls sit on the top bar). Keep them equal to `--background`.
 - `XTERM_THEME.brightBlack` (renderer.js) is tuned against `--background` (see section 5).
-- `scripts/make-icon.js` ↔ `LOGO_SVG`.
+- `assets/icon-source.png` (1024 px master) → `assets/icon.png` (512 px, renderer/macOS window and package) and `assets/icon.ico` (PNG frames: 16, 24, 32, 48, 64, 128, 256 px, Windows window/taskbar/package). Windows taskbar relaunch metadata points to a refreshed copy in userData, outside asar. Replace derived assets together; the old code generator has been removed.

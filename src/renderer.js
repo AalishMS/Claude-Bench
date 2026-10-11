@@ -58,7 +58,7 @@ const ICONS = {
 const ico = (name) =>
   h('span', { class: 'ico', html: `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>` });
 
-const LOGO_SVG = `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="2" y="2" width="60" height="60" rx="14" fill="#111" stroke="#333" stroke-width="1.5"/><g fill="none" stroke="#ececec" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><path d="M33.3 24.2 A11 11 0 1 0 33.3 39.8"/><path d="M37.5 20 H43.5 A6 6 0 0 1 43.5 32 H39.5 M43.5 32 A6 6 0 0 1 43.5 44 H37.5"/></g></svg>`;
+const LOGO_IMG = `<img src="../assets/icon.png" alt="" aria-hidden="true" draggable="false">`;
 
 // The official VS Code logo in its own colors (the one exception to monochrome icons, see DESIGN.md).
 // stroke="none" on the outer group cancels the `.ico svg` outline styling.
@@ -1429,7 +1429,7 @@ function renderWelcome() {
   const root = $('#welcome');
   root.replaceChildren(
     h('div', { class: 'welcome-inner' },
-      h('div', { class: 'big-logo', html: LOGO_SVG }),
+      h('div', { class: 'big-logo', html: LOGO_IMG }),
       h('h1', {}, 'What should we build?'),
       h('p', {}, projects.length ? 'Pick a project to start a Claude session.' : 'Add a project folder to get started.'),
       projects.length
@@ -2181,7 +2181,7 @@ function wireGlobalEvents() {
 }
 
 async function init() {
-  $('#logo').innerHTML = LOGO_SVG;
+  $('#logo').innerHTML = LOGO_IMG;
   $('#toggle-sidebar').append(ico('sidebar'));
   renderCheck();
   $('#new-tab').append(ico('plus'));

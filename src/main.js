@@ -7,9 +7,10 @@ const os = require('os');
 const { execFile, spawn } = require('child_process');
 const pty = require('@lydell/node-pty');
 
-const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
 // Windows is the main platform. macOS gets small `IS_MAC` branches next to the Windows code (best effort, untested here).
 const IS_MAC = process.platform === 'darwin';
+const ICON = path.join(__dirname, '..', 'assets', IS_MAC ? 'icon.png' : 'icon.ico');
+const ICON_PNG = path.join(__dirname, '..', 'assets', 'icon.png');
 
 const AUMID = 'com.local.claudebench'; // = build.appId
 if (!IS_MAC) app.setAppUserModelId(AUMID);
@@ -22,7 +23,8 @@ if (!IS_MAC) app.setAppUserModelId(AUMID);
 function registerToastIdentity() {
   try {
     const icon = path.join(app.getPath('userData'), 'toast-icon.png');
-    if (!fs.existsSync(icon)) fs.copyFileSync(ICON, icon);
+    fs.copyFileSync(ICON_PNG, icon); // Refresh existing profiles when the app logo changes.
+    fs.copyFileSync(ICON, path.join(app.getPath('userData'), 'app-icon.ico')); // Windows can't read inside asar.
     const key = `HKCU\\Software\\Classes\\AppUserModelId\\${AUMID}`;
     for (const [name, value] of [['DisplayName', 'Claude Bench'], ['IconUri', icon]]) {
       execFile('reg.exe', ['add', key, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'], { windowsHide: true }, () => {});
@@ -1032,6 +1034,14 @@ function createWindow() {
       sandbox: true,
     },
   });
+  if (!IS_MAC) {
+    mainWindow.setAppDetails({
+      appId: AUMID,
+      appIconPath: path.join(app.getPath('userData'), 'app-icon.ico'),
+      relaunchCommand: `"${process.execPath}"${app.isPackaged ? '' : ` "${path.join(__dirname, '..')}"`}`,
+      relaunchDisplayName: 'Claude Bench',
+    });
+  }
   if (state.maximized) mainWindow.maximize();
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));

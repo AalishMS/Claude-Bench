@@ -45,6 +45,7 @@ npm run package:mac      # build dist/mac-*/Claude Bench.app (unsigned, for your
   started from Finder. A shell startup file that blocks delays the first tab by at most 5 s.
 - Open tabs are restored on relaunch as on Windows; restored Claude tabs wait for the login shell's PATH like new ones.
 - Notifications use macOS Notification Center; allow them for the app (or Electron, under `npm start`) when asked.
+- The macOS app icon uses `assets/icon.png`; Windows uses the multi-size ICO for its window and taskbar.
 - Plan limits in the footer read Claude Code's token from the Keychain; macOS may ask once for access.
 - If electron is missing after `npm install`: `node node_modules/electron/install.js`.
 - If tabs fail with `posix_spawnp failed`: `chmod +x node_modules/@lydell/node-pty-darwin-*/spawn-helper`.
@@ -85,4 +86,5 @@ Drop files onto a terminal to paste their paths. `F12` opens DevTools.
   `state.json` under Electron's user data folder (`%APPDATA%\claude-bench`; `~/Library/Application Support/...` on macOS)
 - `src/preload.js`: the small `window.api` bridge (context isolation is on)
 - `src/renderer.js`, `index.html`, `styles.css`: the UI
-- `scripts/`: icon generator and shortcut creator
+- `scripts/`: shortcut creator and packaged update helpers
+- `assets/`: C3 logo master (`icon-source.png`, 1024 px), app PNG (512 px), and Windows ICO (16–256 px); replace these together. There is no `npm run icon` generator.

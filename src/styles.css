@@ -100,7 +100,7 @@ button { font: inherit; color: inherit; }
 /* toggle + logo + name: the sidebar's top row (draggable), or the top bar's start while the sidebar is collapsed */
 #brand { display: flex; align-items: center; gap: 8px; flex: none; height: 40px; padding: 0 8px 0 4px; -webkit-app-region: drag; }
 #brand .logo { width: 20px; height: 20px; display: inline-flex; }
-#brand .logo svg { width: 100%; height: 100%; }
+#brand .logo img { width: 100%; height: 100%; display: block; }
 .brand-name { font-weight: 500; white-space: nowrap; }
 #topbar #brand { padding: 0; }
 /* macOS: window buttons (traffic lights) sit at the top-left, where #brand always is, instead of the top-right */
@@ -341,7 +341,7 @@ body.no-tabs #close-tab, body.no-tabs #split-tab { display: none; }
 body.no-tabs #welcome { display: flex; flex-direction: column; }
 .welcome-inner { width: 100%; max-width: 600px; margin: auto; padding-bottom: 6vh; text-align: center; }
 .welcome-inner .big-logo { width: 44px; height: 44px; margin: 0 auto 24px; }
-.welcome-inner .big-logo svg { width: 100%; height: 100%; }
+.welcome-inner .big-logo img { width: 100%; height: 100%; display: block; }
 .welcome-inner h1 { font-size: 30px; line-height: 1.2; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 8px; }
 .welcome-inner p { color: var(--muted-foreground); margin: 0 0 32px; font-size: 14px; }
 .proj-list { text-align: left; }

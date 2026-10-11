@@ -22,8 +22,9 @@ npm start            # run from source (fastest loop)
 npm run package      # build dist\win-unpacked\Claude Bench.exe (fails if that exe is running)
 npm run package:mac  # macOS only: dist/mac-*/Claude Bench.app (unsigned)
 npm run shortcut     # Desktop + Start menu shortcuts -> packaged exe
-npm run icon         # regenerate assets/icon.png + icon.ico (pure Node, no deps)
 ```
+
+The logo master is `assets/icon-source.png` (1024 px); `assets/icon.png` (512 px) and the multi-size `assets/icon.ico` are derived from it. There is no `npm run icon` generator.
 
 There is no test suite and no linter. Verify changes by running the app (see "Testing").
 
@@ -67,7 +68,7 @@ src/preload.js   window.api bridge (contextIsolation on, sandbox on, no nodeInte
 src/renderer.js  all UI: tabs (as sidebar rows), sidebar, servers panel, status bar, dialogs, polling
 src/index.html   shell + CSP (script-src 'self'); src/styles.css (tokens on :root, see DESIGN.md)
 DESIGN.md        design system (shadcn/ui + tweaks): tokens, component recipes, terminal palette rules
-scripts/         make-icon.js, create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged copy, see "Update")
+scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged copy, see "Update")
 ```
 
 - **State** lives in `%APPDATA%\claude-bench\state.json`, on macOS in Electron's userData under `~/Library/Application Support` (projects, ui flags incl. sidebar widths, window bounds). Written
@@ -92,6 +93,7 @@ scripts/         make-icon.js, create-shortcut.ps1, update.ps1 / update.sh (rebu
   - Usage token: Keychain item `Claude Code-credentials` (`security find-generic-password -w`) when the file token is
     missing or expired; a failed read is not retried for 10 minutes (no repeated access dialogs).
   - Window: traffic lights via `trafficLightPosition` (no `titleBarOverlay`); `body.mac` moves the padding to `#brand`.
+    Windows uses `assets/icon.ico` for the window and taskbar relaunch icon (copied outside asar); macOS keeps `assets/icon.png`.
     A minimal app menu (appMenu + editMenu) replaces Electron's default, whose Cmd+W/R/= would clash; the Edit roles
     give Cmd+C/V/A to xterm and inputs. VS Code opens via `open -a "Visual Studio Code"`.
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default

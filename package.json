@@ -5,7 +5,6 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "icon": "node scripts/make-icon.js",
     "package": "electron-builder --win dir",
     "package:mac": "electron-builder --mac dir",
     "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-shortcut.ps1"
