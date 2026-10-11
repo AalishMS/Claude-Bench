@@ -50,7 +50,7 @@ if (IS_MAC && !process.env.LANG) process.env.LANG = 'en_US.UTF-8'; // Finder lau
 
 const defaults = {
   projects: [], // [{ path, name }]
-  ui: { sidebar: true, servers: false, sidebarW: 232, rsideW: 300, fontSize: 14, expanded: [], collapsed: [] }, // expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut
+  ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, fontSize: 14, expanded: [], collapsed: [] }, // expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut
   bounds: null,
   maximized: false,
 };
@@ -64,6 +64,8 @@ function loadState() {
     const file = fs.existsSync(stateFile()) ? stateFile() : legacyStateFile();
     const saved = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, ''));
     state = { ...defaults, ...saved, ui: { ...defaults.ui, ...saved.ui } };
+    // The right sidebar used to default to closed, so a saved `false` is usually just that old default: reopen it once.
+    if (!saved.ui?.rsideMigrated) { state.ui.servers = true; state.ui.rsideMigrated = true; }
   } catch {
     /* first run or unreadable file: keep defaults */
   }
