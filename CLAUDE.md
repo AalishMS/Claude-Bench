@@ -191,6 +191,9 @@ scripts/         make-icon.js, create-shortcut.ps1, update.ps1 / update.sh (rebu
   vars). If the app is started from inside a Claude Code session, nested `claude` otherwise misbehaves
   ("transcript saving is off"). Don't strip user config like `ANTHROPIC_*` or `CLAUDE_CODE_USE_*`.
 - `document.hidden` is true for an occluded window, so polling pauses; `visibilitychange` and `focus` resume it.
+- **A detached PowerShell dies at once**: Node's `detached: true` on Windows means no console, and powershell.exe 5.1
+  exits without one. Start it through `cmd /d /s /c "start "title" powershell.exe ..."` (`windowsVerbatimArguments`),
+  as `startExternalUpdate` does; it gets its own console and outlives the app.
 - `state.json` may carry a BOM (PowerShell `Set-Content -Encoding utf8`); the loader strips it.
 - Dev run passes the app folder as an argv entry (`electron .`); `pathFromArgv` skips it. A real folder arg
   (`Claude Bench.exe C:\proj`) adds a project and opens a session.

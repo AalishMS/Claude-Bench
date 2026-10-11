@@ -944,8 +944,11 @@ async function startExternalUpdate(dir) {
       const log = path.join(app.getPath('userData'), 'update.log');
       child = spawn('/bin/bash', [tmp, dir, String(process.pid), bundle, log], { detached: true, stdio: 'ignore', env: process.env });
     } else {
-      child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tmp,
-        '-Repo', dir, '-AppPid', String(process.pid), '-Exe', process.execPath], { detached: true, stdio: 'ignore' });
+      // Through `start`, which gives PowerShell its own visible console. Spawned directly with detached (no console),
+      // PowerShell 5.1 exits at once. /s strips only the outer quotes, so the quoted paths survive (no quotes in Windows paths).
+      const cmdline = `/d /s /c "start "Updating Claude Bench" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tmp}"`
+        + ` -Repo "${dir}" -AppPid ${process.pid} -Exe "${process.execPath}""`;
+      child = spawn('cmd.exe', [cmdline], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true });
     }
     await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
     child.unref();
