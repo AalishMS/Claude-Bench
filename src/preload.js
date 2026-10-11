@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   addProjects: () => ipcRenderer.invoke('projects:add'),
   removeProject: (p) => ipcRenderer.invoke('projects:remove', p),
   setUi: (patch) => ipcRenderer.invoke('ui:set', patch),
+  saveTabs: (payload) => ipcRenderer.send('tabs:set', payload),
 
   ptyCreate: (opts) => ipcRenderer.invoke('pty:create', opts),
   ptyWrite: (id, data) => ipcRenderer.send('pty:write', id, data),

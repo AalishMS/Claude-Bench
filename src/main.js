@@ -53,6 +53,8 @@ const defaults = {
   ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, fontSize: 14, expanded: [], collapsed: [] }, // expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut
   bounds: null,
   maximized: false,
+  tabs: [], // open tabs in tab order, reopened at launch: [{ project: path, kind: 'claude' | 'shell', sessionId }]
+  activeTab: -1, // index into tabs
 };
 let state = structuredClone(defaults);
 const stateFile = () => path.join(app.getPath('userData'), 'state.json');
@@ -80,6 +82,38 @@ function saveState() {
   } catch (err) {
     console.error('Could not save state:', err);
   }
+}
+
+/**
+ * The saved tabs that can be reopened: the project is still listed and on disk, and a Claude tab's transcript still exists
+ * (it is resumed with --resume). Shell tabs start fresh. One bad entry only drops that entry.
+ */
+function restorableTabs() {
+  const list = [];
+  let active = -1;
+  (Array.isArray(state.tabs) ? state.tabs : []).forEach((t, i) => {
+    try {
+      const proj = state.projects.find((p) => samePath(p.path, t.project));
+      if (!proj || !isDir(proj.path)) return;
+      if (t.kind === 'claude') {
+        if (!UUID_RE.test(t.sessionId) || !fs.existsSync(path.join(projectDir(proj.path), `${t.sessionId}.jsonl`))) return;
+        list.push({ project: proj.path, kind: 'claude', sessionId: t.sessionId });
+      } else if (t.kind === 'shell') {
+        list.push({ project: proj.path, kind: 'shell', sessionId: null });
+      } else return;
+      if (i === state.activeTab) active = list.length - 1;
+    } catch { /* skip this one */ }
+  });
+  return { tabs: list, active };
+}
+
+function saveTabs(payload) {
+  const list = Array.isArray(payload?.tabs) ? payload.tabs : [];
+  state.tabs = list.slice(0, 50)
+    .filter((t) => typeof t?.project === 'string' && (t.kind === 'shell' || (t.kind === 'claude' && UUID_RE.test(t.sessionId))))
+    .map((t) => ({ project: t.project, kind: t.kind, sessionId: t.kind === 'claude' ? t.sessionId : null }));
+  state.activeTab = Number.isInteger(payload?.active) ? payload.active : -1;
+  saveState();
 }
 
 const isDir = (p) => {
@@ -1017,7 +1051,8 @@ app.on('before-quit', () => {
 // ------------------------------------------------------------------ ipc ----
 
 function registerIpc() {
-  ipcMain.handle('state:get', () => ({ projects: state.projects, ui: state.ui }));
+  ipcMain.handle('state:get', () => ({ projects: state.projects, ui: state.ui, restore: restorableTabs() }));
+  ipcMain.on('tabs:set', (_e, payload) => saveTabs(payload));
 
   ipcMain.handle('projects:add', async () => {
     const r = await dialog.showOpenDialog(mainWindow, {

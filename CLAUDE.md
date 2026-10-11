@@ -73,6 +73,11 @@ scripts/         make-icon.js, create-shortcut.ps1
 - **State** lives in `%APPDATA%\claude-bench\state.json`, on macOS in Electron's userData under `~/Library/Application Support` (projects, ui flags incl. sidebar widths, window bounds). Written
   synchronously via tmp file + rename. The app used to be "Claude Terminal": if no state exists yet, the loader
   reads `%APPDATA%\claude-terminal\state.json` once (`legacyStateFile`).
+- **Restore tabs**: `state.tabs` (`{ project, kind, sessionId }` in tab order) + `state.activeTab`, sent by the renderer's
+  `saveTabs` (key-diffed; called from `activate`, `closeTab`, `assignSessions`), never on a timer. Claude tabs
+  without a transcript yet are not saved. At launch `state:get` returns `restore` = `restorableTabs()` (drops entries whose
+  project is gone or whose `<uuid>.jsonl` is missing, one try/catch per entry); `restoreTabs` creates all tabs, starts the
+  active one first, then the rest 400 ms apart (Claude tabs via `--resume <uuid>`, shells fresh). Split view is not saved.
 - **Sessions**: `cmd.exe /d /c claude [--continue|--resume]` for Claude tabs (resolves `claude.cmd` and
   `claude.exe`), `powershell.exe -NoLogo` for shell tabs. Exit shows a Restart / Close overlay.
   Claude args are allow-listed in main.js.
@@ -89,6 +94,8 @@ scripts/         make-icon.js, create-shortcut.ps1
   - Window: traffic lights via `trafficLightPosition` (no `titleBarOverlay`); `body.mac` moves the padding to `#brand`.
     A minimal app menu (appMenu + editMenu) replaces Electron's default, whose Cmd+W/R/= would clash; the Edit roles
     give Cmd+C/V/A to xterm and inputs. VS Code opens via `open -a "Visual Studio Code"`.
+  - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default
+    case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
   - Terminal: `macOptionIsMeta` (Claude's Option shortcuts), `rightClickSelectsWord: false` (right-click pastes);
     the custom Ctrl+C/V handler is skipped. Labels say "Shell" / "Finder"; tooltips go through `kbd()` (⌘ ⇧ ⌥).
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled every 4 s from the renderer.
@@ -185,6 +192,6 @@ scripts can open sessions, write to ptys (`api.ptyWrite`), and read xterm buffer
 
 ## Ideas not built yet
 
-Restore open tabs on relaunch, drag-to-reorder tabs, per-project quick commands, "Open in Claude Bench"
+Per-project quick commands, "Open in Claude Bench"
 Explorer context menu, notifications when a background session needs input, auto-detect git worktrees.
 Only build these when asked.

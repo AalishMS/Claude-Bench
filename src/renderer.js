@@ -206,6 +206,16 @@ function tabLabel(tab) {
 }
 
 async function openSession(project, { kind = 'claude', args = [], resumeId = null, beside = false, at } = {}) {
+  const tab = createTab(project, { kind, args, resumeId });
+  if (beside) addToSplit(tab.id, at);
+  activate(tab.id);
+  fitTab(tab);
+  await startPty(tab);
+  return tab;
+}
+
+/** A tab with its terminal, not started and not shown yet. */
+function createTab(project, { kind = 'claude', args = [], resumeId = null } = {}) {
   if (resumeId) args = ['--resume']; // main builds the real argv from resumeId; this only labels the tab
   const id = crypto.randomUUID();
   const head = h('div', { class: 'pane-head' });
@@ -247,19 +257,63 @@ async function openSession(project, { kind = 'claude', args = [], resumeId = nul
   tabs.set(id, tab);
   wireTerminal(tab);
   wireScrollbar(tab);
-
-  if (beside) addToSplit(id, at);
-  activate(id);
-  fitTab(tab);
-  await startPty(tab);
   return tab;
 }
 
+/**
+ * Reopen the tabs of the last run (main already dropped entries whose project or transcript is gone), in their saved
+ * order. The active one starts first; the others follow one by one so a dozen `claude --resume` don't boot at once.
+ */
+async function restoreTabs(saved) {
+  const made = [];
+  for (const r of saved?.tabs || []) {
+    try {
+      const project = projects.find((p) => p.path === r.project);
+      if (project) made.push(createTab(project, { kind: r.kind, resumeId: r.kind === 'claude' ? r.sessionId : null }));
+    } catch { /* skip this one */ }
+  }
+  if (!made.length) return;
+  const first = made[saved.active] || made[0];
+  activate(first.id);
+  fitTab(first);
+  await startPty(first);
+  for (const t of made) {
+    if (t === first) continue;
+    await new Promise((r) => setTimeout(r, 400));
+    if (!tabs.has(t.id)) continue; // closed meanwhile
+    // Hidden terminals can't measure themselves: start at the visible one's size, activate() refits later.
+    try { t.term.resize(first.term.cols, first.term.rows); } catch { /* keep 80x24 */ }
+    await startPty(t).catch(() => {});
+  }
+}
+
+/** Remember the open tabs for the next launch: shells, and Claude tabs once their transcript is known. Diffed, so cheap to call. */
+let savedTabsKey = '';
+function saveTabs() {
+  const seen = new Set();
+  const list = [...tabs.values()].filter((t) => {
+    if (t.kind === 'shell') return true;
+    if (!t.sessionId || seen.has(t.sessionId)) return false; // a session shown twice (cloneBeside) is reopened once
+    seen.add(t.sessionId);
+    return true;
+  });
+  const payload = {
+    tabs: list.map((t) => ({ project: t.project.path, kind: t.kind, sessionId: t.kind === 'claude' ? t.sessionId : null })),
+    active: list.indexOf(activeTab()),
+  };
+  const key = JSON.stringify(payload);
+  if (key === savedTabsKey) return;
+  savedTabsKey = key;
+  api.saveTabs(payload);
+}
+
 async function startPty(tab) {
+  if (!tabs.has(tab.id)) return;
   const res = await api.ptyCreate({
     id: tab.id, cwd: tab.project.path, kind: tab.kind, args: tab.args, resumeId: tab.resumeId,
     cols: tab.term.cols, rows: tab.term.rows,
   });
+  if (!tabs.has(tab.id)) { if (res.ok) api.ptyKill(tab.id); return; } // closed while starting
   if (res.ok) {
     tab.status = 'running';
     tab.exitCode = null;
@@ -495,6 +549,7 @@ async function closeTab(id) {
     if (next) activate(next);
   } else syncVisible();
   renderAll();
+  saveTabs();
 }
 
 function activate(id) {
@@ -519,6 +574,7 @@ function activate(id) {
   pollInfo();
   pollMcp();
   pollDefinedAgents();
+  saveTabs();
 }
 
 /** Fit, then drop a row if the renderer's rounded cell height made the screen taller than its box (covers the status bar). */
@@ -925,6 +981,7 @@ function assignSessions() {
       : free.filter((s) => s.birth >= t.startedAt - 1000).sort((a, b) => a.birth - b.birth)[0];
     if (pick) { t.sessionId = pick.id; claimed.add(pick.id); }
   }
+  saveTabs(); // diffed: only writes when a tab just got its transcript
 }
 
 function openSessionRow(project, s) {
@@ -1956,6 +2013,7 @@ async function init() {
 
   wireGlobalEvents();
   renderAll();
+  restoreTabs(state.restore).catch(() => {});
 
   pollGit();
   pollPorts();

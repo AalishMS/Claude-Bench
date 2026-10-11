@@ -8,6 +8,8 @@ genuine Claude Code session, so slash commands, permissions and speed are unchan
 - **Git per project**: branch, clean/changed count, ahead/behind. Refreshes every 4 s.
 - **Servers panel** (`Ctrl+Shift+S`): listening TCP ports, grouped by project. Servers started from a tab are
   matched by process ancestry. Hover a row to open it in the browser or stop it.
+- **Tabs come back**: open tabs are reopened on the next launch (Claude tabs resume their session with
+  `claude --resume`, shell tabs start fresh). A Claude tab is remembered once it has its first reply.
 - **Tab indicators**: yellow = producing output in the background, orange = bell / session ended.
 
 ## Run
@@ -36,6 +38,7 @@ npm run package:mac      # build dist/mac-*/Claude Bench.app (unsigned, for your
   images). Copy/paste is `⌘C` / `⌘V` or right-click. Option acts as Meta, so Claude's `Option+P`/`Option+T` work.
 - Claude and shell tabs use the PATH of your login shell (`$SHELL -l`), so the app finds `claude` and `node` even when
   started from Finder. A shell startup file that blocks delays the first tab by at most 5 s.
+- Open tabs are restored on relaunch as on Windows; restored Claude tabs wait for the login shell's PATH like new ones.
 - Plan limits in the footer read Claude Code's token from the Keychain; macOS may ask once for access.
 - If electron is missing after `npm install`: `node node_modules/electron/install.js`.
 - If tabs fail with `posix_spawnp failed`: `chmod +x node_modules/@lydell/node-pty-darwin-*/spawn-helper`.
