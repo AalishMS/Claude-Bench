@@ -92,7 +92,15 @@ Class names are short and composable. These recipes mirror shadcn's components.
 ### No tab strip
 There is no horizontal tab strip: the sidebar's session rows are the tabs. Every open tab has a row (a transcript
 row, a "New session" placeholder until the first reply, or a "PowerShell" row). `Ctrl+Tab`, `Alt+1..9` and
-`Ctrl+Shift+W` still work on tab order.
+`Ctrl+W` still work on tab order. The top bar has a ghost `×` that closes the active session (hidden on the home screen).
+
+### Split panes
+Up to 4 tabs side by side (top-bar columns button, `Ctrl+\`, Ctrl+click a sidebar row, or dragging a row onto the
+terminal or home screen (a session already on screen is opened a second time beside itself); while dragging, a `--primary` 18% fill with a 70% 1 px outline previews the pane it would become). The terminal area becomes
+a grid with 1 px `--border` gaps, no boxes or gutters. Each pane has a 26 px header strip on the terminal background:
+status dot, title (12 px, `--faint`), and a hover-only ghost `×` that closes that pane's session. The focused pane is marked by its title going `--foreground` and a 1 px `--primary` 70% line along its top edge:
+no other color, no background change. Dividers are 4 px invisible handles that take the `.rz` hover tint. When a pane
+would drop under ~100 columns the right sidebar hides itself and returns when there is room (see CLAUDE.md).
 
 ### Status dot
 6 px circle, only on things that are live: `--success` running, `--warning` pulsing working (Claude busy or

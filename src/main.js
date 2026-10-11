@@ -209,7 +209,7 @@ const PORT_SCRIPT = `
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $c = Get-NetTCPConnection -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess
-$p = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, CommandLine
+$p = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, CommandLine, @{ n = 'T'; e = { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } }
 @{ c = @($c); p = @($p) } | ConvertTo-Json -Compress -Depth 4
 `;
 
@@ -228,11 +228,22 @@ function mcpLabel(cmd) {
   return name.replace(/(.)@[^/@]*$/, '$1').replace(/\.(js|cmd|exe|py)$/i, '');
 }
 
+/**
+ * A process's real parent pid, or 0. Windows never clears ParentProcessId, so once the parent exits its pid can be
+ * reused by an unrelated process; a parent that was created after its child cannot be the real one.
+ */
+function parentPid(procs, p) {
+  const parent = procs.get(p.ParentProcessId);
+  return parent && parent.T > p.T ? 0 : p.ParentProcessId;
+}
+
 function sessionProcesses(procs, sessionByPid) {
   const children = new Map();
   for (const p of procs.values()) {
-    if (!children.has(p.ParentProcessId)) children.set(p.ParentProcessId, []);
-    children.get(p.ParentProcessId).push(p);
+    const parent = parentPid(procs, p);
+    if (!parent) continue;
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(p);
   }
   const items = [];
   const seen = new Set();
@@ -294,7 +305,8 @@ async function scanPorts() {
     for (let i = 0; i < 40 && cur; i++) {
       const s = sessionByPid.get(cur);
       if (s) return { type: 'session', sessionId: s.id, projectPath: s.cwd, kind: s.kind };
-      cur = procs.get(cur)?.ParentProcessId;
+      const p = procs.get(cur);
+      cur = p && parentPid(procs, p);
     }
     // 2. Its executable or a script argument points inside a known project folder. Paths in flags don't count:
     //    editor helpers (e.g. Antigravity's `agy.exe --add-dir=<project>`) mention projects without serving them.

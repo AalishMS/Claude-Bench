@@ -27,11 +27,12 @@ npm run shortcut         # Desktop + Start menu shortcuts (uses the packaged exe
 | --- | --- |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | next / previous tab |
 | `Alt+1`..`9` | jump to tab |
-| `Ctrl+Shift+T` / `Ctrl+Shift+W` | new session in current project / close tab |
+| `Ctrl+Shift+T` / `Ctrl+W` | new session in current project / close session (asks only if Claude is working or a dev server is running) |
+| `Ctrl+\` / `Ctrl+Shift+\` | split: new session beside / back to one terminal (or drag a sidebar session onto the terminal) |
 | `Ctrl+Shift+B` / `Ctrl+Shift+S` | toggle sidebar / servers panel |
 | `Ctrl+C` (with selection), `Ctrl+V`, right-click | copy / paste |
 
-These deliberately avoid keys Claude Code uses itself (`Ctrl+B`, `Ctrl+T`, `Ctrl+W`, ...).
+These deliberately avoid keys Claude Code uses itself (`Ctrl+B`, `Ctrl+J`, ...), except `Ctrl+T`, `Ctrl+S` and `Ctrl+W`.
 Drop files onto a terminal to paste their paths. `F12` opens DevTools.
 
 ## Layout

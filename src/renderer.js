@@ -51,6 +51,7 @@ const ICONS = {
   users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   globe: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
   panelRight: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/>',
+  columns: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>',
   check: '<polyline points="20 6 9 17 4 12"/>',
   box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
 };
@@ -67,6 +68,9 @@ let projects = [];
 let ui = { sidebar: true, servers: false, fontSize: 14, collapsed: [] }; // replaced by the saved state in init()
 const tabs = new Map(); // id -> tab
 let activeId = null;
+let split = null; // { ids: [tab id, 2-4 of them], cx, ry } side-by-side panes (runtime only); activeId is the focused pane
+let rsideAuto = false; // the right sidebar was hidden by autoRside (ui.servers still holds the user's choice)
+let rsideForced = false; // the user reopened it by hand in a cramped split: leave it alone until the split changes
 let git = {}; // projectPath -> info | null
 let ports = { ok: true, servers: [] };
 let sessionsBy = {}; // projectPath -> [{ id, title, mtime, birth, model, ctx }], newest first
@@ -173,11 +177,14 @@ function tabLabel(tab) {
   return same.length > 1 ? `${tab.project.name} ${n}` : tab.project.name;
 }
 
-async function openSession(project, { kind = 'claude', args = [], resumeId = null } = {}) {
+async function openSession(project, { kind = 'claude', args = [], resumeId = null, beside = false, at } = {}) {
   if (resumeId) args = ['--resume']; // main builds the real argv from resumeId; this only labels the tab
   const id = crypto.randomUUID();
-  const host = h('div', { class: 'term-host' });
+  const head = h('div', { class: 'pane-head' });
+  const host = h('div', { class: 'term-host' }, head);
   $('#terminals').append(host);
+  hostObserver.observe(host);
+  host.addEventListener('mousedown', () => { if (split?.ids.includes(id) && activeId !== id) activate(id); }, true);
 
   const term = new Terminal({
     ...TERM_FONT,
@@ -200,7 +207,7 @@ async function openSession(project, { kind = 'claude', args = [], resumeId = nul
   }
 
   const tab = {
-    id, project, kind, args, term, fit, host,
+    id, project, kind, args, term, fit, host, head,
     resumeId, sessionId: resumeId, startedAt: Date.now(), // sessionId of fresh tabs is matched later (assignSessions)
     status: 'starting', exitCode: null, title: '',
     lastActive: 0, lastOutput: 0, attention: false, busy: false, busyTimer: null,
@@ -209,6 +216,7 @@ async function openSession(project, { kind = 'claude', args = [], resumeId = nul
   wireTerminal(tab);
   wireScrollbar(tab);
 
+  if (beside) addToSplit(id, at);
   activate(id);
   fitTab(tab);
   await startPty(tab);
@@ -235,7 +243,7 @@ function wireTerminal(tab) {
   const { term, host } = tab;
 
   term.onData((d) => api.ptyWrite(tab.id, d));
-  term.onResize(({ cols, rows }) => api.ptyResize(tab.id, cols, rows));
+  term.onResize(({ cols, rows }) => { api.ptyResize(tab.id, cols, rows); autoRside(); });
   term.onTitleChange((t) => { tab.title = t; });
   term.onBell(() => {
     if (tab.id === activeId && document.hasFocus()) return;
@@ -417,27 +425,42 @@ async function closeTab(id) {
   const tab = tabs.get(id);
   if (!tab) return;
   if (tab.status === 'running') {
-    const ok = await confirmDialog({
-      title: 'End this session?',
-      message: `"${tabLabel(tab)}" is still running. Closing it ends the session and any servers it started.`,
-      okLabel: 'End session',
-      danger: true,
-    });
-    if (!ok) return;
+    // Only ask if closing interrupts something: Claude mid-task or a dev server this tab started.
+    let scan = ports;
+    if (Date.now() - portsAt > 10000) scan = await api.listPorts();
+    const servers = scan.ok ? scan.servers.filter((s) => s.owner?.type === 'session' && s.owner.sessionId === id) : [];
+    const working = isWorking(tab);
+    if (working || servers.length) {
+      const ok = await confirmDialog({
+        title: 'End this session?',
+        message: `Closing "${tabLabel(tab)}" will stop:`,
+        items: [
+          ...(working ? [{ name: 'Claude', sub: 'is working in this session' }] : []),
+          ...servers.map((s) => ({ name: `:${s.port}`, sub: s.name })),
+        ],
+        okLabel: 'End session',
+        danger: true,
+      });
+      if (!ok) return;
+    }
   }
   api.ptyKill(id);
   clearTimeout(tab.busyTimer);
   tab.term.dispose();
   tab.host.remove();
   infoBy.delete(id);
+  hostObserver.unobserve(tab.host);
   const order = [...tabs.keys()];
   const idx = order.indexOf(id);
+  const slot = split ? split.ids.indexOf(id) : -1;
   tabs.delete(id);
+  const mates = removeFromSplit(id);
   if (activeId === id) {
     activeId = null;
-    const next = [...tabs.keys()][Math.min(idx, tabs.size - 1)];
+    // closing a focused pane hands focus to its neighbour in the split, else to the nearest tab
+    const next = slot >= 0 && mates.length ? mates[Math.min(slot, mates.length - 1)] : [...tabs.keys()][Math.min(idx, tabs.size - 1)];
     if (next) activate(next);
-  }
+  } else syncVisible();
   renderAll();
 }
 
@@ -447,13 +470,8 @@ function activate(id) {
   activeId = id;
   tab.lastActive = Date.now();
   tab.attention = false;
-  for (const t of tabs.values()) t.host.classList.toggle('active', t.id === id);
-  requestAnimationFrame(() => {
-    fitActive();
-    tab.term.refresh(0, tab.term.rows - 1);
-    tab.syncScrollbar();
-    tab.term.focus();
-  });
+  syncVisible();
+  requestAnimationFrame(() => tab.term.focus());
   document.body.classList.toggle('no-tabs', tabs.size === 0);
   if (tab.project.path !== lastActiveProject) { // entering a project reveals its sessions
     lastActiveProject = tab.project.path;
@@ -482,11 +500,309 @@ function fitTab(tab) {
   } catch { /* not measurable yet */ }
 }
 
+/** Fit every visible pane (just the active tab when not split). */
 function fitActive() {
-  const tab = activeTab();
-  if (!tab || !tab.host.offsetWidth) return;
-  fitTab(tab);
+  for (const id of visibleIds()) {
+    const tab = tabs.get(id);
+    if (tab?.host.offsetWidth) fitTab(tab);
+  }
 }
+
+// ---------------------------------------------------------------- split ----
+// Up to 4 tabs side by side. 2 = A|B, 3 = A|(B over C), 4 = (A B)/(C D). cx / ry are the column and row ratios.
+// A tab outside the split shows alone and the split returns when one of its members is focused again.
+
+const SPLIT_MAX = 4;
+const SPLIT_MIN_W = 240; // px a pane keeps when a divider is dragged
+const SPLIT_MIN_H = 120;
+const RSIDE_MIN_COLS = 100; // below this a pane is hard to read: the right sidebar steps aside
+const RSIDE_BACK_COLS = RSIDE_MIN_COLS + 6; // ...and returns only with this much room, so it can't flap
+
+const visibleIds = () => (split && split.ids.includes(activeId) ? split.ids : activeId ? [activeId] : []);
+
+/** Put a tab that is not on screen yet into the split at position `at` (default: last), next to the visible panes. */
+function addToSplit(id, at) {
+  if (!activeId || !tabs.has(id)) return;
+  const base = [...visibleIds()];
+  if (base.includes(id) || base.length >= SPLIT_MAX) return;
+  base.splice(at ?? base.length, 0, id);
+  split = { ids: base, cx: split?.cx ?? 0.5, ry: split?.ry ?? 0.5 };
+  rsideForced = false;
+}
+
+/** Drops a tab from the split state (the tab itself stays open); a split of one is no split. Returns the remaining members. */
+function removeFromSplit(id) {
+  if (!split || !split.ids.includes(id)) return split ? split.ids : [];
+  const rest = split.ids.filter((x) => x !== id);
+  rsideForced = false;
+  split = rest.length < 2 ? null : { ...split, ids: rest };
+  return rest;
+}
+
+function unsplit() {
+  if (!split) return;
+  split = null;
+  rsideForced = false;
+  syncVisible();
+}
+
+/** Show exactly the visible tabs (all split members, or just the active one), then refit them. */
+function syncVisible() {
+  const shown = visibleIds();
+  for (const t of tabs.values()) t.host.classList.toggle('active', shown.includes(t.id));
+  renderSplit();
+  requestAnimationFrame(() => {
+    fitActive();
+    for (const id of shown) {
+      const t = tabs.get(id);
+      if (!t) continue;
+      t.term.refresh(0, t.term.rows - 1);
+      t.syncScrollbar();
+    }
+  });
+}
+
+function splitHere() {
+  const tab = activeTab();
+  if (!tab) return newSessionHere();
+  if (split?.ids.includes(tab.id) && split.ids.length >= SPLIT_MAX) return;
+  openSession(tab.project, { beside: true });
+}
+
+/** Another copy of what a tab runs, opened beside: the same Claude session resumed (once it has a transcript), or a fresh shell. */
+function cloneBeside(tab, at) {
+  if (tab.kind === 'shell') return openSession(tab.project, { kind: 'shell', beside: true, at });
+  return openSession(tab.project, { resumeId: tab.sessionId || null, beside: true, at });
+}
+
+/** Ctrl+click on a session row: show it beside the focused pane instead of replacing it. A session already on screen is opened a second time. */
+function besideRow(open, openNew) {
+  if (!open) openNew();
+  else if (visibleIds().includes(open.id)) cloneBeside(open);
+  else { addToSplit(open.id); activate(open.id); }
+}
+
+// ------------------------------------------------------- drag and drop ----
+// Drag a session row from the sidebar onto the terminal area (or the home screen): a preview shows the pane it would
+// become in the resulting layout. The drop slot is the one (among all positions) whose pane centre is nearest the pointer.
+// A session that is already on screen is opened again beside it (the same Claude session resumed in a second pane).
+
+let dragSrc = null; // { id: tab id | null, project, resumeId } while a session row is being dragged
+let dropAt = null; // the slot under the pointer, or null when nothing can be dropped
+
+/** Pixel rect of pane `i` in an `n`-pane layout inside a W x H area. */
+function cellRect(n, i, cx, ry, W, H) {
+  if (n === 1) return { x: 0, y: 0, w: W, h: H };
+  const col = n === 2 ? i : n === 3 ? (i === 0 ? 0 : 1) : i % 2;
+  const row = n === 2 || (n === 3 && i === 0) ? -1 : n === 3 ? i - 1 : i >> 1;
+  return {
+    x: col ? cx * W : 0, w: col ? (1 - cx) * W : cx * W,
+    y: row === 1 ? ry * H : 0, h: row < 0 ? H : row === 1 ? (1 - ry) * H : ry * H,
+  };
+}
+
+function rowDrag(src) {
+  return {
+    draggable: 'true',
+    ondragstart: (e) => {
+      dragSrc = src;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', src.resumeId || src.id || '');
+      setTimeout(() => document.body.classList.toggle('dragging-session', !!dragSrc)); // after the drag image is taken
+    },
+    ondragend: endDrag,
+  };
+}
+
+function endDrag() {
+  const was = dragSrc;
+  dragSrc = dropAt = null;
+  document.body.classList.remove('dragging-session');
+  $('#drop-preview').hidden = true;
+  if (was) renderSidebar(true); // renders were held back while dragging
+}
+
+function wireDropZone() {
+  const zone = $('#dropzone');
+  const preview = $('#drop-preview');
+  const box = $('#terminals');
+
+  zone.addEventListener('dragover', (e) => {
+    if (!dragSrc) return;
+    const base = visibleIds(); // empty on the home screen: the whole area is the target
+    if (base.length >= SPLIT_MAX) { dropAt = null; preview.hidden = true; e.dataTransfer.dropEffect = 'none'; return; }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const r = box.getBoundingClientRect();
+    const n = base.length + 1;
+    const cx = split?.cx ?? 0.5, ry = split?.ry ?? 0.5;
+    let best = null;
+    for (let k = 0; k < n; k++) {
+      const c = cellRect(n, k, cx, ry, r.width, r.height);
+      const d = Math.hypot(e.clientX - r.left - (c.x + c.w / 2), e.clientY - r.top - (c.y + c.h / 2));
+      if (!best || d < best.d) best = { k, c, d };
+    }
+    dropAt = best.k;
+    preview.hidden = false;
+    const { x, y, w, h } = best.c; // inset 4px so the outline sits inside the pane
+    Object.assign(preview.style, { left: `${x + 4}px`, top: `${y + 4}px`, width: `${w - 8}px`, height: `${h - 8}px` });
+  });
+  zone.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget && zone.contains(e.relatedTarget)) return;
+    dropAt = null;
+    preview.hidden = true;
+  });
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const src = dragSrc, at = dropAt;
+    endDrag();
+    if (!src || at == null) return;
+    const tab = src.id && tabs.get(src.id);
+    if (!activeId) { // home screen: just open it
+      if (tab) activate(tab.id);
+      else openSession(src.project, { resumeId: src.resumeId });
+    } else if (!tab) openSession(src.project, { resumeId: src.resumeId, beside: true, at });
+    else if (visibleIds().includes(tab.id)) cloneBeside(tab, at);
+    else { addToSplit(tab.id, at); activate(tab.id); }
+  });
+}
+
+function focusPane(dir) {
+  const ids = visibleIds();
+  if (ids.length < 2) return;
+  activate(ids[(ids.indexOf(activeId) + dir + ids.length) % ids.length]);
+}
+
+/** [grid-column, grid-row] of pane `i` in an `n`-pane split. */
+function paneCell(n, i) {
+  if (n === 2) return [String(i + 1), '1'];
+  if (n === 3) return i === 0 ? ['1', '1 / span 2'] : ['2', String(i)];
+  return [String((i % 2) + 1), String(Math.floor(i / 2) + 1)];
+}
+
+/** Grid placement, dividers and pane headers for the current split (or back to the plain single-terminal layout). */
+function renderSplit() {
+  const box = $('#terminals');
+  const ids = split && split.ids.includes(activeId) ? split.ids : [];
+  const n = ids.length;
+  box.classList.toggle('split', n > 1);
+  $('#split-tab').classList.toggle('on', !!split);
+  $('#split-tab').title = split ? 'Back to one terminal (Ctrl+Shift+\\)' : 'New session beside this one (Ctrl+\\)';
+
+  for (const t of tabs.values()) {
+    const i = ids.indexOf(t.id);
+    t.host.classList.toggle('pane', i >= 0);
+    t.host.classList.toggle('focus', i >= 0 && t.id === activeId);
+    const [col, row] = i < 0 ? ['', ''] : paneCell(n, i);
+    t.host.style.gridColumn = col;
+    t.host.style.gridRow = row;
+  }
+
+  const vz = $('#pz-v'), hz = $('#pz-h');
+  vz.hidden = n < 2;
+  hz.hidden = n < 3;
+  if (n > 1) {
+    const { cx, ry } = split;
+    box.style.gridTemplateColumns = `${cx}fr ${1 - cx}fr`;
+    box.style.gridTemplateRows = n === 2 ? '1fr' : `${ry}fr ${1 - ry}fr`;
+    vz.style.left = `calc(${cx * 100}% - 2px)`;
+    hz.style.top = `calc(${ry * 100}% - 2px)`;
+    hz.style.left = n === 3 ? `${cx * 100}%` : '0';
+  } else {
+    box.style.gridTemplateColumns = box.style.gridTemplateRows = '';
+  }
+  renderPanes();
+  autoRside();
+}
+
+/** Pane headers: status dot, title, and a button that takes the pane out of the split. Key-diffed. */
+let lastPanesKey = '';
+function renderPanes() {
+  const ids = split && split.ids.includes(activeId) ? split.ids : [];
+  const key = JSON.stringify([ids.map((id) => { const t = tabs.get(id); return [id, tabDot(t), paneTitle(t)]; }), activeId, sessionsVer]);
+  if (key === lastPanesKey) return;
+  lastPanesKey = key;
+  for (const id of ids) {
+    const t = tabs.get(id);
+    t.head.replaceChildren(
+      h('span', { class: 's-mark' }, tabDot(t) ? h('i', { class: `dot ${tabDot(t)}` }) : null),
+      h('span', { class: 'ph-title' }, paneTitle(t)),
+      h('button', {
+        class: 'btn ghost icon sm', title: 'Close session (Ctrl+W)',
+        onclick: (e) => { e.stopPropagation(); closeTab(id); },
+      }, ico('x')));
+  }
+}
+
+/** A tab's name in the sidebar and pane headers: its transcript title once known, else a placeholder. */
+function paneTitle(t) {
+  const known = t.sessionId && (sessionsBy[t.project.path] || []).find((s) => s.id === t.sessionId);
+  if (known) return known.title;
+  if (t.kind === 'shell') {
+    const shells = tabsOf(t.project.path).filter((x) => x.kind === 'shell');
+    return `PowerShell${shells.length > 1 ? ' ' + (shells.indexOf(t) + 1) : ''}`;
+  }
+  return t.resumeId ? 'Resumed session' : t.args[0] === '--continue' ? 'Continued session' : 'New session';
+}
+
+/**
+ * Hide the right sidebar when a split would leave a pane under RSIDE_MIN_COLS columns, bring it back when
+ * there is room again (or the split ends). It never touches ui.servers, so the saved choice survives.
+ */
+let autoQueued = false;
+function autoRside() {
+  if (autoQueued) return;
+  autoQueued = true;
+  requestAnimationFrame(() => {
+    autoQueued = false;
+    const open = document.body.classList.contains('rside-open');
+    const panes = visibleIds().map((id) => tabs.get(id)).filter((t) => t?.host.offsetWidth);
+    const cramped = panes.length >= 2;
+    if (!cramped && rsideAuto) { rsideAuto = false; applyRside(ui.servers); return; }
+    if (!cramped || rsideForced) return;
+    const cols = Math.min(...panes.map((t) => t.term.cols));
+    if (open && ui.servers && cols < RSIDE_MIN_COLS) {
+      rsideAuto = true;
+      applyRside(false);
+    } else if (!open && rsideAuto) {
+      const main = $('#terminals').offsetWidth;
+      if ((cols * (main - ui.rsideW)) / main >= RSIDE_BACK_COLS) { rsideAuto = false; applyRside(ui.servers); }
+    }
+  });
+}
+
+/** Dividers: drag to resize (ratio of the grid), double-click to reset. */
+function wireDivider(el, axis) {
+  const box = $('#terminals');
+  const apply = (v) => {
+    const r = box.getBoundingClientRect();
+    if (axis === 'x') split.cx = Math.min(1 - SPLIT_MIN_W / r.width, Math.max(SPLIT_MIN_W / r.width, v));
+    else split.ry = Math.min(1 - SPLIT_MIN_H / r.height, Math.max(SPLIT_MIN_H / r.height, v));
+    renderSplit();
+  };
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    el.setPointerCapture(e.pointerId);
+    el.classList.add('drag');
+    document.body.classList.add('resizing');
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!split || !el.hasPointerCapture(e.pointerId)) return;
+    const r = box.getBoundingClientRect();
+    apply(axis === 'x' ? (e.clientX - r.left) / r.width : (e.clientY - r.top) / r.height);
+  });
+  const end = (e) => {
+    if (!el.hasPointerCapture(e.pointerId)) return;
+    el.releasePointerCapture(e.pointerId);
+    el.classList.remove('drag');
+    document.body.classList.remove('resizing');
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('dblclick', () => split && apply(0.5));
+}
+
+const hostObserver = new ResizeObserver(() => requestAnimationFrame(fitActive));
 
 function cycleTab(dir) {
   const ids = [...tabs.keys()];
@@ -590,7 +906,7 @@ const dotMark = (state) => h('span', { class: 's-mark' }, state ? h('i', { class
 /** Rows backed by an open tab show × in place of their time on hover; middle-click closes too, as on the old tabs. */
 function closeButton(t) {
   return h('button', {
-    class: 'btn ghost icon sm s-close', title: 'Close (Ctrl+Shift+W)',
+    class: 'btn ghost icon sm s-close', title: 'Close (Ctrl+W)',
     onclick: (e) => { e.stopPropagation(); closeTab(t.id); },
   }, ico('x'));
 }
@@ -600,8 +916,11 @@ function sessionRow(p, s, activeSession) {
   const t = tabOfSession(s.id);
   return h('div', {
     class: `session${s.id === activeSession ? ' active' : ''}${t ? ' has-tab' : ''}`,
-    title: `${s.title}\n${new Date(s.mtime).toLocaleString()}`,
-    onclick: () => openSessionRow(p, s),
+    ...rowDrag({ id: t?.id || null, project: p, resumeId: s.id }),
+    title: `${s.title}\n${new Date(s.mtime).toLocaleString()}\nDrag onto the terminal (or Ctrl+click) to open beside the current session`,
+    onclick: (e) => (e.ctrlKey && activeId
+      ? besideRow(t, () => openSession(p, { resumeId: s.id, beside: true }))
+      : openSessionRow(p, s)),
     onauxclick: auxClose(t),
   },
     dotMark(t ? tabDot(t) : ''),
@@ -618,18 +937,15 @@ const pendingTabs = (projectPath) => tabsOf(projectPath).filter((t) => t.kind ==
   || !(t.sessionId && (sessionsBy[projectPath] || []).some((s) => s.id === t.sessionId)));
 
 function pendingRow(t) {
-  const shells = tabsOf(t.project.path).filter((x) => x.kind === 'shell');
-  const title = t.kind === 'shell'
-    ? `PowerShell${shells.length > 1 ? ' ' + (shells.indexOf(t) + 1) : ''}`
-    : t.resumeId ? 'Resumed session' : t.args[0] === '--continue' ? 'Continued session' : 'New session';
   return h('div', {
     class: `session has-tab${t.kind === 'claude' ? ' pending' : ''}${t.id === activeId ? ' active' : ''}`,
+    ...rowDrag({ id: t.id, project: t.project, resumeId: null }),
     title: t.kind === 'shell' ? `PowerShell in ${t.project.path}` : 'Its title appears after the first reply',
-    onclick: () => activate(t.id),
+    onclick: (e) => { if (e.ctrlKey && activeId) besideRow(t, null); else activate(t.id); },
     onauxclick: auxClose(t),
   },
     dotMark(tabDot(t)),
-    h('span', { class: 's-title' }, title),
+    h('span', { class: 's-title' }, paneTitle(t)),
     h('span', { class: 's-time' }, fmtAgo(t.startedAt)),
     closeButton(t));
 }
@@ -659,6 +975,7 @@ function gitSubLine(info) {
 let lastSidebarKey = '';
 let sessionsVer = 0; // bumped when sessionsBy changes, so the render key stays cheap
 function renderSidebar(force = false) {
+  if (dragSrc) return; // rebuilding rows mid-drag would drop the dragged element; endDrag re-renders
   document.body.classList.toggle('no-tabs', tabs.size === 0);
   const tab = activeTab();
   const activeProject = tab?.project.path;
@@ -667,6 +984,7 @@ function renderSidebar(force = false) {
     [...tabs.values()].map((t) => [t.id, t.project.path, t.kind, t.sessionId, tabDot(t)])]);
   if (!force && key === lastSidebarKey) return;
   lastSidebarKey = key;
+  renderPanes();
 
   const root = $('#projects');
   if (!projects.length) {
@@ -1087,7 +1405,7 @@ function renderRside(force = false) {
 const rsideBusy = new Set();
 async function pollMcp() {
   const proj = currentProject();
-  if (!proj || !ui.servers || document.hidden || rsideBusy.has(proj.path)) return;
+  if (!proj || !rsideShown() || document.hidden || rsideBusy.has(proj.path)) return;
   rsideBusy.add(proj.path);
   try {
     const next = await api.mcpList(proj.path);
@@ -1099,7 +1417,7 @@ async function pollMcp() {
 
 async function pollDefinedAgents() {
   const proj = currentProject();
-  if (!proj || !ui.servers || document.hidden) return;
+  if (!proj || !rsideShown() || document.hidden) return;
   const next = await api.definedAgents(proj.path);
   if (JSON.stringify(next) !== JSON.stringify(definedBy.get(proj.path))) { definedBy.set(proj.path, next); renderRside(); }
 }
@@ -1250,13 +1568,22 @@ function setSidebar(open) {
   requestAnimationFrame(fitActive);
 }
 
-function setServers(open) { // the right sidebar (ui.servers is its saved flag)
-  ui.servers = open;
+const rsideShown = () => document.body.classList.contains('rside-open');
+
+/** Show or hide the right sidebar without touching the saved choice (autoRside uses this directly). */
+function applyRside(open) {
   document.body.classList.toggle('rside-open', open);
   $('#toggle-rside').classList.toggle('on', open);
-  api.setUi({ servers: open });
   if (open) { renderRside(); pollPorts(); pollMcp(); pollDefinedAgents(); pollInfo(); }
   requestAnimationFrame(fitActive);
+}
+
+function setServers(open) { // the user's choice for the right sidebar (ui.servers is its saved flag)
+  ui.servers = open;
+  rsideAuto = false;
+  rsideForced = open && visibleIds().length > 1; // reopened by hand in a split: don't hide it again
+  api.setUi({ servers: open });
+  applyRside(open);
 }
 
 /** Window close: only interrupt the user if quitting would stop real work. */
@@ -1425,6 +1752,10 @@ function wireGlobalEvents() {
     else if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === '-' || e.key === '_')) setFontSize(ui.fontSize - 1);
     else if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key === '0') setFontSize(FONT_SIZE.default);
     else if (e.ctrlKey && !e.altKey && e.key === 'Tab') cycleTab(e.shiftKey ? -1 : 1);
+    else if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'w') { if (activeId) closeTab(activeId); }
+    else if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key === '\\') splitHere();
+    else if (e.ctrlKey && !e.altKey && e.shiftKey && (e.key === '|' || e.key === '\\')) unsplit();
+    else if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) focusPane(e.key === 'ArrowRight' ? 1 : -1);
     else if (e.altKey && !e.ctrlKey && !e.shiftKey && /^[1-9]$/.test(e.key)) {
       const id = [...tabs.keys()][Number(e.key) - 1];
       if (id) activate(id);
@@ -1433,7 +1764,7 @@ function wireGlobalEvents() {
       if (k === 't') newSessionHere();
       else if (k === 'w') { if (activeId) closeTab(activeId); }
       else if (k === 'b') setSidebar(!ui.sidebar);
-      else if (k === 's') setServers(!ui.servers);
+      else if (k === 's') setServers(!rsideShown());
       else if (k === 'f') { setSidebar(true); $('#session-search').focus(); $('#session-search').select(); }
       else handled = false;
     } else handled = false;
@@ -1476,7 +1807,12 @@ function wireGlobalEvents() {
   $('#open-shell').addEventListener('click', () => projectAction((p) => openSession(p, { kind: 'shell' })));
   $('#open-folder').addEventListener('click', () => projectAction((p) => api.openFolder(p.path)));
   $('#toggle-sidebar').addEventListener('click', () => setSidebar(!ui.sidebar));
-  $('#toggle-rside').addEventListener('click', () => setServers(!ui.servers));
+  $('#toggle-rside').addEventListener('click', () => setServers(!rsideShown()));
+  $('#close-tab').addEventListener('click', () => { if (activeId) closeTab(activeId); });
+  $('#split-tab').addEventListener('click', () => (split ? unsplit() : splitHere()));
+  wireDropZone();
+  wireDivider($('#pz-v'), 'x');
+  wireDivider($('#pz-h'), 'y');
 
   wireResizer($('#rz-left'), 'sidebarW', (x) => x);
   wireResizer($('#rz-right'), 'rsideW', (x) => window.innerWidth - x);
@@ -1488,6 +1824,8 @@ async function init() {
   $('#logo').innerHTML = LOGO_SVG;
   $('#toggle-sidebar').append(ico('sidebar'));
   $('#new-tab').append(ico('plus'));
+  $('#close-tab').append(ico('x'));
+  $('#split-tab').append(ico('columns'));
   $('#open-code').append(ico('code'));
   $('#open-shell').append(ico('terminal'));
   $('#open-folder').append(ico('folder'));

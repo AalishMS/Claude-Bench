@@ -27,8 +27,8 @@ There is no test suite and no linter. Verify changes by running the app (see "Te
   Terminal output is coalesced (6 ms) before IPC. Git/port polling skip overlapping runs. Only re-render DOM
   when data actually changed (`lastSidebarKey`, `JSON.stringify` diffs).
 - **Terminal first.** The terminal gets the space and the focus. Chrome around it stays quiet.
-- **Don't fight Claude Code.** Our shortcuts mostly avoid keys it uses (`Ctrl+B/W/J`...); `Ctrl+T` (new session) and `Ctrl+S` (sidebar) are deliberate exceptions. They are `Ctrl+T`, `Ctrl+S`, `Ctrl+Shift+W/S` (close tab, servers),
-  `Ctrl+Tab`, `Alt+1..9`.
+- **Don't fight Claude Code.** Our shortcuts mostly avoid keys it uses (`Ctrl+B/W/J`...); `Ctrl+T` (new session), `Ctrl+S` (sidebar) and `Ctrl+W` (close session; costs Claude's delete-word) are deliberate exceptions. They are `Ctrl+T`, `Ctrl+S`, `Ctrl+W` (also `Ctrl+Shift+W`), `Ctrl+Shift+S` (servers),
+  `Ctrl+Tab`, `Alt+1..9`, and for split view `Ctrl+\` (new session beside), `Ctrl+Shift+\` (unsplit), `Ctrl+Alt+Left/Right` (move pane focus).
 - Prefer the smallest change that works. No speculative settings screens, plugin systems or abstractions.
 
 ## Design rules
@@ -67,6 +67,18 @@ scripts/         make-icon.js, create-shortcut.ps1
   `claude.exe`), `powershell.exe -NoLogo` for shell tabs. Exit shows a Restart / Close overlay.
   Claude args are allow-listed in main.js.
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled every 4 s from the renderer.
+- **Split view** (runtime only, not saved): `split = { ids, cx, ry }` in renderer.js shows 2-4 tabs as a grid in `#terminals`
+  (2 = A|B, 3 = A|(B over C), 4 = 2x2) with draggable dividers. `activeId` is the focused pane, so status bar, right sidebar and
+  polling keep following one tab. `visibleIds()` = the split if the active tab is in it, else just the active tab (a non-member
+  shows alone and the split returns when a member is focused). Entry: top-bar button / `Ctrl+\` (`splitHere`, new session beside),
+  Ctrl+click a sidebar row (`besideRow`), or drag a sidebar row onto the terminal area or the home screen: `#dropzone` (shown only while
+  dragging, `rowDrag` / `wireDropZone`) previews the pane in the resulting layout (`cellRect`; the slot whose pane centre is nearest
+  the pointer wins) and the drop places it (`addToSplit(id, at)`). A session already on screen is opened again beside itself (`cloneBeside`: the same
+  Claude session resumed in a second pane, or another shell). On the home screen a drop just opens it. `renderSidebar` is paused while dragging. `autoRside` hides the right sidebar while a split pane is under 100 cols and
+  restores it at 106+ (predicted from the current cols), without touching `ui.servers`; opening it by hand in a split sets
+  `rsideForced` until the split's membership changes. `fitActive` fits every visible pane.
+- **Closing**: `Ctrl+W`, the top-bar `×` (`#close-tab`) and each pane header's `×` all call `closeTab`. It only asks "End this session?" when
+  Claude is working in the tab (`isWorking`) or a dev server started from it is listening (`ports`, owner = this tab); idle tabs close silently.
 - **Right sidebar** (`#rside`, toggled by the top-bar button or `Ctrl+Shift+S`, saved as `ui.servers`; `renderRside`): the active tab's
   **Context** (`x / yk` + %, same numbers as the footer tile), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**.
   - MCPs: only connected ones are listed; the rest are behind a "Show N more" row (`mcpMore`, not persisted). `claude mcp list` run in the project folder (main `mcpList`, `cmd.exe /c claude mcp list`, cached 30 s, never overlapping;
@@ -100,6 +112,9 @@ scripts/         make-icon.js, create-shortcut.ps1
 ## Gotchas (learned the hard way)
 
 - **`pty.pid` is 0 right after spawn** on ConPTY. Read `s.pty.pid` lazily at scan time; never cache it.
+- **Windows never clears `ParentProcessId`**: when a parent exits, its pid can be reused by an unrelated process, which then looks like
+  the child's ancestor (Discord showed up as a dev server of a session this way). The port scan carries each process's creation time
+  (`T`) and `parentPid` in main.js ignores a "parent" created after its child. Any new ancestor walk must use it.
 - **Strip session markers from the child env** (`STRIP_ENV` in main.js: `CLAUDECODE`, `CLAUDE_CODE_*` session
   vars). If the app is started from inside a Claude Code session, nested `claude` otherwise misbehaves
   ("transcript saving is off"). Don't strip user config like `ANTHROPIC_*` or `CLAUDE_CODE_USE_*`.
