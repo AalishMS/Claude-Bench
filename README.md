@@ -52,7 +52,8 @@ npm run package:mac      # build dist/mac-*/Claude Bench.app (unsigned, for your
 
 ## Updating
 
-When the repo you cloned has new commits, a download icon appears at the top of the sidebar, next to "Claude Bench".
+When the repo you cloned has new commits, a download icon appears at the top of the sidebar, next to "Claude Bench",
+and a popup under it lists what's new with **Later** and **Update…** buttons. It comes back when more commits arrive.
 
 - **Running with `npm start`:** click it. The app pulls the update, runs `npm install` if dependencies changed, and
   restarts (open sessions end; it asks first if Claude is working). If you edited files locally and they clash with the

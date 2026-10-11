@@ -97,6 +97,9 @@ Needs a new commit on `main` to show up.
 
 - [ ] In the copy you run with `npm start`, a download icon appears next to "Claude Bench" at the top of the sidebar
       within 30 minutes, or right away after restarting the app.
+- [ ] At the same time a popup opens under the icon: "Update available", the new commit messages, and Later /
+      Update… buttons. It doesn't cover the traffic lights, and it sits right with the sidebar hidden (⌘S) too.
+- [ ] Later closes it and it stays closed. Update… opens the update confirmation.
 - [ ] Clicking it and confirming pulls the update and restarts the app.
 - [ ] In the built `.app`, clicking it shows a dialog that copies the update command instead.
 

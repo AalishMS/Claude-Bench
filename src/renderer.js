@@ -1761,6 +1761,7 @@ function placeBrand() {
   document.body.classList.toggle('sidebar-collapsed', !ui.sidebar);
   if (ui.sidebar) $('#sidebar').prepend($('#brand'));
   else $('#topbar').prepend($('#brand'));
+  placeUpdatePop(); // the update icon moved with #brand
 }
 
 function setSidebar(open) {
@@ -1834,6 +1835,44 @@ function renderUpdate() {
     title: updating ? 'Updating…' : `Update available: ${n} new commit${n === 1 ? '' : 's'}`,
     disabled: updating, onclick: runUpdate,
   }, ico('download'))] : []));
+  renderUpdatePop();
+}
+
+/**
+ * The icon alone is easy to miss, so a new update also opens a popover under it: what's new, Later / Update.
+ * It stays until dismissed (no outside-click or Escape close: Escape belongs to Claude) and only comes back when
+ * more commits arrive. Runtime only, so a restart reminds once more.
+ */
+let updateSeen = 0; // `behind` count the user has dismissed
+function renderUpdatePop() {
+  const pop = $('#update-pop');
+  const show = !!update?.available && !updating && update.behind > updateSeen;
+  pop.hidden = !show;
+  if (!show) return;
+  const n = update.behind;
+  const later = () => { updateSeen = n; renderUpdatePop(); activeTab()?.term.focus(); };
+  const more = n - (update.subjects?.length || 0);
+  pop.replaceChildren(
+    h('h4', {}, 'Update available'),
+    h('p', { class: 'up-sub' }, `${n} new commit${n === 1 ? '' : 's'} for Claude Bench.`),
+    update.subjects?.length
+      ? h('ul', { class: 'up-log' }, update.subjects.map((s) => h('li', { title: s }, s)), more > 0 ? h('li', { class: 'up-more' }, `and ${more} more`) : null)
+      : null,
+    h('div', { class: 'row' },
+      h('button', { class: 'btn outline sm', onclick: later }, 'Later'),
+      h('button', { class: 'btn primary sm', onclick: () => { updateSeen = n; renderUpdatePop(); runUpdate(); } },
+        update.canApply ? 'Update…' : 'How to update')));
+  placeUpdatePop();
+}
+
+/** Under the update icon (sidebar top row, or the top bar while the sidebar is collapsed). */
+function placeUpdatePop() {
+  const pop = $('#update-pop');
+  if (pop.hidden) return;
+  const r = $('#update-slot').getBoundingClientRect();
+  const left = r.width ? r.right - pop.offsetWidth + 4 : 8;
+  pop.style.left = `${Math.max(8, Math.min(left, window.innerWidth - pop.offsetWidth - 8))}px`;
+  pop.style.top = `${(r.height ? r.bottom : 40) + 6}px`;
 }
 
 /** Pull the app's own repo and restart (source runs), or say how to update a built copy. */
@@ -2058,6 +2097,7 @@ function wireGlobalEvents() {
   });
   window.addEventListener('blur', closeMenu);
   window.addEventListener('resize', closeMenu);
+  window.addEventListener('resize', placeUpdatePop);
   $('#projects').addEventListener('scroll', closeMenu);
 
   const search = $('#session-search');

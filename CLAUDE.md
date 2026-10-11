@@ -106,7 +106,9 @@ scripts/         make-icon.js, create-shortcut.ps1
   packaged build (walks up to a `.git` + `package.json` named `claude-bench`; a `.app` copied elsewhere finds none).
   `checkUpdate` runs `git fetch` + `rev-list --count HEAD..@{u}` 10 s after start and every 30 min (skipped while
   hidden; `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never` so no credential prompt). If behind, `renderUpdate` shows the
-  button in `#update-slot`. Source runs: confirm (lists working tabs), then `applyUpdate` = `git pull --ff-only`,
+  button in `#update-slot`, and `renderUpdatePop` opens `#update-pop` under it (the newest 5 subjects from
+  `git log --format=%s HEAD..@{u}`; Later / Update…, the latter runs `runUpdate`). Dismissing records the `behind` count
+  (`updateSeen`, runtime only), so it returns only when more commits arrive or after a restart. Source runs: confirm (lists working tabs), then `applyUpdate` = `git pull --ff-only`,
   `npm install` only if `package.json`/`package-lock.json` changed, `app.relaunch()` + quit. Any failure (local edits,
   diverged branch, npm) shows git's/npm's message and keeps the app running. Packaged builds can't rebuild while running
   (the exe is locked), so their dialog only copies `git pull && npm run package[:mac]`.

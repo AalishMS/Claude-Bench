@@ -919,7 +919,9 @@ function checkUpdate() { // overlapping calls share one fetch
     const env = gitEnv();
     if (!(await runFull('git', ['-C', dir, 'fetch', '--quiet'], { env, timeout: 30000 })).ok) return { available: false };
     const behind = parseInt((await runFull('git', ['-C', dir, 'rev-list', '--count', 'HEAD..@{u}'], { env })).out, 10) || 0;
-    return { available: behind > 0, behind, canApply: !app.isPackaged };
+    // What's new, for the popup: the newest few commit subjects.
+    const log = behind ? (await runFull('git', ['-C', dir, 'log', '--format=%s', '-n', '5', 'HEAD..@{u}'], { env })).out : '';
+    return { available: behind > 0, behind, canApply: !app.isPackaged, subjects: log ? log.split('\n').map((s) => s.trim().slice(0, 120)).filter(Boolean) : [] };
   })().finally(() => { updateCheck = null; });
   return updateCheck;
 }

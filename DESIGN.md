@@ -114,6 +114,10 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   of the top bar so the toggle stays reachable. When the app's own repo has new commits, a ghost `download` icon button
   sits at the row's right end (`#update-slot`), its icon tinted `color-mix(--primary 60%, --foreground)`; it pulses
   while updating. Nothing shows otherwise. (Not in the footer: the footer has no room at 232 px.)
+  When an update is first seen, an **update popover** (`#update-pop`, the Popover recipe, 300 px) opens under the icon:
+  "Update available" (13 px / 600), `N new commits` (12 px muted), up to 5 commit subjects (12 px muted, one line each,
+  `·` bullets, "and N more" in `--faint`), and the AlertDialog button row (`Later` outline sm, `Update…` primary sm). It
+  stays until dismissed: no outside-click or Escape close, so it can't vanish unseen while typing in a terminal.
 - Search: a plain 32 px row (search icon + "Search" placeholder), no border; hover/focus = `--sidebar-hover`.
 - Rows are flat, 32 px, `rounded-md`, side padding 8. 2 px between rows, 12 px between project groups.
   Hover = `--sidebar-hover`, selected = `--sidebar-accent`. **No borders, no left accent bar.**
