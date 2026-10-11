@@ -6,8 +6,14 @@ Each tab is a genuine Claude Code session, so never re-implement CLI features (s
 model switching). The app only adds what the terminal lacks: a project sidebar, tabs, live git status per
 project, and a running-servers panel.
 
-Personal tool for one user on Windows 11. macOS is best effort (a friend runs it; never tested here): small
-`IS_MAC` branches next to the Windows code, which must stay unchanged. No Linux, no auto-update, no telemetry.
+Personal tool for one user on Windows 11, also run on macOS by a friend (never tested here). No Linux, no telemetry,
+no auto-update (only a manual Update button for git clones, see "Update").
+
+**Every change must work on both Windows and macOS.** Any new feature or fix that touches processes, paths, shells,
+keys, window chrome or fonts needs a Mac path too: a small `IS_MAC` branch next to the Windows code (which stays as it
+is), fail-soft so a Mac-only failure never breaks Windows or crashes the app. Shortcuts go through `mod(e)` and their
+text through `kbd()`; user-facing "PowerShell" / "Explorer" through `SHELL_LABEL` / `FILES_APP`. Update the macOS
+notes below and the README's macOS section in the same change, and tell the user what to test on a Mac.
 
 ## Commands
 
@@ -86,6 +92,14 @@ scripts/         make-icon.js, create-shortcut.ps1
   - Terminal: `macOptionIsMeta` (Claude's Option shortcuts), `rightClickSelectsWord: false` (right-click pastes);
     the custom Ctrl+C/V handler is skipped. Labels say "Shell" / "Finder"; tooltips go through `kbd()` (⌘ ⇧ ⌥).
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled every 4 s from the renderer.
+- **Update** (people install by cloning): `repoDir()` = the app folder for `npm start`, or the repo above `dist/` for a
+  packaged build (walks up to a `.git` + `package.json` named `claude-bench`; a `.app` copied elsewhere finds none).
+  `checkUpdate` runs `git fetch` + `rev-list --count HEAD..@{u}` 10 s after start and every 30 min (skipped while
+  hidden; `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never` so no credential prompt). If behind, `renderUpdate` shows the
+  button in `#update-slot`. Source runs: confirm (lists working tabs), then `applyUpdate` = `git pull --ff-only`,
+  `npm install` only if `package.json`/`package-lock.json` changed, `app.relaunch()` + quit. Any failure (local edits,
+  diverged branch, npm) shows git's/npm's message and keeps the app running. Packaged builds can't rebuild while running
+  (the exe is locked), so their dialog only copies `git pull && npm run package[:mac]`.
 - **Split view** (runtime only, not saved): `split = { ids, cx, ry }` in renderer.js shows 2-4 tabs as a grid in `#terminals`
   (2 = A|B, 3 = A|(B over C), 4 = 2x2) with draggable dividers. `activeId` is the focused pane, so status bar, right sidebar and
   polling keep following one tab. `visibleIds()` = the split if the active tab is in it, else just the active tab (a non-member

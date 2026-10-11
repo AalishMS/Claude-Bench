@@ -35,7 +35,6 @@ const ICONS = {
   folderPlus: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>',
   arrowRight: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
   folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
-  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
   link: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
   sidebar: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>',
   power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>',
@@ -53,12 +52,29 @@ const ICONS = {
   panelRight: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/>',
   columns: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>',
   check: '<polyline points="20 6 9 17 4 12"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
   box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
 };
 const ico = (name) =>
   h('span', { class: 'ico', html: `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>` });
 
 const LOGO_SVG = `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="3" y="3" width="58" height="58" rx="14" fill="#ececec"/><path d="M22 22 L34 32 L22 42" fill="none" stroke="#111" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M38 43 H48" stroke="#111" stroke-width="5" stroke-linecap="round"/></svg>`;
+
+// The official VS Code logo in its own colors (the one exception to monochrome icons, see DESIGN.md).
+// stroke="none" on the outer group cancels the `.ico svg` outline styling.
+const VSCODE_SVG = `<svg viewBox="0 0 100 100" aria-hidden="true"><g stroke="none">
+<defs>
+<mask id="vsc-mask" mask-type="alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><path fill="#fff" fill-rule="evenodd" clip-rule="evenodd" d="M70.9119 99.3171C72.4869 99.9307 74.2828 99.8914 75.8725 99.1264L96.4608 89.2197C98.6242 88.1787 100 85.9892 100 83.5872V16.4133C100 14.0113 98.6243 11.8218 96.4609 10.7808L75.8725 0.873756C73.7862 -0.130129 71.3446 0.11576 69.5135 1.44695C69.252 1.63711 69.0028 1.84943 68.769 2.08341L29.3551 38.0415L12.1872 25.0096C10.589 23.7965 8.35363 23.8959 6.86933 25.2461L1.36303 30.2549C-0.452552 31.9064 -0.454633 34.7627 1.35853 36.417L16.2471 50.0001L1.35853 63.5832C-0.454633 65.2374 -0.452552 68.0938 1.36303 69.7453L6.86933 74.7541C8.35363 76.1043 10.589 76.2037 12.1872 74.9905L29.3551 61.9587L68.769 97.9167C69.3925 98.5406 70.1246 99.0104 70.9119 99.3171ZM75.0152 27.2989L45.1091 50.0001L75.0152 72.7012V27.2989Z"/></mask>
+<filter id="vsc-shadow" x="-8.39" y="15.88" width="116.73" height="92.25" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="0" stdDeviation="4.16667" flood-color="#000" flood-opacity="0.25"/></filter>
+<filter id="vsc-shadow2" x="60.42" y="-8.08" width="47.92" height="116.15" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="0" stdDeviation="4.16667" flood-color="#000" flood-opacity="0.25"/></filter>
+<linearGradient id="vsc-sheen" x1="49.9392" y1="0.257812" x2="49.9392" y2="99.7423" gradientUnits="userSpaceOnUse"><stop stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+</defs>
+<g mask="url(#vsc-mask)">
+<path fill="#0065A9" d="M96.4614 10.7962L75.8569 0.875542C73.4719 -0.272773 70.6217 0.211611 68.75 2.08333L1.29858 63.5832C-0.515693 65.2373 -0.513607 68.0937 1.30308 69.7452L6.81272 74.754C8.29793 76.1042 10.5347 76.2036 12.1338 74.9905L93.3609 13.3699C96.086 11.3026 100 13.2462 100 16.6667V16.4275C100 14.0265 98.6246 11.8378 96.4614 10.7962Z"/>
+<path fill="#007ACC" filter="url(#vsc-shadow)" d="M96.4614 89.2038L75.8569 99.1245C73.4719 100.273 70.6217 99.7884 68.75 97.9167L1.29858 36.4169C-0.515693 34.7627 -0.513607 31.9063 1.30308 30.2548L6.81272 25.246C8.29793 23.8958 10.5347 23.7964 12.1338 25.0095L93.3609 86.6301C96.086 88.6974 100 86.7538 100 83.3334V83.5726C100 85.9735 98.6246 88.1622 96.4614 89.2038Z"/>
+<path fill="#1F9CF0" filter="url(#vsc-shadow2)" d="M75.8578 99.1263C73.4721 100.274 70.6219 99.7885 68.75 97.9166C71.0564 100.223 75 98.5895 75 95.3278V4.67213C75 1.41039 71.0564 -0.223106 68.75 2.08329C70.6219 0.211402 73.4721 -0.273666 75.8578 0.873633L96.4587 10.7807C98.6234 11.8217 100 14.0112 100 16.4132V83.5871C100 85.9891 98.6234 88.1786 96.4586 89.2196L75.8578 99.1263Z"/>
+<path fill="url(#vsc-sheen)" opacity="0.25" style="mix-blend-mode:overlay" fill-rule="evenodd" clip-rule="evenodd" d="M70.8511 99.3171C72.4261 99.9306 74.2221 99.8913 75.8117 99.1264L96.4 89.2197C98.5634 88.1787 99.9392 85.9892 99.9392 83.5871V16.4133C99.9392 14.0112 98.5635 11.8217 96.4001 10.7807L75.8117 0.873695C73.7255 -0.13019 71.2838 0.115699 69.4527 1.44688C69.1912 1.63705 68.942 1.84937 68.7082 2.08335L29.2943 38.0414L12.1264 25.0096C10.5283 23.7964 8.29285 23.8959 6.80855 25.246L1.30225 30.2548C-0.513334 31.9064 -0.515415 34.7627 1.29775 36.4169L16.1863 50L1.29775 63.5832C-0.515415 65.2374 -0.513334 68.0937 1.30225 69.7452L6.80855 74.754C8.29285 76.1042 10.5283 76.2036 12.1264 74.9905L29.2943 61.9586L68.7082 97.9167C69.3317 98.5405 70.0638 99.0104 70.8511 99.3171ZM74.9544 27.2989L45.0483 50L74.9544 72.7012V27.2989Z"/>
+</g></g></svg>`;
 
 const baseName = (p) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
 
@@ -85,6 +101,8 @@ let git = {}; // projectPath -> info | null
 let ports = { ok: true, servers: [] };
 let sessionsBy = {}; // projectPath -> [{ id, title, mtime, birth, model, ctx }], newest first
 let usage = null; // { ok, limits: [{ kind, label, percent, resetsAt }] } plan limits from Anthropic
+let update = null; // { available, behind, canApply } new commits upstream of the app's own git checkout
+let updating = false; // git pull / npm install running
 const expanded = new Set(); // project paths whose sessions are shown
 const showMore = new Set(); // projects listing every session instead of the newest few
 let query = '';
@@ -1637,6 +1655,53 @@ async function onCloseRequest() {
   }
 }
 
+/** Update button at the end of the brand row, only while the app's repo has new commits upstream. */
+function renderUpdate() {
+  const n = update?.behind || 0;
+  $('#update-slot').replaceChildren(...(update?.available ? [h('button', {
+    class: `btn ghost icon sm update${updating ? ' busy' : ''}`,
+    title: updating ? 'Updating…' : `Update available: ${n} new commit${n === 1 ? '' : 's'}`,
+    disabled: updating, onclick: runUpdate,
+  }, ico('download'))] : []));
+}
+
+/** Pull the app's own repo and restart (source runs), or say how to update a built copy. */
+async function runUpdate() {
+  if (!update?.available || updating) return;
+  const what = `${update.behind} new commit${update.behind === 1 ? '' : 's'}`;
+  if (!update.canApply) {
+    const cmd = `git pull && ${IS_MAC ? 'npm run package:mac' : 'npm run package'}`;
+    if (await confirmDialog({
+      title: 'Update available',
+      message: `${what}. This is a built copy of the app, so it can't update itself. Close it, then run this in the repo folder:`,
+      items: [{ name: cmd, sub: '' }],
+      okLabel: 'Copy command',
+      cancelLabel: 'Close',
+    })) api.writeClipboard(cmd);
+    return;
+  }
+  const working = [...tabs.values()].filter(isWorking);
+  const live = liveTabs().length;
+  const ok = await confirmDialog({
+    title: 'Update Claude Bench?',
+    message: `${what}. This pulls the update, runs npm install if dependencies changed, and restarts the app.`
+      + (live ? ` Open sessions end (${live}), along with dev servers started from them.` : ''),
+    items: working.map((t) => ({ name: tabLabel(t), sub: 'Claude is working' })),
+    okLabel: 'Update and restart',
+    danger: working.length > 0,
+  });
+  if (!ok) return;
+  updating = true;
+  renderUpdate();
+  const r = await api.applyUpdate(); // on success the app restarts before this returns
+  updating = false;
+  renderUpdate();
+  if (!r?.ok) {
+    await confirmDialog({ title: 'Update failed', message: r?.error || 'Unknown error.', okLabel: 'OK', cancelLabel: 'Close' });
+    pollUpdate();
+  }
+}
+
 function newSessionHere() {
   const tab = activeTab();
   if (tab) openSession(tab.project);
@@ -1700,6 +1765,18 @@ async function pollUsage() {
     if (JSON.stringify(next) !== JSON.stringify(usage)) { usage = next; renderFoot(); }
   } finally {
     usageBusy = false;
+  }
+}
+
+let updateBusy = false;
+async function pollUpdate() {
+  if (updateBusy || updating || document.hidden) return;
+  updateBusy = true;
+  try {
+    const next = await api.checkUpdate();
+    if (JSON.stringify(next) !== JSON.stringify(update)) { update = next; renderUpdate(); }
+  } finally {
+    updateBusy = false;
   }
 }
 
@@ -1844,7 +1921,7 @@ async function init() {
   $('#new-tab').append(ico('plus'));
   $('#close-tab').append(ico('x'));
   $('#split-tab').append(ico('columns'));
-  $('#open-code').append(ico('code'));
+  $('#open-code').append(h('span', { class: 'ico', html: VSCODE_SVG }));
   $('#open-shell').append(ico('terminal'));
   $('#open-folder').append(ico('folder'));
   $('#toggle-rside').append(ico('panelRight'));
@@ -1880,6 +1957,8 @@ async function init() {
   setInterval(pollSessions, 4000);
   setInterval(pollUsage, 15000);
   setInterval(pollMcp, 30000);
+  setTimeout(pollUpdate, 10000); // after startup settles; git fetch is network
+  setInterval(pollUpdate, 30 * 60 * 1000);
   // "Working" depends on recent output, so re-check it (cheap: the renders are key-diffed).
   setInterval(() => { if (!document.hidden) { renderSidebar(); renderFoot(); } }, 1500);
 }

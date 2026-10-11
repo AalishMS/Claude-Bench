@@ -111,7 +111,9 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - `#sidebar` is a full-height column: bg `--sidebar` (the darkest surface), width 232 by default (resizable, see below), 1 px `--sidebar-border` on the
   terminal side. Nothing inside has its own box, card, tint or border.
 - Top row (40 px, draggable): sidebar toggle, logo, app name (`#brand`). While collapsed, `#brand` moves to the start
-  of the top bar so the toggle stays reachable.
+  of the top bar so the toggle stays reachable. When the app's own repo has new commits, a ghost `download` icon button
+  sits at the row's right end (`#update-slot`), its icon tinted `color-mix(--primary 60%, --foreground)`; it pulses
+  while updating. Nothing shows otherwise. (Not in the footer: the footer has no room at 232 px.)
 - Search: a plain 32 px row (search icon + "Search" placeholder), no border; hover/focus = `--sidebar-hover`.
 - Rows are flat, 32 px, `rounded-md`, side padding 8. 2 px between rows, 12 px between project groups.
   Hover = `--sidebar-hover`, selected = `--sidebar-accent`. **No borders, no left accent bar.**
@@ -185,6 +187,9 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 ### Icons
 - Lucide-style (Feather-compatible) inline SVG paths in `ICONS` (renderer.js), 24-unit viewBox, stroke 2, round
   caps, drawn at 16 px (14 px in small buttons, 12 px inline). Outline only.
+- One exception: the top bar's "Open in VS Code" button shows the official VS Code logo in its own blues
+  (`VSCODE_SVG` in renderer.js), because it stands for that app. No other icon gets brand color; the Update
+  button's `--primary` tint is the accent, not a brand color, and it only appears when there is something to do.
 - Logo: a light tile with a dark `>_`. `LOGO_SVG` in renderer.js and `scripts/make-icon.js` must stay in sync.
 
 ## 4. Layout and behavior (tweaks kept from before)

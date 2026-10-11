@@ -820,6 +820,80 @@ function getLimits() { // cached for a minute; overlapping calls share one reque
   return limitsFetch;
 }
 
+// ---------------------------------------------------------------- update ----
+// The app is installed by cloning the repo; there is no auto-update. The footer's Update button (shown when the
+// branch's upstream has new commits) pulls, runs npm install if dependencies changed, and restarts. Source runs only:
+// a packaged build is locked while it runs, so it is only told that an update exists.
+
+/** stdout and stderr of a command, never rejects. */
+function runFull(file, args, opts = {}) {
+  return new Promise((resolve) => {
+    execFile(file, args, { windowsHide: true, timeout: 120000, maxBuffer: 8 * 1024 * 1024, ...opts }, (err, stdout, stderr) => {
+      resolve({ ok: !err, out: String(stdout || '').trim(), err: String(stderr || err?.message || '').trim() });
+    });
+  });
+}
+
+// Never let git open a credential prompt or window from the background check.
+const gitEnv = () => ({ ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' });
+
+/** The checkout the app runs from: the app folder (npm start), or the repo above dist/ for a packaged build. */
+let repoDirCache;
+function repoDir() {
+  if (repoDirCache !== undefined) return repoDirCache;
+  repoDirCache = null;
+  let dir = app.isPackaged ? path.dirname(process.execPath) : app.getAppPath();
+  for (let i = 0; i < 8; i++) {
+    try {
+      if (fs.existsSync(path.join(dir, '.git')) && JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).name === 'claude-bench') {
+        repoDirCache = dir;
+        break;
+      }
+    } catch { /* no package.json here */ }
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return repoDirCache;
+}
+
+let updateCheck = null;
+function checkUpdate() { // overlapping calls share one fetch
+  if (updateCheck) return updateCheck;
+  updateCheck = (async () => {
+    const dir = repoDir();
+    if (!dir) return { available: false };
+    const env = gitEnv();
+    if (!(await runFull('git', ['-C', dir, 'fetch', '--quiet'], { env, timeout: 30000 })).ok) return { available: false };
+    const behind = parseInt((await runFull('git', ['-C', dir, 'rev-list', '--count', 'HEAD..@{u}'], { env })).out, 10) || 0;
+    return { available: behind > 0, behind, canApply: !app.isPackaged };
+  })().finally(() => { updateCheck = null; });
+  return updateCheck;
+}
+
+async function applyUpdate() {
+  const dir = repoDir();
+  if (!dir || app.isPackaged) return { ok: false, error: 'This copy cannot update itself. Run git pull and rebuild it.' };
+  await shellEnvReady; // macOS: npm on the login shell's PATH
+  const env = gitEnv();
+  const before = (await runFull('git', ['-C', dir, 'rev-parse', 'HEAD'], { env })).out;
+  const pull = await runFull('git', ['-C', dir, 'pull', '--ff-only'], { env, timeout: 60000 });
+  if (!pull.ok) return { ok: false, error: pull.err || 'git pull failed.' };
+  const changed = (await runFull('git', ['-C', dir, 'diff', '--name-only', before, 'HEAD'], { env })).out;
+  if (/^package(-lock)?\.json$/m.test(changed)) {
+    const [file, args] = IS_MAC ? ['npm', ['install']] : ['cmd.exe', ['/d', '/c', 'npm', 'install']];
+    const npm = await runFull(file, args, { cwd: dir, timeout: 600000 });
+    if (!npm.ok) {
+      const tail = npm.err.split('\n').slice(-4).join('\n');
+      return { ok: false, error: `Pulled the update, but npm install failed. Close the app and run npm install in ${dir}.\n${tail}` };
+    }
+  }
+  forceClose = true;
+  app.relaunch();
+  app.quit(); // before-quit ends the sessions
+  return { ok: true };
+}
+
 // --------------------------------------------------------------- window ----
 
 let mainWindow = null;
@@ -984,6 +1058,8 @@ function registerIpc() {
   ipcMain.handle('mcp:list', (_e, cwd) => mcpList(cwd));
   ipcMain.handle('agents:defined', (_e, cwd) => definedAgents(cwd));
   ipcMain.handle('usage:get', () => getLimits());
+  ipcMain.handle('update:check', () => checkUpdate());
+  ipcMain.handle('update:apply', () => applyUpdate());
 
   ipcMain.handle('ports:list', () => listPorts());
 
