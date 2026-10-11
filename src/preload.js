@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('api', {
   mcpList: (cwd) => ipcRenderer.invoke('mcp:list', cwd),
   definedAgents: (cwd) => ipcRenderer.invoke('agents:defined', cwd),
   getUsage: () => ipcRenderer.invoke('usage:get'),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
+  applyUpdate: () => ipcRenderer.invoke('update:apply'),
   listPorts: () => ipcRenderer.invoke('ports:list'),
 
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),

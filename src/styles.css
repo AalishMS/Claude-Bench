@@ -107,6 +107,10 @@ button { font: inherit; color: inherit; }
 body.mac #topbar { padding-right: 8px; }
 body.mac #brand, body.mac #topbar #brand { padding-left: 72px; }
 body.sidebar-collapsed .brand-name { display: none; }
+/* Update available (end of the brand row): tinted with the accent, the only colored icon there; pulses while pulling */
+#update-slot { display: flex; margin-left: auto; }
+#update-slot .update .ico { color: color-mix(in srgb, var(--primary) 60%, var(--foreground)); }
+#update-slot .update.busy { animation: pulse 1.2s ease-in-out infinite; cursor: default; }
 @keyframes pulse { 50% { opacity: 0.3; } }
 
 /* --------------------------------------------------------------- body --- */

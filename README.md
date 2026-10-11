@@ -41,6 +41,18 @@ npm run package:mac      # build dist/mac-*/Claude Bench.app (unsigned, for your
 - If tabs fail with `posix_spawnp failed`: `chmod +x node_modules/@lydell/node-pty-darwin-*/spawn-helper`.
 - If macOS says the built app is damaged: `codesign --force --deep -s - "dist/mac-arm64/Claude Bench.app"`.
 
+## Updating
+
+When the repo you cloned has new commits, a download icon appears at the top of the sidebar, next to "Claude Bench".
+
+- **Running with `npm start`:** click it. The app pulls the update, runs `npm install` if dependencies changed, and
+  restarts (open sessions end; it asks first if Claude is working). If you edited files locally and they clash with the
+  update, it stops and shows git's message.
+- **Running a built copy (`.exe` / `.app`):** it can't rebuild itself while open. Click the icon to copy the command,
+  close the app, and run it in the repo folder: `git pull`, then `npm run package` (Windows) or `npm run package:mac`.
+
+Your projects and settings are stored outside the repo, so updating keeps them.
+
 ## Shortcuts
 
 | Keys | Action |
