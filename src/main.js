@@ -192,6 +192,8 @@ function createSession({ id, cwd, kind, args, resumeId, cols, rows }) {
 
   const env = { ...process.env, COLORTERM: 'truecolor', TERM_PROGRAM: 'ClaudeBench' };
   for (const k of STRIP_ENV) delete env[k];
+  delete env.NO_COLOR; // an inherited NO_COLOR makes claude and shells print everything uncolored
+  if (env.FORCE_COLOR === '0') delete env.FORCE_COLOR;
 
   let file;
   let argv;
