@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, Notification, ipcMain, dialog, shell, clipboard, screen, nativeImage } = require('electron');
+const { app, BrowserWindow, Menu, Notification, ipcMain, dialog, shell, clipboard, screen, nativeImage, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -68,7 +68,7 @@ if (IS_MAC && !process.env.LANG) process.env.LANG = 'en_US.UTF-8'; // Finder lau
 
 const defaults = {
   projects: [], // [{ path, name }]
-  ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, fontSize: 14, expanded: [], collapsed: [], keys: {} }, // expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut; keys: shortcut overrides (action id -> combos)
+  ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, fontSize: 14, theme: 'dark', accent: 'blue', expanded: [], collapsed: [], keys: {} }, // theme: dark | light | system; accent: ACCENTS; expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut; keys: shortcut overrides (action id -> combos)
   bounds: null,
   maximized: false,
   tabs: [], // open tabs in tab order, reopened at launch: [{ project: path, kind: 'claude' | 'shell', sessionId }]
@@ -1314,6 +1314,31 @@ function visibleBounds(b) {
   }
 }
 
+// Appearance (settings page). The renderer's CSS follows prefers-color-scheme, which nativeTheme.themeSource drives,
+// so 'system' needs no code of its own. These literals paint before CSS loads: keep them equal to --background
+// (and --muted-foreground for the window buttons) of each theme (DESIGN.md sync point).
+const THEMES = ['dark', 'light', 'system'];
+const ACCENTS = ['blue', 'violet', 'teal', 'rose'];
+const CHROME = { dark: { bg: '#0a0a0a', symbol: '#a1a1a1' }, light: { bg: '#ffffff', symbol: '#525252' } };
+const chrome = () => CHROME[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'];
+
+function applyTheme() {
+  if (!THEMES.includes(state.ui.theme)) state.ui.theme = 'dark';
+  if (!ACCENTS.includes(state.ui.accent)) state.ui.accent = 'blue';
+  if (nativeTheme.themeSource !== state.ui.theme) nativeTheme.themeSource = state.ui.theme;
+  applyChrome();
+}
+
+/** Window background and (Windows) the title bar buttons' colors for the resolved theme. */
+function applyChrome() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const c = chrome();
+  try {
+    mainWindow.setBackgroundColor(c.bg);
+    if (!IS_MAC) mainWindow.setTitleBarOverlay({ color: c.bg, symbolColor: c.symbol, height: 39 });
+  } catch { /* older Electron or no overlay: cosmetic only */ }
+}
+
 function createWindow() {
   const b = visibleBounds(state.bounds);
   mainWindow = new BrowserWindow({
@@ -1323,13 +1348,13 @@ function createWindow() {
     y: b?.y,
     minWidth: 900,
     minHeight: 560,
-    backgroundColor: '#0a0a0a', // = --background (DESIGN.md sync point)
+    backgroundColor: chrome().bg, // = --background (DESIGN.md sync point)
     title: 'Claude Bench',
     icon: ICON,
     titleBarStyle: 'hidden',
     ...(IS_MAC
       ? { trafficLightPosition: { x: 14, y: 13 } } // centred in the 40 px top row; #brand leaves room (body.mac in styles.css)
-      : { titleBarOverlay: { color: '#0a0a0a', symbolColor: '#a1a1a1', height: 39 } }), // sits on the top bar (--background), 1 px short so the bar's border-bottom (row 40) runs under it to the edge
+      : { titleBarOverlay: { color: chrome().bg, symbolColor: chrome().symbol, height: 39 } }), // sits on the top bar (--background), 1 px short so the bar's border-bottom (row 40) runs under it to the edge
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -1504,6 +1529,8 @@ if (!app.requestSingleInstanceLock()) {
     // macOS: Electron's default menu binds Cmd+W, Cmd+R and Cmd+=/- (our shortcuts). Keep Quit/Hide and the Edit roles,
     // which give Cmd+C/V/A to the terminal and to inputs. Windows keeps its default menu (hidden with the title bar).
     if (IS_MAC) Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }]));
+    applyTheme(); // before the window, so its first paint and the page's prefers-color-scheme are right
+    nativeTheme.on('updated', applyChrome); // 'system' follows the OS switching light/dark
     createWindow();
     const p = pathFromArgv(process.argv);
     if (p) {
@@ -1569,6 +1596,7 @@ function registerIpc() {
       state.ui.expanded = patch.expanded.filter((p) => typeof p === 'string').slice(0, 200);
     }
     state.ui.fontSize = Math.min(24, Math.max(10, Math.round(state.ui.fontSize) || 14));
+    if (patch?.theme || patch?.accent) applyTheme();
     saveState();
   });
 

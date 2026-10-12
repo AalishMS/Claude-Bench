@@ -8,6 +8,12 @@ const $ = (sel, root = document) => root.querySelector(sel);
 /** Read a CSS custom property from :root (styles.css is loaded before this script). */
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
+// Theme: main sets nativeTheme.themeSource from ui.theme (dark | light | system) before the window opens, so
+// prefers-color-scheme already resolves it here. data-theme picks the token set in styles.css; set it before first paint.
+const darkScheme = matchMedia('(prefers-color-scheme: dark)');
+const themeName = () => (darkScheme.matches ? 'dark' : 'light');
+document.documentElement.dataset.theme = themeName();
+
 /** Tiny DOM builder. Text is always added as text nodes; `html` is for static icons only. */
 function h(tag, props, ...children) {
   const el = document.createElement(tag);
@@ -56,6 +62,9 @@ const ICONS = {
   undo: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   check: '<polyline points="20 6 9 17 4 12"/>',
+  palette: '<circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.56-2.5 5.56-5.55C21.97 6.01 17.46 2 12 2z"/>',
+  keyboard: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>',
+  minus: '<line x1="5" y1="12" x2="19" y2="12"/>',
   fork: '<circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/>',
   arrowUp: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
@@ -185,7 +194,7 @@ const tip = (label, id) => (keyText(id) ? `${label} (${keyText(id)})` : label);
 // --------------------------------------------------------------- state ----
 
 let projects = [];
-let ui = { sidebar: true, servers: true, fontSize: 14, collapsed: [] }; // replaced by the saved state in init()
+let ui = { sidebar: true, servers: true, fontSize: 14, theme: 'dark', accent: 'blue', collapsed: [] }; // replaced by the saved state in init()
 const tabs = new Map(); // id -> tab
 let activeId = null;
 // Split groups (runtime only): [{ ids: [tab id, 2-4 of them], cx, ry, v }], newest first; a tab is in at most one.
@@ -236,21 +245,22 @@ const WINDOW_NOTE = 'Approximate: the window size is assumed from the model (1M 
 
 // Terminal typography. A light body weight with a clearly heavier bold, and generous line spacing, so
 // headings, prose, code and dim "thinking"/tool lines stay distinguishable. Size is user-adjustable (Ctrl +/-/0).
+// The light theme uses the regular weight: thin dark strokes on white break up.
 const TERM_FONT = {
   fontFamily: '"Cascadia Mono", Consolas, Menlo, monospace', // Menlo: macOS
-  fontWeight: '300',
   fontWeightBold: '700',
-  minimumContrastRatio: 3, // keeps brightBlack text (shell flags, hints) readable now that brightBlack is a dark bar
+  minimumContrastRatio: 3, // keeps brightBlack text (shell flags, hints) readable now that brightBlack is a bar color
   lineHeight: 1.4,
   letterSpacing: 0.2,
 };
+const termWeight = () => (themeName() === 'light' ? '400' : '300');
 const FONT_SIZE = { min: 10, max: 24, default: 14 };
 
-const XTERM_THEME = {
-  background: cssVar('--background'),
+// ANSI palettes per theme (DESIGN.md section 5). Claude Code's message bar is brightWhite on brightBlack, so
+// brightBlack is a quiet bar one step off --background and brightWhite the strongest text: white in dark, black in light.
+const XTERM_DARK = {
   foreground: '#dcdcdc',
   cursor: '#eaeaea',
-  cursorAccent: cssVar('--background'),
   selectionBackground: 'rgba(255, 255, 255, 0.22)',
   black: '#2a2a2a', red: '#e5736f', green: '#86c06c', yellow: '#e2b657',
   blue: '#6fa8dc', magenta: '#c490d1', cyan: '#6ec5c0', white: '#b0b0b0',
@@ -258,6 +268,36 @@ const XTERM_THEME = {
   brightRed: '#f0908c', brightGreen: '#a3d58b', brightYellow: '#efce7d',
   brightBlue: '#8cc2f0', brightMagenta: '#d8aee3', brightCyan: '#92d9d4', brightWhite: '#ffffff',
 };
+const XTERM_LIGHT = {
+  foreground: '#262626',
+  cursor: '#1a1a1a',
+  selectionBackground: 'rgba(0, 0, 0, 0.14)',
+  black: '#3a3a3a', red: '#c4403b', green: '#3b8a2e', yellow: '#946200',
+  blue: '#2a62b0', magenta: '#9440a8', cyan: '#1a7c84', white: '#707070',
+  brightBlack: '#ebebeb', // the user's message bar: one step below --background (#ffffff)
+  brightRed: '#b02a24', brightGreen: '#2c7a20', brightYellow: '#7d5200',
+  brightBlue: '#1d58b0', brightMagenta: '#83309a', brightCyan: '#126c73', brightWhite: '#000000',
+};
+/** The terminal background is --background of the current theme. */
+const xtermTheme = () => ({
+  ...(themeName() === 'light' ? XTERM_LIGHT : XTERM_DARK),
+  background: cssVar('--background'),
+  cursorAccent: cssVar('--background'),
+});
+
+/** Theme (settings, or the OS while on System) or accent changed: restyle the page and every terminal. */
+function applyTheme() {
+  const root = document.documentElement;
+  root.dataset.theme = themeName();
+  root.dataset.accent = ui.accent || 'blue';
+  const theme = xtermTheme();
+  for (const t of tabs.values()) {
+    t.term.options.theme = theme;
+    t.term.options.fontWeight = termWeight();
+  }
+  renderSettings();
+}
+darkScheme.addEventListener('change', applyTheme);
 
 // -------------------------------------------------------------- dialogs ----
 
@@ -506,11 +546,12 @@ function createTab(project, { kind = 'claude', args = [], resumeId = null, fork 
 
   const term = new Terminal({
     ...TERM_FONT,
+    fontWeight: termWeight(),
     fontSize: ui.fontSize,
     cursorBlink: true,
     scrollback: 20000,
     allowProposedApi: true,
-    theme: XTERM_THEME,
+    theme: xtermTheme(),
     // macOS (both are already the defaults on Windows): right-click must not select a word, or the contextmenu
     // handler copies it instead of pasting; Option acts as Meta so Claude's Option+P/T/B/F shortcuts work.
     rightClickSelectsWord: false,
@@ -2038,11 +2079,17 @@ function renderWelcome() {
 }
 
 // -------------------------------------------------------------- settings ----
-// A page over the terminal area (gear in the sidebar footer). For now one section: the shortcuts, each editable.
-// Recording a combo another action uses takes it from that action.
+// A page over the terminal area (gear in the sidebar footer): a section nav on the left, the open section on the
+// right. Appearance (theme, accent, text size) and Shortcuts (each editable; recording a combo another action uses
+// takes it from that action).
 
+let settingsTab = 'appearance'; // section shown on the settings page (runtime only)
 let recording = null; // { id, index } while waiting for keys: index of the combo to replace, or -1 to add one
 let keysNote = null; // { text, err } under the section header after the last change
+
+const SETTINGS_TABS = [['appearance', 'Appearance', 'palette'], ['shortcuts', 'Shortcuts', 'keyboard']];
+const THEMES = [['dark', 'Dark'], ['light', 'Light'], ['system', 'System']];
+const ACCENTS = [['blue', 'Blue'], ['violet', 'Violet'], ['teal', 'Teal'], ['rose', 'Rose']];
 
 function toggleSettings(open = !settingsOpen) {
   if (open === settingsOpen) return;
@@ -2062,24 +2109,82 @@ function toggleSettings(open = !settingsOpen) {
   renderFoot(true);
 }
 
+/** Redraws the page; the control that had focus (data-fk) gets it back, so keyboard use survives a re-render. */
 function renderSettings() {
   if (!settingsOpen) return;
-  const groups = [...new Set(SHORTCUTS.map((s) => s.group))];
-  const anyCustom = SHORTCUTS.some(isCustom);
+  const fk = document.activeElement?.closest?.('#settings [data-fk]')?.dataset.fk;
   $('#settings').replaceChildren(h('div', { class: 'set-inner' },
     h('div', { class: 'set-head' },
       h('h1', {}, 'Settings'),
       h('button', { class: 'btn ghost icon', title: 'Close (Esc)', onclick: () => toggleSettings(false) }, ico('x'))),
-    h('section', {},
-      h('div', { class: 'set-sec-head' },
-        h('div', {},
-          h('h2', {}, 'Shortcuts'),
-          h('p', {}, 'Click a shortcut to change it, or + to add another. Esc cancels.')),
-        anyCustom ? h('button', { class: 'btn outline sm', onclick: resetAllKeys }, 'Reset all') : null),
-      keysNote ? h('div', { class: `set-note${keysNote.err ? ' err' : ''}` }, keysNote.text) : null,
-      groups.map((g) => h('div', { class: 'set-group' },
-        h('div', { class: 'set-label' }, g),
-        SHORTCUTS.filter((s) => s.group === g).map(shortcutRow))))));
+    h('div', { class: 'set-layout' },
+      h('nav', { class: 'set-nav' }, SETTINGS_TABS.map(([id, label, icon]) =>
+        h('button', {
+          class: `set-nav-item${settingsTab === id ? ' on' : ''}`, 'data-fk': `nav-${id}`,
+          'aria-current': settingsTab === id ? 'page' : null,
+          onclick: () => { settingsTab = id; recording = keysNote = null; renderSettings(); },
+        }, ico(icon), label))),
+      settingsTab === 'shortcuts' ? shortcutsSection() : appearanceSection())));
+  if (fk) $(`#settings [data-fk="${fk}"]`)?.focus();
+}
+
+const secHead = (title, desc, action = null) => h('div', { class: 'set-sec-head' },
+  h('div', {}, h('h2', {}, title), h('p', {}, desc)), action);
+
+function appearanceSection() {
+  const field = (name, desc, control) => h('div', { class: 'set-field' },
+    h('div', { class: 'set-field-name' }, name), h('div', { class: 'set-field-desc' }, desc), control);
+  const line = (cls, width) => h('i', { class: `pv-line${cls ? ' ' + cls : ''}`, style: width ? `width: ${width}%` : null });
+  // a mini window in that theme's own tokens (styles.css applies [data-theme] to any element)
+  const mini = (theme) => h('div', { class: 'pv', 'data-theme': theme },
+    h('div', { class: 'pv-side' }, line('sel'), line(null, 80), line(null, 65)),
+    h('div', { class: 'pv-main' }, line('fg', 80), line(null, 60), line(null, 70), line('acc')));
+  const def = FONT_SIZE.default;
+  return h('section', {},
+    secHead('Appearance', 'How Claude Bench looks. Changes apply at once.'),
+    field('Theme', `System follows ${IS_MAC ? 'macOS' : 'Windows'}. Claude Code picks some colors itself: run /theme in a session to match.`,
+      h('div', { class: 'theme-opts', role: 'radiogroup', 'aria-label': 'Theme' }, THEMES.map(([id, label]) =>
+        h('button', {
+          class: `theme-opt${ui.theme === id ? ' on' : ''}`, role: 'radio', 'aria-checked': String(ui.theme === id), 'data-fk': `theme-${id}`,
+          onclick: () => setTheme(id),
+        }, h('span', { class: 'pv-frame' }, id === 'system' ? [mini('dark'), mini('light')] : mini(id)), label)))),
+    field('Accent color', 'Primary buttons, focus rings, meters, attention dots and the split view.',
+      h('div', { class: 'accent-opts', role: 'radiogroup', 'aria-label': 'Accent color' }, ACCENTS.map(([id, label]) =>
+        h('button', {
+          class: `accent-opt${ui.accent === id ? ' on' : ''}`, role: 'radio', 'aria-checked': String(ui.accent === id), 'data-fk': `accent-${id}`,
+          onclick: () => setAccent(id),
+        }, h('span', { class: 'swatch', 'data-accent': id }), label)))),
+    field('Terminal text size', 'For every session.',
+      h('div', { class: 'size-ctl' },
+        h('button', { class: 'btn outline icon sm', title: tip('Smaller text', 'zoomOut'), 'data-fk': 'size-down', disabled: ui.fontSize <= FONT_SIZE.min, onclick: () => setFontSize(ui.fontSize - 1) }, ico('minus')),
+        h('span', { class: 'size-val' }, `${ui.fontSize} px`),
+        h('button', { class: 'btn outline icon sm', title: tip('Larger text', 'zoomIn'), 'data-fk': 'size-up', disabled: ui.fontSize >= FONT_SIZE.max, onclick: () => setFontSize(ui.fontSize + 1) }, ico('plus')),
+        ui.fontSize !== def
+          ? h('button', { class: 'btn ghost sm', title: tip('Default text size', 'zoomReset'), 'data-fk': 'size-reset', onclick: () => setFontSize(def) }, `Reset to ${def}`)
+          : null)));
+}
+
+function setTheme(theme) {
+  ui.theme = theme;
+  api.setUi({ theme }); // main sets nativeTheme.themeSource; the prefers-color-scheme change then calls applyTheme
+  renderSettings();
+}
+
+function setAccent(accent) {
+  ui.accent = accent;
+  api.setUi({ accent });
+  applyTheme();
+}
+
+function shortcutsSection() {
+  const groups = [...new Set(SHORTCUTS.map((s) => s.group))];
+  return h('section', {},
+    secHead('Shortcuts', 'Click a shortcut to change it, or + to add another. Esc cancels.',
+      SHORTCUTS.some(isCustom) ? h('button', { class: 'btn outline sm', onclick: resetAllKeys }, 'Reset all') : null),
+    keysNote ? h('div', { class: `set-note${keysNote.err ? ' err' : ''}` }, keysNote.text) : null,
+    groups.map((g) => h('div', { class: 'set-group' },
+      h('div', { class: 'set-label' }, g),
+      h('div', { class: 'set-card' }, SHORTCUTS.filter((s) => s.group === g).map(shortcutRow)))));
 }
 
 function shortcutRow(s) {
@@ -2489,6 +2594,7 @@ function setFontSize(size) {
   for (const t of tabs.values()) t.term.options.fontSize = ui.fontSize;
   api.setUi({ fontSize: ui.fontSize });
   requestAnimationFrame(fitActive);
+  renderSettings();
 }
 
 // Sidebar widths: the CSS vars hold the live value, ui.sidebarW / ui.rsideW the saved one.
@@ -2994,6 +3100,7 @@ async function init() {
   projects = state.projects;
   ui = state.ui;
   ui.collapsed ||= [];
+  applyTheme();
   loadKeys(ui.keys);
   applyKeyTitles();
   for (const key of Object.keys(PANEL_W)) applyPanelW(key, ui[key]);

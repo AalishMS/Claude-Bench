@@ -81,6 +81,7 @@ Things that differ on a Mac:
   in PATH"), otherwise VS Code opens the file without the line. Binary files open in their default app (`open`).
 - The footer's plan limits read Claude Code's token from the Keychain. macOS may ask once for access.
 - Notifications go through Notification Center. Allow them when asked (under `npm start` they show as Electron).
+- Settings > Appearance > System follows macOS light/dark mode, and the traffic lights and menus follow the chosen theme.
 
 If something goes wrong:
 
@@ -116,7 +117,9 @@ If your local edits clash with the update, it stops and shows git's message. To 
 | `Ctrl+Shift+F` | Search sessions |
 | `Ctrl+,` | Settings |
 
-Every shortcut can be changed in Settings (the gear at the bottom left). The defaults stay clear of keys Claude Code
+Settings (the gear at the bottom left) has two pages. **Appearance**: dark, light or system theme, an accent color
+(blue, violet, teal, rose) and the terminal text size. Claude Code picks some of its colors itself, so after switching
+to light run `/theme` in a session and pick a light theme there too. **Shortcuts**: every shortcut can be changed. The defaults stay clear of keys Claude Code
 uses, except `Ctrl+T`, `Ctrl+S` and `Ctrl+W`. Drop files onto a terminal to paste their paths. `F12` opens DevTools.
 
 <p align="center">

@@ -1,6 +1,6 @@
 # Claude Bench design system
 
-The UI follows **[shadcn/ui](https://ui.shadcn.com/)**: the dark theme on the neutral base color (v4 tokens), plus a
+The UI follows **[shadcn/ui](https://ui.shadcn.com/)**: the dark (default) and light themes on the neutral base color (v4 tokens), plus a
 short list of deliberate tweaks for a compact, terminal-first desktop tool. This file is the source of truth for how
 the app looks. Read it before any UI change, and update it in the same change if a rule has to move.
 
@@ -10,52 +10,66 @@ helper uses. The Tailwind class names in this file only say which shadcn recipe 
 
 ## 1. Tokens
 
-All colors, radii and shadows are CSS variables on `:root` in `src/styles.css`, and they use shadcn's names. Change
-a token, never a scattered value. Dark only: there is no light theme.
+All colors, radii and shadows are CSS variables in `src/styles.css`, and they use shadcn's names. Change a token,
+never a scattered value.
 
-| Token | Value | Used for |
-|---|---|---|
-| `--background` | `#0a0a0a` | terminal, top bar, status bar, right panel, dialogs (lighter than `--sidebar`, a tweak) |
-| `--foreground` | `#fafafa` | body text |
-| `--card` | `#0a0a0a` | card surface (same as the background) |
-| `--popover` | `#0a0a0a` | footer detail popover, `…` menu, exit overlay |
-| `--primary` | `#2850a5` | **the one accent** (royal blue, a tweak: shadcn's own primary is near-white) |
-| `--primary-foreground` | `#fafafa` | text on primary |
-| `--secondary`, `--muted`, `--accent` | `#262626` | tab list, kbd, meter track, hover surfaces |
-| `--muted-foreground` | `#a1a1a1` | secondary text, inactive tabs, labels |
-| `--faint` | `#737373` | tertiary meta: paths, times, placeholders (tweak; shadcn has no third text level) |
-| `--border` | `rgb(255 255 255 / 10%)` | dividers, panel and card borders |
-| `--input` | `rgb(255 255 255 / 15%)` | input, outline button and active tab borders |
-| `--ring` | `var(--primary)` | focus rings (tweak; shadcn's ring is grey) |
-| `--destructive` | `#ff6467` | destructive actions, conflicts, critical meters |
-| `--success` | `#7fb77e` | running |
-| `--warning` | `#d6b25e` | uncommitted changes, background activity |
-| `--sidebar` | `#030303` | left project sidebar only: the darkest surface, plus faint white noise (up to ~`#050505`, an SVG data-URI on `#sidebar`) (tweak) |
-| `--sidebar-foreground` | `#fafafa` | |
-| `--sidebar-accent` | `#262626` | selected sidebar row |
-| `--sidebar-hover` | `color-mix(--sidebar-accent 50%, transparent)` | hovered sidebar row: a softer selected |
-| `--sidebar-border` | `#1d1d1d` | the 1 px dividers: sidebar / terminal, terminal / right panel |
-| `--radius` | `10px` | base radius |
-| `--radius-sm` / `-md` / `-lg` / `-xl` | `6` / `8` / `10` / `14px` | shadcn's `rounded-sm/md/lg/xl` |
-| `--shadow-sm` / `-md` / `-lg` | | chips, popovers, dialogs (barely visible on dark, as in shadcn) |
+**Themes** (Settings > Appearance, `ui.theme` = `dark` | `light` | `system`, default dark). Main sets
+`nativeTheme.themeSource`, so `prefers-color-scheme` resolves the choice (System follows the OS live); renderer.js
+mirrors it as `data-theme` on `<html>`. The color tokens sit in two blocks: `:root, [data-theme="dark"]` and
+`[data-theme="light"]`. Any element with `data-theme` gets that theme's tokens (the settings page's preview cards use
+this). Theme-independent tokens (radii, `--mono`, widths, `--group-*`, the accent) stay on `:root` only, so a nested
+`[data-theme]` never resets the accent.
+
+| Token | Dark | Light | Used for |
+|---|---|---|---|
+| `--background` | `#0a0a0a` | `#ffffff` | terminal, top bar, status bar, right panel, dialogs |
+| `--foreground` | `#fafafa` | `#0a0a0a` | body text |
+| `--card` | `#0a0a0a` | `#ffffff` | card surface (same as the background) |
+| `--popover` | `#171717` | `#ffffff` | footer detail popover, `…` menu, update popover, exit overlay. Dark: one step above the terminal (shadcn v4), so menus don't melt into it |
+| `--primary` | accent | accent | **the one accent**, see below (a tweak: shadcn's own primary is near-white) |
+| `--primary-foreground` | `#fafafa` | `#fafafa` | text on primary |
+| `--secondary`, `--muted`, `--accent` | `#262626` | `#f5f5f5` / `#f0f0f0` | kbd, chips, meter track, hover surfaces |
+| `--muted-foreground` | `#a1a1a1` | `#5c5c5c` | secondary text, inactive tabs, labels |
+| `--faint` | `#737373` | `#858585` | tertiary meta: paths, times, placeholders (tweak; shadcn has no third text level) |
+| `--border` | `rgb(255 255 255 / 10%)` | `rgb(0 0 0 / 9%)` | dividers, panel and card borders |
+| `--input` | `rgb(255 255 255 / 15%)` | `rgb(0 0 0 / 14%)` | input, outline button and active tab borders |
+| `--ring` | `var(--primary)` | | focus rings (tweak; shadcn's ring is grey) |
+| `--destructive` | `#ff6467` | `#d92d2d` | destructive actions, conflicts, critical meters |
+| `--destructive-fill` | destructive 60 % | destructive | destructive button fill (white text) |
+| `--success` | `#7fb77e` | `#2f8a3c` | running |
+| `--warning` | `#d6b25e` | `#a86b00` | uncommitted changes, background activity |
+| `--sidebar` | `#030303` | `#f7f7f7` | left project sidebar only: the frame, darker than the work area in both themes. Dark adds faint white noise (up to ~`#050505`, an SVG data-URI on `#sidebar`) (tweak) |
+| `--sidebar-foreground` | `#fafafa` | `#0a0a0a` | |
+| `--sidebar-accent` | `#262626` | `#e8e8e8` | selected sidebar row, gauge track |
+| `--sidebar-hover` | sidebar-accent 50 % | 60 % | hovered sidebar row: a softer selected |
+| `--sidebar-border` | `#1d1d1d` | `#e5e5e5` | the 1 px dividers: sidebar / terminal, terminal / right panel |
+| `--scrim` | `rgb(0 0 0 / 60%)` | `35%` | dialog backdrop |
+| `--radius` | `10px` | | base radius |
+| `--radius-sm` / `-md` / `-lg` / `-xl` | `6` / `8` / `10` / `14px` | | shadcn's `rounded-sm/md/lg/xl` |
+| `--shadow-sm` / `-md` / `-lg` | stronger | shadcn's | chips, popovers, dialogs. Dark uses real shadows (30-70 % black): shadcn's 10 % vanish on near-black, and menus open over terminal text |
 
 The `accent` name is a trap: in shadcn, `--accent` is the **neutral hover surface**. The brand color is `--primary`.
 
 ### The accent rule
 
-`--primary` is the only accent literal. Everything tinted is derived from it with `color-mix()`:
+`--primary` is the only accent. It comes from the accent table in styles.css (Settings > Appearance, `ui.accent`,
+`data-accent` on `<html>`): `blue` `#2850a5` (default), `violet` `#6b4fc8`, `teal` `#12776f`, `rose` `#b8336a`, as
+`--hue-*` tokens. The same in both themes; each keeps white text readable on a primary button. Everything tinted is
+derived from `--primary` with `color-mix()`:
 
 - `--primary-hover: color-mix(in srgb, var(--primary) 85%, white)`
 - focus ring: `0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent)`
 - meter track: `color-mix(in srgb, var(--primary) 20%, transparent)`
 
-So a future accent setting only has to call `document.documentElement.style.setProperty('--primary', value)`.
-Never hard-code the blue, or a tint of it, anywhere else (CSS, renderer, inline styles).
+Never hard-code an accent hue, or a tint of one, anywhere else (CSS, renderer, inline styles). The settings page's
+swatches set `data-accent` on the swatch and paint `var(--primary)`. A new accent = one `--hue-*` token, one
+`[data-accent]` rule, and the `ACCENTS` lists in main.js and renderer.js.
 
 Primary appears **only** on: primary buttons, focus rings, progress-meter fills, the checked checkbox, the
 "needs attention" status dot, drag-and-drop targets (split drop preview) and the sidebar's split group. Nothing else gets it. The one exception to
 "single accent": with several split groups, groups after the first take `--group-1..4` (violet, teal, rose, orange,
-away from the status hues) so they can be told apart; a lone group is always `--primary`.
+away from the status hues) so they can be told apart; a lone group is always `--primary`. When the accent is one of
+those hues, its `[data-accent]` rule swaps that group color for blue, so the five stay distinct.
 
 ### Status colors
 
@@ -116,11 +130,24 @@ the dot column stays at 28 px, and use a 7 px radius so the corners nest. The gr
 different projects it sits at the top of the list and each row shows its project name (11 px `--faint`) in place of the time.
 
 ### Settings page
-`#settings` covers the terminal area (top bar, sidebars and status bar stay). Centered 640 px column, 32 px padding:
-title 18 px / 600 with a ghost `×`, then sections. A section header has a 14 px / 600 title, a 12 px muted line, an
-optional `Reset all` outline sm button on the right, and a 1 px `--border` rule under it. Groups use the 12 px / 500
-`--faint` label; rows are flat 40 px rows (hover `--sidebar-hover`) with the name (13 px) and an optional 11 px `--faint`
-hint on the left. Shortcuts are **Kbd chips** (h 24, `--muted`, 11 px mono, `rounded-sm`; a 20 px `×` fades in on chip
+`#settings` covers the terminal area (top bar, sidebars and status bar stay). Centered 840 px column, 32 px padding:
+title 18 px / 600 with a ghost `×`, then a two-column layout (shadcn's settings example): a 168 px sticky section nav
+(32 px rows, 14 px icon, `--muted-foreground`; hover `--sidebar-hover`; the open one `--accent` bg, `--foreground`,
+500) and the open section. Sections: **Appearance** (default) and **Shortcuts**; the open one is runtime only. A
+section header has a 14 px / 600 title, a 12 px muted line, an optional `Reset all` outline sm button on the right, and
+a 1 px `--border` rule under it.
+
+Appearance is a stack of fields (20 px padding, `--border` rules between): name 13 px / 500, a 12 px muted line, then
+the control. **Theme**: three preview cards (16:10, `rounded-lg`, 1 px `--border` ring; hover `--input`; selected 2 px
+`--ring`), each a mini window drawn with that theme's own tokens (`.pv[data-theme]`: sidebar strip, a few
+`--muted` lines, a `--primary` button); System shows dark and light cut diagonally. Label under the card, 12 px / 500,
+`--foreground` when selected. **Accent color**: outline-style option buttons (h 32) with a 14 px swatch dot + name;
+selected = `--ring` border. **Terminal text size**: outline icon `−` / `+`, the value in mono, and a ghost
+"Reset to 14" when changed. All are `role=radio` groups; a re-render puts focus back on the same control (`data-fk`).
+
+Shortcuts: each group is a 12 px / 500 `--faint` label over one bordered card (`rounded-lg`, 1 px `--border`, rows
+split by 1 px `--border`). Rows are 44 px (hover: `--accent` 50 %) with the name (13 px) and an optional 11 px
+`--faint` hint on the left. Shortcuts are **Kbd chips** (h 24, `--muted`, 11 px mono, `rounded-sm`; a 20 px `×` fades in on chip
 hover without shifting anything), then a ghost `+` and, on changed rows, a ghost `undo` reset (an empty 24 px slot
 otherwise, so the chips stay aligned). Recording shows a "Press keys…" chip with the focus ring. Notes go under the
 section header (12 px muted, `--destructive` for errors).
@@ -219,7 +246,7 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - Track `color-mix(--primary 20%, transparent)`, `rounded-full`; fill `--primary`.
 - `.warn` fill `--warning`, `.crit` fill `--destructive` (track stays neutral `--muted` then).
 - Ring gauge (`.gauge`, circular Progress): 16 px, 3 px stroke, pure CSS (`conic-gradient` masked to a ring,
-  `--p` = percent). Same fills; the track is always `--muted`, because a primary tint disappears on `--sidebar`.
+  `--p` = percent). Same fills; the track is always `--sidebar-accent`, because a primary tint disappears on `--sidebar` (and `--muted` does in light).
 
 ### Kbd: shadcn `Kbd`
 - bg `--muted`, `rounded-sm`, h 20, padding 0 6, 11 px mono, `--muted-foreground`.
@@ -262,22 +289,28 @@ Per-line font size is impossible in a terminal grid, and the app never re-parses
 `XTERM_THEME` is the real lever.
 
 - **Typography** (`TERM_FONT` in renderer.js): Cascadia Mono (Menlo on macOS, which has no light weight), light body
-  weight (300), bold 700, line height 1.4, slight letter spacing. Size via `Ctrl +` / `Ctrl -` / `Ctrl 0` (`⌘` on macOS;
+  weight (300; 400 in the light theme, where thin dark strokes on white break up, `termWeight()`), bold 700, line height 1.4, slight letter spacing. Size via `Ctrl +` / `Ctrl -` / `Ctrl 0` (`⌘` on macOS;
   10–24, saved in `ui.fontSize`).
 - Claude Code emits the **ANSI 16-color palette** (measured from the xterm buffer): default fg = body, `white` =
   secondary/meta text and rules, `white`+dim = diff context, `brightWhite` on `brightBlack` bg = the user's message bar,
   `brightBlue` = inline code, `brightGreen` = bullets and diff +, `brightRed` = diff -, bold = headings/strong, italic
   = emphasis/quotes, H1 = bold+italic+underline.
-- Keep `white` mid-grey (hierarchy) and `brightBlack` dark (a quiet message bar): `#262626`, one step above
-  `--background`. If the background moves, move `brightBlack` with it so the bar stays visible but quiet. `minimumContrastRatio: 3` keeps
-  PowerShell's brightBlack flags readable.
-- The terminal background **is** `--background`: `XTERM_THEME.background` and `cursorAccent` are read from the CSS
-  variable at startup (`cssVar()` in renderer.js).
+- Two palettes, `XTERM_DARK` and `XTERM_LIGHT`; `xtermTheme()` picks one and `applyTheme()` restyles every open
+  terminal live. Keep `white` mid-grey (hierarchy) and `brightBlack` a quiet message bar one step off `--background`:
+  `#262626` in dark, `#ebebeb` in light. `brightWhite` is the strongest text, so it is `#ffffff` in dark and `#000000`
+  in light (the bar's text). If the background moves, move `brightBlack` with it. `minimumContrastRatio: 3` keeps
+  PowerShell's brightBlack flags readable, and in light also darkens any color Claude Code emits for a dark background.
+- Claude Code has its own theme (`/theme`); the app can't set it. In light, users should pick a light Claude theme.
+- The terminal background **is** `--background`: `background` and `cursorAccent` are read from the CSS variable
+  (`cssVar()` in renderer.js) whenever the theme is applied.
 
 ## 6. Sync points (literals that can't read CSS)
 
-- `src/main.js`: `backgroundColor` and `titleBarOverlay.color` = `#0a0a0a` (they paint before CSS loads; the
-  window controls sit on the top bar). Keep them equal to `--background`. `titleBarOverlay.height` is 39, one
+- `src/main.js`: `CHROME` = `{ dark: { bg: '#0a0a0a', symbol: '#a1a1a1' }, light: { bg: '#ffffff', symbol: '#525252' } }`,
+  used for `backgroundColor` and `titleBarOverlay` at creation and by `applyChrome()` (`setBackgroundColor` +
+  `setTitleBarOverlay`, Windows only) whenever the theme resolves differently. They paint before CSS loads and the
+  window controls sit on the top bar: keep `bg` equal to each theme's `--background`. `titleBarOverlay.height` is 39, one
   less than the 40 px top row, so the overlay doesn't paint over the bar's 1 px `border-bottom`.
-- `XTERM_THEME.brightBlack` (renderer.js) is tuned against `--background` (see section 5).
+- `XTERM_DARK.brightBlack` / `XTERM_LIGHT.brightBlack` (renderer.js) are tuned against each `--background` (see section 5).
+- `THEMES` / `ACCENTS` in main.js (validation) and renderer.js (settings page) list the same ids as styles.css.
 - `assets/icon-source.png` (1024 px master) → `assets/icon.png` (512 px, renderer and Windows toasts), `assets/icon.ico` (PNG frames: 16, 24, 32, 48, 64, 128, 256 px, Windows window/taskbar/package) and `assets/icon-mac.png` (tile at 824 px centred on 1024, macOS window and package). Outside the rounded tile is transparent. Replace derived assets together; the old code generator has been removed.

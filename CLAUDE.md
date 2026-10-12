@@ -52,15 +52,17 @@ tokens and component recipes, never installed (no React/Tailwind/Radix).
 
 - Tokens use shadcn names (`--background #0a0a0a`, `--sidebar #030303` = the darker left frame, `--foreground`, `--muted`, `--accent` = neutral hover surface,
   `--border`, `--input`, `--ring`, `--sidebar`...) as CSS variables at the top of `src/styles.css`. Change tokens,
-  not scattered values.
-- **`--primary` (royal blue `#2850a5`) is the single accent variable.** Hover and ring tints derive from it with
-  `color-mix()`, so a future accent setting only sets `--primary`. Never hard-code the blue anywhere else.
+  not scattered values. **Two themes**: color tokens live in `:root, [data-theme="dark"]` and `[data-theme="light"]`;
+  every UI change must look right in both (check light too).
+- **`--primary` is the single accent variable**, chosen in Settings > Appearance (`ui.accent`: blue `#2850a5` default,
+  violet, teal, rose; `--hue-*` + `[data-accent]` rules in styles.css). Hover and ring tints derive from it with
+  `color-mix()`. Never hard-code an accent hue anywhere else.
 - Color otherwise only carries meaning (`--success` running, `--warning` dirty/busy, `--destructive`). No badges,
   gradients or decorative color. Git info is plain text.
 - Buttons are `.btn` + `primary|outline|ghost|destructive` + `sm|icon` (rounded-md, no pills). There is no tab
   strip: sidebar session rows are the tabs. Sidebar rows are flat 32 px rounded rows with no borders or boxes.
-- Terminal typography and the ANSI palette rules are in DESIGN.md section 5. `XTERM_THEME.background` reads
-  `--background`; `titleBarOverlay` / `backgroundColor` in main.js are literals that must match it (`#0a0a0a`).
+- Terminal typography and the ANSI palette rules are in DESIGN.md section 5. `xtermTheme()` reads `--background`;
+  main.js's `CHROME` literals (window background, title bar buttons) must match each theme's `--background`.
 
 ## Architecture
 
@@ -73,7 +75,7 @@ DESIGN.md        design system (shadcn/ui + tweaks): tokens, component recipes, 
 scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged copy, see "Update")
 ```
 
-- **State** lives in `%APPDATA%\claude-bench\state.json`, on macOS in Electron's userData under `~/Library/Application Support` (projects, ui flags incl. sidebar widths and shortcut overrides, window bounds). Written
+- **State** lives in `%APPDATA%\claude-bench\state.json`, on macOS in Electron's userData under `~/Library/Application Support` (projects, ui flags incl. sidebar widths, theme, accent and shortcut overrides, window bounds). Written
   synchronously via tmp file + rename. The app used to be "Claude Terminal": if no state exists yet, the loader
   reads `%APPDATA%\claude-terminal\state.json` once (`legacyStateFile`).
 - **Restore tabs**: `state.tabs` (`{ project, kind, sessionId }` in tab order) + `state.activeTab`, sent by the renderer's
@@ -110,6 +112,8 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
   - Images (right sidebar): no Mac branch. `nativeImage` decodes the thumbnails, `shell.showItemInFolder` backs "Show in Finder"
     (label via `FILES_APP`); transcript paths are the same as on Windows.
+  - Appearance: `nativeTheme.themeSource` also themes the traffic-light area and menus; `setTitleBarOverlay` is skipped
+    (Windows only). System follows macOS appearance.
   - Notifications: plain Electron `Notification` (no registry step). An unsigned app may show as "Electron" from
     `npm start`; if the user denied permission nothing shows and `notify` swallows any error.
   - Packaged update: `/bin/bash update.sh` detached with the login shell's PATH (after `shellEnvReady`); waits on the
@@ -143,8 +147,17 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   capture-phase keydown handler) prefers exact combos over patterns; a `run` returning `false` lets the key through. `ui.keys`
   stores only actions that differ from the defaults (main sanitizes it). Tooltips and hints read the live bindings through
   `tip()` / `keyText()`; `keysChanged()` redraws them.
+- **Appearance** (`ui.theme` dark | light | system, default dark; `ui.accent`): main's `applyTheme` validates both
+  (`THEMES` / `ACCENTS`) and sets `nativeTheme.themeSource`, at startup before the window and on `ui:set`; `applyChrome`
+  repaints the window background and Windows title bar buttons (`CHROME`) on every `nativeTheme` 'updated'. The renderer
+  never decides the theme itself: `themeName()` = `prefers-color-scheme`, which follows `themeSource` (so System tracks
+  the OS live). `data-theme` is set at the top of renderer.js (before first paint); `applyTheme()` sets `data-theme` /
+  `data-accent` and restyles every terminal (`xtermTheme()`, `termWeight()`), on the media query's `change` and on an
+  accent change. Claude Code's own colors follow its `/theme`, not ours.
 - **Settings page** (`#settings` over `#main`, gear at the left of the sidebar footer or `Ctrl+,`; `toggleSettings` /
-  `renderSettings`): for now only Shortcuts. Clicking a chip (or +) records the next combo with Ctrl/Alt/Cmd (or an F key);
+  `renderSettings`): a section nav (`SETTINGS_TABS`, `settingsTab`, runtime only) with Appearance (`appearanceSection`:
+  theme preview cards, accent options, terminal text size) and Shortcuts (`shortcutsSection`, a bordered card per group).
+  A re-render refocuses the control that had focus (`data-fk`). Shortcuts: clicking a chip (or +) records the next combo with Ctrl/Alt/Cmd (or an F key);
   a combo another action uses is moved over (`keysNote` says so). Esc cancels recording, then closes the page; activating
   any tab closes it too.
 - **Split view** (saved with the tabs, see "Restore tabs"): `splits` = a list of groups `{ ids, cx, ry, v, color }` (newest first, a tab in at
