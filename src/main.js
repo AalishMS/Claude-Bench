@@ -1411,15 +1411,34 @@ function findVsCode() {
   return dirs.map((d) => path.join(d, 'Code.exe')).find((f) => fs.existsSync(f)) || null;
 }
 
+/** A NUL byte in the first 8 KB = binary (image, video, PDF, Office...), the same test git uses. */
+function isBinaryFile(file) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const buf = Buffer.alloc(8192);
+    return buf.subarray(0, fs.readSync(fd, buf, 0, buf.length, 0)).includes(0);
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) try { fs.closeSync(fd); } catch {}
+  }
+}
+
 /**
- * Open a file in VS Code at a line (`code -g file:line:col`), else in the default app. Windows: Code.exe takes the same
- * arguments as the code.cmd shim. macOS: the `code` CLI from the login shell's PATH, else `open -a` (no line), else open.
+ * Open a text file in VS Code at a line (`code -g file:line:col`); binary files (photos, videos, PDFs...) and text files
+ * without VS Code go to the default app. Windows: Code.exe takes the same arguments as the code.cmd shim. macOS: the
+ * `code` CLI from the login shell's PATH, else `open -a` (no line), else open.
  */
 async function openFileAt(file, line, col) {
   try {
     if (typeof file !== 'string' || !fs.statSync(file).isFile()) return { ok: false, error: 'File not found' };
   } catch {
     return { ok: false, error: 'File not found' };
+  }
+  if (isBinaryFile(file)) {
+    const err = await shell.openPath(file);
+    return err ? { ok: false, error: err } : { ok: true };
   }
   const n = (v) => (Number.isInteger(v) && v > 0 ? v : null);
   const target = [file, n(line), n(line) && n(col)].filter(Boolean).join(':');

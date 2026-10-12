@@ -30,6 +30,7 @@ split panes, git status and a list of the dev servers your sessions started.
 - **Running servers.** Dev servers started from a session show up with their port. Click to copy the URL,
   Shift+click to open it.
 - **Clickable file paths.** Ctrl+click `src/main.js:123` in Claude's output to open it in VS Code at that line.
+  Images, videos, PDFs and other binary files open in their default app.
 - **Notifications.** A background session tells you when it needs input or has finished a longer task.
 - **Plan limits.** Session and weekly usage in the footer.
 
@@ -74,7 +75,7 @@ Things that differ on a Mac:
 - Copy and paste are `⌘C` / `⌘V` or right-click. Option acts as Meta, so Claude's Option shortcuts work.
 - Sessions use your login shell's PATH, so `claude` and `node` are found even when the app is opened from Finder.
 - File links open at the right line if VS Code's `code` command is installed ("Shell Command: Install 'code' command
-  in PATH"), otherwise VS Code opens the file without the line.
+  in PATH"), otherwise VS Code opens the file without the line. Binary files open in their default app (`open`).
 - The footer's plan limits read Claude Code's token from the Keychain. macOS may ask once for access.
 - Notifications go through Notification Center. Allow them when asked (under `npm start` they show as Electron).
 

@@ -233,7 +233,8 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
 - **File links** (`fileLinks(tab)`, an xterm `registerLinkProvider` per terminal): `FILE_RE` matches paths with an extension
   and optional `:line[:col]` on one buffer line (`lineCells` maps characters to cells, so wide characters don't shift the
   range; wrapped paths are not links; URL ranges are skipped). Main's `files:resolve` stats them relative to the project
-  (cached 10 s in `fileCache`); only existing files become links. Ctrl+click (`mod(e)`, also for web links) = `shell:openFile` (`openFileAt`): Windows
+  (cached 10 s in `fileCache`); only existing files become links. Ctrl+click (`mod(e)`, also for web links) = `shell:openFile` (`openFileAt`): binary files (a NUL in the first 8 KB,
+  `isBinaryFile`: photos, videos, PDFs...) go straight to the default app via `shell.openPath`; text files: Windows
   `Code.exe -g file:line:col` (`findVsCode`), macOS the `code` CLI on the login PATH, then `open -a "Visual Studio Code"`
   (no line); last resort `shell.openPath`.
 - **Projects**: order = `state.projects`, changed by dragging project rows (`projDragProps`, `projDrag` pauses `renderSidebar`
