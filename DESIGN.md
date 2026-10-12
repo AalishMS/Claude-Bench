@@ -148,6 +148,8 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   primary sm, destructive when a tab is working) and then a progress view (spinner + "Updating Claude Bench…"). There is no
   separate update dialog. It stays until dismissed: no outside-click or Escape close, so it can't vanish unseen while typing in a terminal.
 - Search: a plain 32 px row (search icon + "Search" placeholder), no border; hover/focus = `--sidebar-hover`.
+  The row ends with "add project" and `+`; `+` opens a DropdownMenu: "No project" (chat icon), a separator, then
+  one item per project (folder icon), or "Add project…" when there are none.
 - Rows are flat, 32 px, `rounded-md`, side padding 8. 2 px between rows, 12 px between project groups.
   Hover = `--sidebar-hover`, selected = `--sidebar-accent`. **No borders, no left accent bar.**
 - Project row: chevron (14 px, `--faint`), folder icon, name (500), and on the right one status dot when anything
@@ -158,6 +160,8 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   11 px `--faint` line under it (`branch · 3 changed`, the branch truncates first). A collapsed active project gets
   the selected background.
 - Folder icon: the same `folder` icon for every project, 16 px in an 18 px slot, `--muted-foreground`.
+- Chats: "No project" sessions sit in a project group named "Chats" with the `chat` icon, pinned first (not
+  draggable, no "move to top", no git line). It appears after the first chat and shows 4 rows before "Show N more".
 - Session list order: newest first throughout. The project's open tabs first, in tab order (a new tab goes on top; a
   split group moves to the top when it forms or gains a member, so unsplitting moves nothing), then its other sessions
   newest first. No drag-to-reorder of sessions.

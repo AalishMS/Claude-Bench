@@ -34,6 +34,7 @@ const ICONS = {
   server: '<rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>',
   folderPlus: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>',
   arrowRight: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
+  chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
   link: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
   sidebar: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>',
@@ -215,6 +216,7 @@ const mcpBy = new Map(); // project path -> { ok, servers: [{ name, status, labe
 const definedBy = new Map(); // project path -> [{ name, model }] subagents defined in ~/.claude/agents and <project>/.claude/agents
 
 const SESSIONS_SHOWN = 6; // rows per project (open tabs included) before "Show N more"
+const CHATS_SHOWN = 4; // the same for the Chats group
 // The window size is not stored in transcripts, so it is derived from the model: 1M for current models (Opus/Sonnet
 // 4.6+, Haiku 5+, Fable, Mythos, unknown newer ones) or a "[1m]" model, 200k for older ones (Claude 3, Haiku 4.x,
 // Opus/Sonnet up to 4.5) until a session has gone past it.
@@ -388,10 +390,13 @@ async function imageDialog(tab, session, it) {
 
 const activeTab = () => tabs.get(activeId);
 const tabsOf = (projectPath) => [...tabs.values()].filter((t) => t.project.path === projectPath);
+/** Projects without the pinned Chats entry ("No project" sessions in the home folder). */
+const realProjects = () => projects.filter((p) => !p.chat);
 
 /** The parent folders that tell a project apart from others of the same folder name ("clients" for C:\code\clients\app), else ''. */
 function projParent(p) {
-  const same = projects.filter((x) => x.path !== p.path && x.name.toLowerCase() === p.name.toLowerCase());
+  if (p.chat) return '';
+  const same = realProjects().filter((x) => x.path !== p.path && x.name.toLowerCase() === p.name.toLowerCase());
   if (!same.length) return '';
   const up = (q) => q.path.replace(/[\\/]+$/, '').split(/[\\/]/).slice(0, -1).reverse(); // nearest parent first
   const mine = up(p);
@@ -1631,8 +1636,9 @@ function renderSidebar(force = false) {
   renderPanes();
 
   const root = $('#projects');
+  const emptyNote = () => h('div', { class: 'empty-note' }, 'No projects yet.', h('br'), 'Add a folder to start a Claude session in it.');
   if (!projects.length) {
-    root.replaceChildren(h('div', { class: 'empty-note' }, 'No projects yet.', h('br'), 'Add a folder to start a Claude session in it.'));
+    root.replaceChildren(emptyNote());
     return;
   }
   const q = query.trim().toLowerCase();
@@ -1671,7 +1677,7 @@ function renderSidebar(force = false) {
     let list = null;
     if (isOpen && (loaded || open.length)) {
       const all = q || showMore.has(p.path);
-      const room = Math.max(0, SESSIONS_SHOWN - open.length); // open tabs count toward the limit but are never folded
+      const room = Math.max(0, (p.chat ? CHATS_SHOWN : SESSIONS_SHOWN) - open.length); // open tabs count toward the limit but are never folded
       const shown = all ? rest : rest.filter((s, i) => i < room || inPlace.has(s.id)); // a parked tab's row is never folded away
       const hidden = rest.length - shown.length;
       list = h('div', { class: 'sessions' },
@@ -1691,6 +1697,7 @@ function renderSidebar(force = false) {
   }).filter(Boolean);
   const mixed = splits.filter((g) => homeOf.has(g) && !homeOf.get(g));
   groups.unshift(...mixed.map((g) => h('div', { class: 'group' }, splitGroup(g, true))));
+  if (!q && !realProjects().length) groups.push(emptyNote()); // only Chats so far
   root.replaceChildren(...(groups.length ? groups
     : [h('div', { class: 'empty-note' }, `No sessions match "${query.trim()}"`)]));
 }
@@ -1701,15 +1708,15 @@ function projectRow(p, isActive, isOpen) {
   const run = ['attention', 'working', 'running'].find((d) => dots.includes(d));
   return h('div', {
     class: `project${isActive && !isOpen ? ' current' : ''}${menuFor === p.path ? ' menu-open' : ''}`,
-    title: [p.path, gitSummary(git[p.path]), 'Drag to reorder'].filter(Boolean).join('\n'),
+    title: [p.path, gitSummary(git[p.path]), p.chat ? null : 'Drag to reorder'].filter(Boolean).join('\n'),
     onclick: () => toggleExpand(p), // only collapses/expands; new sessions come from + or the shortcut
-    ...projDragProps(p),
+    ...(p.chat ? {} : projDragProps(p)), // Chats stays pinned first
   },
     h('button', {
       class: `chev${isOpen ? ' open' : ''}`, title: isOpen ? 'Hide sessions' : 'Show sessions',
       onclick: (e) => { e.stopPropagation(); toggleExpand(p); },
     }, ico('chevron')),
-    h('span', { class: 'p-icon' }, ico('folder')),
+    h('span', { class: 'p-icon' }, ico(p.chat ? 'chat' : 'folder')),
     h('span', { class: 'p-name' }, p.name, projParent(p) ? h('span', { class: 'p-parent' }, projParent(p)) : null),
     h('span', { class: 'p-run', title: run ? 'Something is running' : null }, run ? h('i', { class: `dot ${run}` }) : null),
     h('div', { class: 'p-acts' },
@@ -1740,15 +1747,51 @@ function openMenu(key, items, x, y, flipY = y) {
 function toggleMenu(p, anchor) {
   if (menuFor === p.path) { closeMenu(); return; }
   const r = anchor.getBoundingClientRect();
+  const top = realProjects()[0]; // Chats is pinned above it
   openMenu(p.path, [
     menuItem('redo', 'Continue last conversation', () => openSession(p, { args: ['--continue'] })),
     menuItem('terminal', `Open ${SHELL_LABEL} here`, () => openSession(p, { kind: 'shell' })),
     menuItem('folder', `Show in ${FILES_APP}`, () => api.openFolder(p.path)),
-    projects[0]?.path !== p.path ? menuItem('arrowUp', 'Move to top', () => moveProject(p.path, projects[0].path, false)) : null,
+    !p.chat && top && top.path !== p.path ? menuItem('arrowUp', 'Move to top', () => moveProject(p.path, top.path, false)) : null,
     h('div', { class: 'menu-sep' }),
     menuItem('trash', 'Remove from list', () => removeProject(p), true),
   ], r.left, r.bottom + 4, r.top - 4);
   anchor.closest('.project').classList.add('menu-open'); // keeps + and … visible; projectRow re-applies it on renders
+}
+
+/** The sidebar's + (top bar while collapsed): a chat outside any project, or a new session in one of them. */
+function newSessionMenu(anchor) {
+  if (menuFor === 'new') { closeMenu(); return; }
+  closeMenu(); // a project's "…" menu may be open: drops its row's menu-open too
+  const r = anchor.getBoundingClientRect();
+  const list = realProjects();
+  openMenu('new', [
+    menuItem('chat', 'No project', openChat),
+    h('div', { class: 'menu-sep' }),
+    ...list.map((p) => menuItem('folder', projName(p), () => openSession(p))),
+    list.length ? null : menuItem('folderPlus', 'Add project…', addProjects),
+  ], r.left, r.bottom + 4, r.top - 4);
+  $('#menu .menu-item').focus(); // so Ctrl+T can pick with the arrows and Enter
+}
+
+/** Up/Down move between the open menu's items (Enter clicks the focused one). */
+function menuArrow(e) {
+  const items = [...$('#menu').querySelectorAll('.menu-item')];
+  if (!items.length) return;
+  const i = items.indexOf(document.activeElement);
+  const n = e.key === 'ArrowDown' ? (i + 1) % items.length : (i <= 0 ? items.length : i) - 1;
+  items[n].focus();
+}
+
+/** A new Claude session in the home folder, listed under the pinned "Chats" group (or the home project, if it is one). */
+async function openChat() {
+  const r = await api.chatProject();
+  projects = r.projects;
+  const chat = projects.find((p) => p.path === r.path);
+  if (!chat) return;
+  if (!expanded.has(chat.path)) { expanded.add(chat.path); saveExpanded(); }
+  await openSession(chat); // its activate renders the sidebar with the new group
+  pollSessions();
 }
 
 /** Right-click on a transcript row: open it (beside), or fork it, i.e. resume a copy under a new session id to try another way. */
@@ -1965,14 +2008,20 @@ function setDetail(kind) {
 
 function renderWelcome() {
   const root = $('#welcome');
+  const hasProjects = realProjects().length > 0;
   root.replaceChildren(
     h('div', { class: 'welcome-inner' },
       h('div', { class: 'big-logo', html: LOGO_IMG }),
       h('h1', {}, 'What should we build?'),
-      h('p', {}, projects.length ? 'Pick a project to start a Claude session.' : 'Add a project folder to get started.'),
-      projects.length
+      h('p', {}, hasProjects ? 'Pick a project to start a Claude session.' : 'Add a project folder to get started.'),
+      hasProjects // Chats alone doesn't count: keep the Add project button until there is a real one
         ? h('div', { class: 'proj-list' },
             h('div', { class: 'proj-label' }, 'Projects'),
+            projects.some((p) => p.chat) ? null : h('div', { class: 'proj', onclick: openChat },
+              h('div', { class: 'proj-main' },
+                h('div', { class: 'p-name' }, 'No project'),
+                h('div', { class: 'p-path' }, 'Chat in your home folder')),
+              h('span', { class: 'proj-go' }, ico('arrowRight'))),
             projects.map((p) =>
               h('div', { class: 'proj', onclick: () => focusProject(p) },
                 h('div', { class: 'proj-main' },
@@ -1980,7 +2029,9 @@ function renderWelcome() {
                   h('div', { class: 'p-path' }, h('bdi', {}, p.path))),
                 h('div', { class: 'p-git' }, gitPills(git[p.path])),
                 h('span', { class: 'proj-go' }, ico('arrowRight')))))
-        : h('button', { class: 'btn primary', onclick: addProjects }, ico('folderPlus'), 'Add project'),
+        : h('div', { class: 'welcome-acts' },
+            h('button', { class: 'btn primary', onclick: addProjects }, ico('folderPlus'), 'Add project'),
+            h('button', { class: 'btn outline', onclick: openChat }, ico('chat'), 'Chat without a project')),
       h('div', { class: 'hint' },
         [['newSession', 'new session'], ['nextSession', 'switch'], ['toggleSidebar', 'sidebar'], ['toggleRside', 'side panel'], ['settings', 'settings']]
           .map(([id, label]) => (keyText(id) ? h('span', {}, h('kbd', {}, keyText(id)), ` ${label}`) : null)))));
@@ -2086,7 +2137,7 @@ function keysChanged() {
 function applyKeyTitles() {
   $('#toggle-sidebar').title = tip('Toggle sidebar', 'toggleSidebar');
   $('.search').title = tip('Search sessions', 'search');
-  $('#new-tab').title = tip('New Claude session in current project', 'newSession');
+  $('#new-tab').title = tip('New session or chat', 'newSession');
   $('#close-tab').title = tip('Close session', 'closeSession');
   $('#toggle-rside').title = tip('Context, MCPs, subagents and running servers', 'toggleRside');
 }
@@ -2705,20 +2756,22 @@ async function startUpdate() {
 
 function newSessionHere() {
   const tab = activeTab();
+  const list = realProjects();
   if (tab) openSession(tab.project);
-  else if (projects.length === 1) openSession(projects[0]);
-  else addProjects();
+  else if (list.length === 1) openSession(list[0]);
+  else newSessionMenu($('#new-tab')); // pick one, or chat without a project
 }
 
 /** The project the top bar's shortcuts act on: the active tab's, else the only one. */
 function currentProject() {
-  return activeTab()?.project || (projects.length === 1 ? projects[0] : null);
+  const list = realProjects();
+  return activeTab()?.project || (list.length === 1 ? list[0] : null);
 }
 
 function projectAction(fn) {
   const p = currentProject();
   if (p) fn(p);
-  else if (!projects.length) addProjects();
+  else if (!realProjects().length) addProjects();
 }
 
 // --------------------------------------------------------------- polling ----
@@ -2727,12 +2780,13 @@ function projectAction(fn) {
 let gitBusy = false;
 let gitTick = 0;
 async function pollGit(all = true) {
-  if (gitBusy || document.hidden || !projects.length) return;
+  const list = realProjects(); // the home folder of Chats is no repo worth watching
+  if (gitBusy || document.hidden || !list.length) return;
   const cur = all ? null : currentProject();
-  if (!all && !cur) return;
+  if (!all && (!cur || cur.chat)) return;
   gitBusy = true;
   try {
-    const res = await api.gitStatus(all ? projects.map((p) => p.path) : [cur.path]);
+    const res = await api.gitStatus(all ? list.map((p) => p.path) : [cur.path]);
     const next = all ? res : { ...git, ...res };
     if (JSON.stringify(next) !== JSON.stringify(git)) {
       git = next;
@@ -2856,6 +2910,7 @@ function wireGlobalEvents() {
     if (recording) { e.preventDefault(); e.stopPropagation(); recordKey(e); return; }
     let handled = true;
     if (e.key === 'Escape' && menuFor) closeMenu();
+    else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && menuFor && !$('#menu').hidden) menuArrow(e);
     else if (e.key === 'Escape' && detailKind) setDetail(null);
     else if (e.key === 'Escape' && settingsOpen && $('#modal').hidden) toggleSettings(false);
     else if (!$('#modal').hidden) handled = false; // a dialog is open: no shortcuts (Ctrl+W again would stack a second one)
@@ -2874,7 +2929,7 @@ function wireGlobalEvents() {
   document.addEventListener('mousedown', (e) => {
     if (detailKind && !e.target.closest('#detail, .fstat')) setDetail(null);
     // the "…" button toggles the menu itself on click, so a mousedown on it must not close it first
-    if (menuFor && !e.target.closest('#menu, .project.menu-open .p-more')) closeMenu();
+    if (menuFor && !e.target.closest('#menu, .project.menu-open .p-more, #new-tab')) closeMenu();
   });
   window.addEventListener('blur', closeMenu);
   window.addEventListener('resize', closeMenu);
@@ -2896,7 +2951,7 @@ function wireGlobalEvents() {
     activeTab()?.term.focus();
   });
 
-  $('#new-tab').addEventListener('click', newSessionHere);
+  $('#new-tab').addEventListener('click', (e) => newSessionMenu(e.currentTarget));
   $('#open-code').addEventListener('click', () => projectAction((p) => api.openInCode(p.path)));
   $('#open-shell').addEventListener('click', () => projectAction((p) => openSession(p, { kind: 'shell' })));
   $('#open-folder').addEventListener('click', () => projectAction((p) => api.openFolder(p.path)));

@@ -159,6 +159,19 @@ const isDir = (p) => {
 };
 const samePath = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 
+/**
+ * The "No project" area: a project entry for the home folder, flagged `chat`, always first. Created on first use.
+ * If home is already a real project it stays one, and chats just open there. Returns the projects and the path to open.
+ */
+function chatProject() {
+  const home = os.homedir();
+  if (!state.projects.some((x) => samePath(x.path, home))) {
+    state.projects.unshift({ path: home, name: 'Chats', chat: true });
+    saveState();
+  }
+  return { projects: state.projects, path: state.projects.find((x) => samePath(x.path, home)).path };
+}
+
 function addProject(p) {
   const abs = path.resolve(p);
   if (!isDir(abs)) return null;
@@ -502,7 +515,8 @@ async function scanPorts() {
     if (s.pty.pid) sessionByPid.set(s.pty.pid, { id, cwd: s.cwd, kind: s.kind });
   }
 
-  const projectsByLength = [...state.projects].sort((a, b) => b.path.length - a.path.length);
+  // Not the Chats entry (the home folder): nearly every command line would match it.
+  const projectsByLength = state.projects.filter((p) => !p.chat).sort((a, b) => b.path.length - a.path.length);
 
   const ownerOf = (pid, cmd) => {
     // 1. Started from one of our terminals (walk up the parent chain).
@@ -1519,10 +1533,12 @@ function registerIpc() {
     return { projects: state.projects, added };
   });
 
+  ipcMain.handle('projects:chat', () => chatProject());
+
   ipcMain.handle('projects:reorder', (_e, paths) => {
     if (!Array.isArray(paths)) return state.projects;
     const rank = (p) => { const i = paths.findIndex((x) => typeof x === 'string' && samePath(x, p.path)); return i < 0 ? Infinity : i; };
-    state.projects = state.projects.map((p, i) => [p, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([p]) => p);
+    state.projects = state.projects.map((p, i) => [p, i]).sort((a, b) => !!b[0].chat - !!a[0].chat || rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([p]) => p);
     saveState();
     return state.projects;
   });

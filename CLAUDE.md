@@ -237,6 +237,14 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   `isBinaryFile`: photos, videos, PDFs...) go straight to the default app via `shell.openPath`; text files: Windows
   `Code.exe -g file:line:col` (`findVsCode`), macOS the `code` CLI on the login PATH, then `open -a "Visual Studio Code"`
   (no line); last resort `shell.openPath`.
+- **Chats** ("No project"): the sidebar `+` (`#new-tab`, `newSessionMenu`) opens a menu: "No project", then every project.
+  A chat is a normal project entry `{ path: os.homedir(), name: 'Chats', chat: true }`, created on first use by main's
+  `chatProject` (`projects:chat`, returns `{ projects, path }`), always first (`projects:reorder` keeps it there),
+  so tabs, transcripts, restore and splits need nothing new. If home is already a real project it is left alone and
+  "No project" opens a session there. `realProjects()` = everything but Chats: use it wherever "the user's projects" is
+  meant (`currentProject`, `projectAction`, `pollGit`, `projParent`, welcome/empty states). Chats' row isn't draggable and
+  has no "Move to top"; the port scan's path match ignores it (every command line would match home). `Ctrl+T` with no tab and
+  several projects opens the same menu, focused (arrows + Enter, `menuArrow`). macOS: the same, `~` as cwd.
 - **Projects**: order = `state.projects`, changed by dragging project rows (`projDragProps`, `projDrag` pauses `renderSidebar`
   like a session drag) or "Move to top" in the `…` menu; both call `moveProject` -> `projects:reorder`. Same-name folders:
   `projParent(p)` = the fewest parent folders that tell it apart, `projName(p)` = `app (clients)` for tab labels,
