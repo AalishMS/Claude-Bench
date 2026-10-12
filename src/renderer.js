@@ -2479,6 +2479,11 @@ function placeBrand() {
   document.body.classList.toggle('sidebar-collapsed', !ui.sidebar);
   if (ui.sidebar) $('#sidebar').prepend($('#brand'));
   else $('#topbar').prepend($('#brand'));
+  // New session "+": in the search row, or after the brand in the top bar while the sidebar is collapsed
+  const nt = $('#new-tab');
+  nt.classList.toggle('sm', ui.sidebar);
+  if (ui.sidebar) $('.search-row').append(nt);
+  else $('#brand').after(nt);
   placeUpdatePop(); // the update icon moved with #brand
 }
 
