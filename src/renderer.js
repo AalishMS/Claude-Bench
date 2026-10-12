@@ -498,7 +498,9 @@ function trackTab(t) {
     t.notified = false;
     return;
   }
-  if (t.title.startsWith('✳') && awaitingInput(t)) {
+  // Re-read the screen only after xterm parsed new output (onWriteParsed); otherwise the last answer still holds.
+  if (t.screenDirty !== false) { t.screenDirty = false; t.awaiting = awaitingInput(t); }
+  if (t.title.startsWith('✳') && t.awaiting) {
     if (!t.prompted) { t.prompted = true; t.run = null; notifyTab(t, 'Needs input'); }
     return;
   }
@@ -675,6 +677,7 @@ function wireTerminal(tab) {
   });
   term.onResize(({ cols, rows }) => { api.ptyResize(tab.id, cols, rows); autoRside(); });
   term.onTitleChange((t) => { tab.title = t; });
+  term.onWriteParsed(() => { tab.screenDirty = true; }); // trackTab re-reads the screen only after it changed
   // OSC 9 (iTerm2) and 777 (notify): what Claude sends when its notification channel is set to one of those.
   // OSC 9;4;... is a progress report (ConEmu), not a message.
   term.parser.registerOscHandler(9, (d) => { if (!/^\d+;/.test(d)) onClaudeSignal(tab); return true; });
@@ -2882,11 +2885,17 @@ function projectAction(fn) {
 
 // --------------------------------------------------------------- polling ----
 
-// The active project every 4 s, all of them every 20 s (and on focus, project changes).
+// Visible but not focused (the user works in another app): the active project's git status slows down.
+const idle = () => !document.hasFocus();
+
+// The active project every 4 s (8 s while unfocused), all of them every 20 s (and on focus, project changes).
+// A full poll asked for while a partial one runs is queued, not dropped.
 let gitBusy = false;
+let gitQueued = false;
 let gitTick = 0;
 async function pollGit(all = true) {
   const list = realProjects(); // the home folder of Chats is no repo worth watching
+  if (gitBusy && all) gitQueued = true;
   if (gitBusy || document.hidden || !list.length) return;
   const cur = all ? null : currentProject();
   if (!all && (!cur || cur.chat)) return;
@@ -2902,15 +2911,24 @@ async function pollGit(all = true) {
     }
   } finally {
     gitBusy = false;
+    if (gitQueued) { gitQueued = false; pollGit(); }
   }
 }
 
+// Every 4 s the projects on screen (open tabs, expanded in the sidebar, the current one), all of them every 20 s and on
+// focus: sessions started outside the app still show up, without stat-ing every transcript of every project each tick.
 let sessionsBusy = false;
-async function pollSessions() {
-  if (sessionsBusy || document.hidden || !projects.length) return;
+let sessionsQueued = false;
+let sessionsTick = 0;
+async function pollSessions(all = true) {
+  const shown = all ? null : new Set([...[...tabs.values()].map((t) => t.project.path), ...expanded, currentProject()?.path]);
+  const paths = projects.map((p) => p.path).filter((p) => all || shown.has(p));
+  if (sessionsBusy && all) sessionsQueued = true;
+  if (sessionsBusy || document.hidden || !paths.length) return;
   sessionsBusy = true;
   try {
-    const next = await api.listSessions(projects.map((p) => p.path));
+    const res = await api.listSessions(paths);
+    const next = all ? res : { ...sessionsBy, ...res };
     if (JSON.stringify(next) !== JSON.stringify(sessionsBy)) { sessionsBy = next; sessionsVer++; }
     assignSessions();
     renderSidebar();
@@ -2919,6 +2937,7 @@ async function pollSessions() {
     pollInfo();
   } finally {
     sessionsBusy = false;
+    if (sessionsQueued) { sessionsQueued = false; pollSessions(); }
   }
 }
 
@@ -3119,9 +3138,9 @@ async function init() {
   pollUsage();
   pollMcp();
   pollDefinedAgents();
-  setInterval(() => pollGit(++gitTick % 5 === 0), 4000);
-  setInterval(pollPorts, 6000);
-  setInterval(pollSessions, 4000);
+  setInterval(() => { const all = ++gitTick % 5 === 0; if (all || !idle() || gitTick % 2 === 0) pollGit(all); }, 4000);
+  setInterval(() => { if (!idle() || Date.now() - portsAt > 30000) pollPorts(); }, 6000);
+  setInterval(() => pollSessions(++sessionsTick % 5 === 0), 4000);
   setInterval(pollUsage, 60000);
   setInterval(pollMcp, 60000); // served from main's 5 min cache; a project change polls at once (activate)
   setTimeout(pollUpdate, 10000); // after startup settles; git fetch is network

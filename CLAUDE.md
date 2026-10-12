@@ -122,7 +122,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     and the recorder reads `e.code`, so Option's special characters don't matter. `Cmd+Alt+arrows` resizes panes.
   - Terminal: `macOptionIsMeta` (Claude's Option shortcuts), `rightClickSelectsWord: false` (right-click pastes);
     the custom Ctrl+C/V handler is skipped. Labels say "Shell" / "Finder"; tooltips go through `kbd()` (⌘ ⇧ ⌥).
-- **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled from the renderer: the active project every 4 s, all projects every 20 s (and on focus).
+- **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled from the renderer: the active project every 4 s (8 s while the window is visible but unfocused, `idle()`), all projects every 20 s (and on focus).
 - **Update** (people install by cloning): `repoDir()` = the app folder for `npm start`, or the repo above `dist/` for a
   packaged build (walks up to a `.git` + `package.json` named `claude-bench`; a `.app` copied elsewhere finds none).
   `checkUpdate` runs `git fetch` + `rev-list --count HEAD..@{u}` 10 s after start and every 30 min (and on demand via the refresh icon next to the app name, `#check-slot` / `checkNow`, which
@@ -224,15 +224,21 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     line for the lightbox (`imageDialog` via `openModal`, shared with `agentDialog`); `images:reveal` = Show in Explorer/Finder.
     All take (project, session UUID, id), never a path. `pollImages` runs after `pollInfo`, only while the panel is shown and the
     section is open; thumbnails are fetched only for new ids. Every Read of a file is its own tile (no de-duplication).
-  - Running: dev listeners only, from one PowerShell call (`Get-NetTCPConnection` + `Get-CimInstance Win32_Process`) every 6 s, only while the right sidebar is shown (`closeTab` / `onCloseRequest` rescan when the last scan is over 10 s old). A listener
+  - Running: dev listeners only, every 6 s (30 s while the window is unfocused), only while the right sidebar is shown (`closeTab` / `onCloseRequest` rescan when the last scan is over 10 s old).
+    Windows (`winScan`): listeners from `netstat -ano` (~30 ms; rows with foreign `0.0.0.0:0` / `[::]:0`, since the state text is localized,
+    `parseNetstat`); the process table from PowerShell `Get-CimInstance Win32_Process` (about a second of CPU) only when a `pid:port`
+    listener appears that hasn't been listening without a gap since the last PowerShell scan (so a recycled pid gets a fresh scan), or that
+    scan is 60 s old (`procScan`, `PROC_TTL`). `parseNetstat` relies on `-a` without `-q` (BOUND sockets also have a zero foreign address).
+    If netstat yields nothing, the old full PowerShell scan (`Get-NetTCPConnection` too) runs. A listener
     belongs to a tab if a session's pty pid is an ancestor; otherwise it is matched to a project if its command line contains the project path
     outside `--flag=` values (Antigravity's `agy.exe --add-dir=<project>` is no server). Rows are status dot, short name, port; clicking a row
-    copies `http://localhost:<port>`, Shift+click opens it with `openExternal` (rows without a port, or emulators, do nothing). No kill, no "Show all". The scan still walks
-    session children for MCP/browser processes (`procs`), which the UI no longer shows.
+    copies `http://localhost:<port>`, Shift+click opens it with `openExternal` (rows without a port, or emulators, do nothing). No kill, no "Show all".
 - **Sessions and usage**: read-only from `~/.claude/projects/<cwd, non-alphanumerics -> "-">/<uuid>.jsonl`. The sidebar lists a
   project's sessions (title = last `ai-title`, else first prompt) under it; clicking one focuses its tab or opens
   `claude --resume <uuid>` (main accepts only a bare UUID as `resumeId`). Lists read just the file tail and cache by
-  mtime+size. The sidebar footer row shows plan limits (session / weekly / per-model % and reset times, from `api.anthropic.com/api/oauth/usage`
+  mtime+size. `pollSessions` lists the projects on screen (open tabs, expanded in the sidebar, `currentProject`) every 4 s and
+  all projects every 20 s and on focus (`pollSessions(all)`, partial results merged into `sessionsBy`; a full poll asked for
+  during a partial one is queued, `sessionsQueued`, as in `pollGit`). The sidebar footer row shows plan limits (session / weekly / per-model % and reset times, from `api.anthropic.com/api/oauth/usage`
   using the token in `~/.claude/.credentials.json`, cached 2 min in main, never written; a failure blocks requests for its `Retry-After` (429 default 5 min, max 15) and the last good numbers are served as `stale`, because retrying a 429 keeps the limit from clearing), context fill of the active tab's
   session, and tab state. Fresh and `--continue` tabs are matched to their transcript heuristically (`assignSessions`).
   Until a tab's transcript is listed (after the first reply) it shows as an italic "New session" placeholder row;

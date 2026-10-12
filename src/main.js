@@ -355,28 +355,14 @@ const DEV_PROCESSES = new Set([
   'uvicorn.exe', 'gunicorn.exe', 'hugo.exe', 'caddy.exe',
 ]);
 
-const PORT_SCRIPT = `
+/** The process table (WMI), plus the listeners only when netstat failed (Get-NetTCPConnection is slow too). */
+const portScript = (withConns) => `
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
-$c = Get-NetTCPConnection -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess
+${withConns ? '$c = Get-NetTCPConnection -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess' : '$c = @()'}
 $p = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, CommandLine, @{ n = 'T'; e = { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } }
 @{ c = @($c); p = @($p) } | ConvertTo-Json -Compress -Depth 4
 `;
-
-// Session children shown next to the ports: MCP servers Claude starts, and browsers (Playwright, DevTools MCP...).
-const BROWSERS = new Set(['chrome.exe', 'msedge.exe', 'firefox.exe', 'chromium.exe', 'chrome-headless-shell.exe', 'brave.exe']);
-const SHELLS = new Set(['bash.exe', 'sh.exe', 'powershell.exe', 'pwsh.exe']); // tool commands, not MCP servers
-
-/** "cmd.exe /c npx -y @playwright/mcp@latest" -> "@playwright/mcp" */
-function mcpLabel(cmd) {
-  const tokens = (cmd.match(/"[^"]*"|\S+/g) || []).map((t) => t.replace(/[\^"]/g, '')); // cmd escapes quotes as ^"
-  const tok = tokens.find((t) => !t.startsWith('-') && /mcp/i.test(t));
-  if (!tok) return 'MCP server';
-  const name = /[\\/]/.test(tok) && !tok.startsWith('@')
-    ? tok.split(/[\\/]/).filter((seg) => /mcp/i.test(seg)).pop() || tok
-    : tok;
-  return name.replace(/(.)@[^/@]*$/, '$1').replace(/\.(js|cmd|exe|py)$/i, '');
-}
 
 /**
  * A process's real parent pid, or 0. Windows never clears ParentProcessId, so once the parent exits its pid can be
@@ -387,56 +373,55 @@ function parentPid(procs, p) {
   return parent && parent.T > p.T ? 0 : p.ParentProcessId;
 }
 
-function sessionProcesses(procs, sessionByPid) {
-  const children = new Map();
-  for (const p of procs.values()) {
-    const parent = parentPid(procs, p);
-    if (!parent) continue;
-    if (!children.has(parent)) children.set(parent, []);
-    children.get(parent).push(p);
+let portScan = null;
+
+/**
+ * `netstat -ano` TCP rows whose foreign address is 0.0.0.0:0 / [::]:0 (listeners; the state column is localized)
+ * -> [{ LocalAddress, LocalPort, OwningProcess }]. Relies on `-a` without `-q`: `-q` would add BOUND sockets, which
+ * have the same zero foreign address but serve nothing.
+ */
+function parseNetstat(out) {
+  const conns = [];
+  for (const line of out.split('\n')) {
+    const m = /^\s*TCP\s+(\S+):(\d+)\s+(\S+)\s.*?(\d+)\s*$/.exec(line);
+    if (!m || !/^(0\.0\.0\.0|\[::\]):0$/.test(m[3])) continue;
+    conns.push({ LocalAddress: m[1].replace(/^\[|\]$/g, '').replace(/%\d+$/, ''), LocalPort: +m[2], OwningProcess: +m[4] });
   }
-  const items = [];
-  const seen = new Set();
-  const walk = (pid, s, ctx) => {
-    for (const c of children.get(pid) || []) {
-      if (seen.has(c.ProcessId)) continue; // pid reuse can make cycles
-      seen.add(c.ProcessId);
-      const name = (c.Name || '').toLowerCase();
-      const cmd = c.CommandLine || '';
-      const next = { ...ctx, shell: ctx.shell || SHELLS.has(name) };
-      let item = null;
-      if (!ctx.browser && BROWSERS.has(name) && !cmd.includes('--type=')) {
-        const port = /--remote-debugging-port=(\d+)/.exec(cmd)?.[1];
-        item = { kind: 'browser', label: name.replace(/\.exe$/, ''), headless: /--headless/.test(cmd), debugPort: port ? +port : null };
-        next.browser = true;
-      } else if (s.kind === 'claude' && !ctx.mcp && !ctx.browser && !next.shell && /mcp/i.test(cmd)) {
-        item = { kind: 'mcp', label: mcpLabel(cmd) };
-        next.mcp = true;
-      }
-      if (item) items.push({ ...item, pid: c.ProcessId, cmd, owner: { type: 'session', sessionId: s.id, projectPath: s.cwd, kind: s.kind } });
-      walk(c.ProcessId, s, next);
-    }
-  };
-  for (const [pid, s] of sessionByPid) walk(pid, s, {});
-  return items;
+  return conns;
 }
 
-let portScan = null;
+// The process table from the last PowerShell scan, reused while no new listener appears. A cold powershell.exe + WMI
+// costs about a second of CPU; netstat costs ~30 ms. `keys` holds the "pid:port" listeners seen without a gap since that
+// scan: one that stops and comes back counts as new, so a recycled pid gets a fresh scan instead of the old process's
+// name and owner (only a pid exiting and being reused on the same port between two netstat runs slips through).
+const PROC_TTL = 60000;
+let procScan = null; // { at, p, keys: Set }
+
+async function psScan(withConns) {
+  const out = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', portScript(withConns)], { timeout: 20000 });
+  if (!out) return null;
+  try { return JSON.parse(out); } catch { return null; }
+}
 
 /** Listeners and processes as { c: [{ LocalAddress, LocalPort, OwningProcess }], p: [{ ProcessId, ParentProcessId, Name, CommandLine, T }] }. */
 async function winScan() {
-  const out = await run(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', PORT_SCRIPT],
-    { timeout: 20000 }
-  );
-  if (!out) return { ok: false, error: 'Could not read listening ports' };
-
-  try {
-    return { ok: true, data: JSON.parse(out) };
-  } catch {
-    return { ok: false, error: 'Could not parse port scan output' };
+  const out = await run('netstat.exe', ['-ano']);
+  const c = out ? parseNetstat(out) : [];
+  if (!c.length) { // netstat failed or changed its format: the old full scan
+    procScan = null;
+    const data = await psScan(true);
+    return data ? { ok: true, data } : { ok: false, error: 'Could not read listening ports' };
   }
+  const keys = new Set(c.map((x) => `${x.OwningProcess}:${x.LocalPort}`));
+  const fresh = procScan && Date.now() - procScan.at < PROC_TTL && [...keys].every((k) => procScan.keys.has(k));
+  if (fresh) {
+    procScan.keys = keys; // drop listeners that went away
+  } else {
+    const data = await psScan(false);
+    if (!data) { procScan = null; return { ok: false, error: 'Could not read processes' }; }
+    procScan = { at: Date.now(), p: data.p || [], keys };
+  }
+  return { ok: true, data: { c, p: procScan.p } };
 }
 
 /** ps etime "[[dd-]hh:]mm:ss" -> seconds */
@@ -563,8 +548,7 @@ async function scanPorts() {
   }
 
   const servers = [...byKey.values()].sort((a, b) => a.port - b.port);
-  const children = sessionProcesses(procs, sessionByPid);
-  return { ok: true, servers, procs: children };
+  return { ok: true, servers };
 }
 
 function listPorts() {
