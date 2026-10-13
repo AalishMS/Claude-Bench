@@ -1,0 +1,23 @@
+# Lint + tests on both platforms the app runs on. The tests cover src/lib only (no Electron), so install skips
+# package scripts: no Electron download, no native node-pty build.
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run check
