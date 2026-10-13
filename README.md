@@ -124,7 +124,8 @@ Things that differ on a Mac:
 - Sessions use your login shell's PATH, so `claude` and `node` are found even when the app is opened from Finder.
 - File links open at the right line if VS Code's `code` command is installed ("Shell Command: Install 'code' command
   in PATH"), otherwise VS Code opens the file without the line. Binary files open in their default app (`open`).
-- The footer's plan limits read Claude Code's token from the Keychain. macOS may ask once for access.
+- The footer's plan limits read Claude Code's token from the Keychain. macOS may ask once for access. When no session
+  has run for hours the token has expired; the app then runs `claude mcp list` once, which renews it.
 - Notifications go through Notification Center. Allow them when asked (under `npm start` they show as Electron).
 - Settings > Appearance > System follows macOS light/dark mode, and the traffic lights and menus follow the chosen theme.
 

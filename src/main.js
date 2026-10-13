@@ -699,15 +699,17 @@ async function sessionInfo(cwd, sessionId) {
 
 // Right sidebar data. MCP health comes from `claude mcp list` (the transcript does not store it): it health-checks every
 // configured server (spawning every stdio one), so it is slow (seconds), cached per folder and never run twice at once.
-// MCP config rarely changes mid-session, so the cache lives 5 minutes.
+// MCP config rarely changes mid-session, so the cache lives 5 minutes. Without a project (home screen) it runs in the home
+// folder: user-level servers and claude.ai connectors. `force` skips the cache (refreshLogin).
 const MCP_TTL_MS = 5 * 60 * 1000;
 const mcpCache = new Map(); // cwd -> { at, value } | { pending }
 
-function mcpList(cwd) {
+function mcpList(cwd, force = false) {
+  if (cwd == null) cwd = os.homedir();
   if (typeof cwd !== 'string' || !fs.existsSync(cwd)) return Promise.resolve({ ok: false, servers: [] });
   const hit = mcpCache.get(cwd);
   if (hit?.pending) return hit.pending;
-  if (hit && Date.now() - hit.at < MCP_TTL_MS) return Promise.resolve(hit.value);
+  if (!force && hit && Date.now() - hit.at < MCP_TTL_MS) return Promise.resolve(hit.value);
   const [file, args] = IS_MAC ? ['claude', ['mcp', 'list']] : ['cmd.exe', ['/d', '/c', 'claude', 'mcp', 'list']];
   const pending = shellEnvReady.then(() => new Promise((resolve) => {
     const env = { ...process.env }; // after shellEnvReady, so macOS gets the login shell's PATH
@@ -748,9 +750,10 @@ async function definedAgents(cwd) {
 const PROMPT_CAP = 20000;
 async function agentPrompts(cwd, sessionId, name) {
   const out = { definition: null, runs: [] };
-  if (typeof name !== 'string' || typeof cwd !== 'string') return out;
+  if (typeof name !== 'string') return out;
+  if (typeof cwd !== 'string') cwd = null; // home screen: user-level definitions only, no runs
   let defModel = null; // the definition's `model:`; a "[1m]" there (or, for inherit, the parent's) marks a 1M run of a 200k-by-default model
-  const dirs = [path.join(cwd, '.claude', 'agents'), path.join(os.homedir(), '.claude', 'agents')]; // project wins
+  const dirs = [cwd && path.join(cwd, '.claude', 'agents'), path.join(os.homedir(), '.claude', 'agents')].filter(Boolean); // project wins
   for (const dir of dirs) {
     let names;
     try { names = (await fs.promises.readdir(dir)).filter((n) => n.endsWith('.md')); } catch { continue; }
@@ -765,7 +768,7 @@ async function agentPrompts(cwd, sessionId, name) {
     }
     if (out.definition != null) break;
   }
-  if (typeof sessionId === 'string' && UUID_RE.test(sessionId)) {
+  if (cwd && typeof sessionId === 'string' && UUID_RE.test(sessionId)) {
     const dir = path.join(projectDir(cwd), sessionId, 'subagents');
     let configured = defModel;
     if (!configured || configured === 'inherit') {
@@ -897,22 +900,44 @@ function keychainOauth() {
   });
 }
 
-async function fetchLimits() {
+const expired = (oauth) => !!oauth?.expiresAt && oauth.expiresAt < Date.now();
+
+async function readOauth() {
   let oauth;
   try {
     oauth = JSON.parse((await fs.promises.readFile(CREDENTIALS_FILE, 'utf8')).replace(/^\uFEFF/, '')).claudeAiOauth;
-  } catch { /* handled below */ }
+  } catch { /* handled by the caller */ }
   // macOS: the Keychain is the live copy; a leftover file may hold a token that is no longer refreshed.
-  if (IS_MAC && (!oauth?.accessToken || (oauth.expiresAt && oauth.expiresAt < Date.now()))) {
-    oauth = (await keychainOauth()) || oauth;
-  }
+  if (IS_MAC && (!oauth?.accessToken || expired(oauth))) oauth = (await keychainOauth()) || oauth;
+  return oauth;
+}
+
+/**
+ * The access token lasts hours and only Claude Code refreshes it, so with no session running it expires. `claude mcp list`
+ * refreshes it (tested on v2.1.296; `claude auth status` does not) and its result fills the home screen's MCP list anyway.
+ * At most once per 10 minutes, so a broken login doesn't spawn claude on every poll.
+ */
+const LOGIN_RETRY_MS = 10 * 60 * 1000;
+let loginRefreshAt = 0;
+async function refreshLogin() {
+  if (Date.now() - loginRefreshAt < LOGIN_RETRY_MS) return false;
+  loginRefreshAt = Date.now();
+  await mcpList(null, true);
+  return true;
+}
+
+async function fetchLimits() {
+  let oauth = await readOauth();
+  if (expired(oauth) && (await refreshLogin())) oauth = await readOauth();
   if (!oauth?.accessToken) return { ok: false, error: 'Not signed in. Run claude and log in.' };
-  if (oauth.expiresAt && oauth.expiresAt < Date.now()) return { ok: false, error: 'Login expired. Open a Claude tab to refresh it.' };
+  if (expired(oauth)) return { ok: false, error: 'Login expired. Start a Claude session to refresh it.' };
   try {
-    const res = await fetch('https://api.anthropic.com/api/oauth/usage', {
-      headers: { Authorization: `Bearer ${oauth.accessToken}`, 'anthropic-beta': 'oauth-2025-04-20' },
-      signal: AbortSignal.timeout(8000),
-    });
+    let res = await usageRequest(oauth);
+    // Revoked before its expiry (a login elsewhere): same refresh, once.
+    if (res.status === 401 && (await refreshLogin())) {
+      const fresh = await readOauth();
+      if (fresh?.accessToken && fresh.accessToken !== oauth.accessToken) res = await usageRequest(fresh);
+    }
     if (!res.ok) {
       const ra = Number(res.headers.get('retry-after'));
       const retryAfter = Math.min(15 * 60, Math.max(30, ra > 0 ? ra : res.status === 429 ? 300 : 60));
@@ -932,6 +957,13 @@ async function fetchLimits() {
   } catch {
     return { ok: false, error: 'Could not reach Anthropic (offline?)', retryAfter: 30 };
   }
+}
+
+function usageRequest(oauth) {
+  return fetch('https://api.anthropic.com/api/oauth/usage', {
+    headers: { Authorization: `Bearer ${oauth.accessToken}`, 'anthropic-beta': 'oauth-2025-04-20' },
+    signal: AbortSignal.timeout(8000),
+  });
 }
 
 // Cached for 2 min; overlapping calls share one request. A failure (429 above all) blocks new requests for its

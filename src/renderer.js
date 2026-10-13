@@ -211,6 +211,7 @@ const imagesBy = new Map(); // tab id -> { session, items: [{ id, kind, label, f
 const thumbsBy = new Map(); // tab id -> Map(image id -> data URL, or null when it can't be decoded)
 const mcpBy = new Map(); // project path -> { ok, servers: [{ name, status, label }] } from `claude mcp list`
 const definedBy = new Map(); // project path -> [{ name, model }] subagents defined in ~/.claude/agents and <project>/.claude/agents
+const GLOBAL = ''; // key in both for the home screen (no project): user-level servers and agents
 
 const SESSIONS_SHOWN = 6; // rows per project (open tabs included) before "Show N more"
 const CHATS_SHOWN = 4; // the same for the Chats group
@@ -919,6 +920,7 @@ async function closeTab(id) {
   } else syncVisible();
   renderAll();
   saveTabs();
+  if (!activeId) { pollMcp(); pollDefinedAgents(); } // home screen: the user-level lists
 }
 
 function activate(id) {
@@ -2360,7 +2362,7 @@ function copyServer(s) {
  */
 function agentRows(proj, tab) {
   const info = tab?.kind === 'claude' ? infoBy.get(tab.id) : null;
-  const defs = new Map((definedBy.get(proj?.path) || []).map((d) => [d.name, d.model]));
+  const defs = new Map((definedBy.get(proj?.path || GLOBAL) || []).map((d) => [d.name, d.model]));
   const rows = new Map([...defs].map(([name, model]) => [name, { name, model, running: 0, done: 0 }]));
   const live = [];
   for (const a of info?.agents || []) { // newest first
@@ -2391,7 +2393,7 @@ let lastRsideKey = '';
 function renderRside(force = false) {
   const proj = currentProject();
   const ctx = contextInfo();
-  const mcp = proj && mcpBy.get(proj.path);
+  const mcp = mcpBy.get(proj?.path || GLOBAL);
   const tab = activeTab();
   const agents = agentRows(proj, tab);
   // Only listeners started from our sessions: the active tab's, or every tab's on the home screen.
@@ -2415,8 +2417,7 @@ function renderRside(force = false) {
         h('div', { class: 'ctx-line' }, h('span', { class: 'ctx-title' }, 'Context')),
         h('div', { class: 'rnote' }, ctx ? 'Shown after Claude\'s first reply.' : 'Open a Claude tab to see context.'));
 
-  const mcpBody = !proj ? h('div', { class: 'rnote' }, 'Select a project.')
-    : !mcp ? h('div', { class: 'rrow' }, statusDot('wait'), h('span', { class: 'name' }, 'Checking…'))
+  const mcpBody = !mcp ? h('div', { class: 'rrow' }, statusDot('wait'), h('span', { class: 'name' }, 'Checking…'))
     : !mcp.ok ? h('div', { class: 'rnote' }, 'Could not read MCP status.')
     : !mcp.servers.length ? h('div', { class: 'rnote' }, 'No MCP servers configured.')
     : (() => {
@@ -2428,6 +2429,7 @@ function renderRside(force = false) {
         };
         const rest = mcp.servers.filter((m) => m.status !== 'connected');
         return [
+          proj ? null : h('div', { class: 'rnote' }, 'User-level servers, no project selected.'),
           ...mcp.servers.filter((m) => m.status === 'connected').map(mcpRow),
           rest.length ? h('div', { class: 'rrow rmore', title: rest.map((m) => `${mcpName(m.name)}: ${m.label || m.status}`).join('\n'),
             onclick: () => { mcpMore = !mcpMore; renderRside(true); } }, mcpMore ? 'Show less' : `Show ${rest.length} more`) : null,
@@ -2445,7 +2447,7 @@ function renderRside(force = false) {
   })) : h('div', { class: 'rnote' }, 'No subagents defined.');
 
   const runBody = !ports.ok ? h('div', { class: 'rnote t-err' }, ports.error || 'Port scan failed')
-    : !servers.length ? h('div', { class: 'rnote' }, tab ? 'Nothing running in this session.' : 'Open a session to see its running servers.')
+    : !servers.length ? h('div', { class: 'rnote' }, tab ? 'Nothing running in this session.' : 'Nothing running.')
     : foldRows('running', servers.map((s) => {
         const copyable = !!s.port && !/emulator|qemu|adb/i.test(`${s.name} ${s.cmd || ''}`);
         const owner = !tab && tabs.get(s.owner.sessionId); // home screen: say which session started it
@@ -2463,32 +2465,34 @@ function renderRside(force = false) {
     : h('div', { class: 'img-grid' }, imgs.map((it) => imageTile(tab, tab.sessionId, it)));
 
   const working = agents.filter((a) => a.running).length;
-  $('#rside').replaceChildren(head,
+  // Home screen: Context and Images belong to one tab, so they're left out rather than asking for one.
+  $('#rside').replaceChildren(tab ? head : '',
     rsection('mcp', 'MCPs', mcp?.ok ? `${mcp.servers.filter((m) => m.status === 'connected').length}/${mcp.servers.length}` : null, mcpBody),
     rsection('agents', 'Subagents', working ? `${working} working` : agents.length || null, agentBody),
     rsection('running', 'Running', servers.length || null, runBody),
-    rsection('images', 'Images', imgs?.length || null, imgBody));
+    tab ? rsection('images', 'Images', imgs?.length || null, imgBody) : '');
 }
 
 /** Both are slow-ish and rarely change: fetched per project, only while the panel is open and the window visible. */
 const rsideBusy = new Set();
+// Without a project (home screen) main lists the user-level ones: `claude mcp list` in the home folder, ~/.claude/agents.
 async function pollMcp() {
-  const proj = currentProject();
-  if (!proj || !rsideShown() || document.hidden || rsideBusy.has(proj.path)) return;
-  rsideBusy.add(proj.path);
+  const key = currentProject()?.path || GLOBAL;
+  if (!rsideShown() || document.hidden || rsideBusy.has(key)) return;
+  rsideBusy.add(key);
   try {
-    const next = await api.mcpList(proj.path);
-    if (JSON.stringify(next) !== JSON.stringify(mcpBy.get(proj.path))) { mcpBy.set(proj.path, next); renderRside(); }
+    const next = await api.mcpList(key || null);
+    if (JSON.stringify(next) !== JSON.stringify(mcpBy.get(key))) { mcpBy.set(key, next); renderRside(); }
   } finally {
-    rsideBusy.delete(proj.path);
+    rsideBusy.delete(key);
   }
 }
 
 async function pollDefinedAgents() {
-  const proj = currentProject();
-  if (!proj || !rsideShown() || document.hidden) return;
-  const next = await api.definedAgents(proj.path);
-  if (JSON.stringify(next) !== JSON.stringify(definedBy.get(proj.path))) { definedBy.set(proj.path, next); renderRside(); }
+  const key = currentProject()?.path || GLOBAL;
+  if (!rsideShown() || document.hidden) return;
+  const next = await api.definedAgents(key || null);
+  if (JSON.stringify(next) !== JSON.stringify(definedBy.get(key))) { definedBy.set(key, next); renderRside(); }
 }
 
 // --------------------------------------------------------------- session info ----

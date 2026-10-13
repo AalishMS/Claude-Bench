@@ -112,7 +112,8 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     `etime`), so ownership logic and the `parentPid` guard are shared. `macDevName` maps `python3.12` -> `python.exe`
     for `DEV_PROCESSES`.
   - Usage token: Keychain item `Claude Code-credentials` (`security find-generic-password -w`) when the file token is
-    missing or expired; a failed read is not retried for 10 minutes (no repeated access dialogs).
+    missing or expired; a failed read is not retried for 10 minutes (no repeated access dialogs). An expired token is
+    refreshed the same way as on Windows (`refreshLogin` = `claude mcp list` via the login PATH), then the Keychain is read again.
   - Window: traffic lights via `trafficLightPosition` (no `titleBarOverlay`); `body.mac` moves the padding to `#brand`.
     Windows uses `assets/icon.ico` for the window and taskbar; macOS uses `assets/icon-mac.png` (padded to Apple's 824/1024 grid so the Dock icon matches its neighbours).
     A minimal app menu (appMenu + editMenu) replaces Electron's default, whose Cmd+W/R/= would clash; the Edit roles
@@ -238,6 +239,9 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   **Context** (`x / yk` + %, same numbers as the footer tile), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**, **Images**.
   Subagents and Running show `RSIDE_SHOWN` (5) rows, then "Show N more" / "Show less" (`foldRows`, `rsideMore`, runtime only;
   collapsing the section clears it, so reopening shows 5 again). Images is last and never folded.
+  Home screen (no active tab): Context and Images are left out; with no `currentProject()` MCPs and Subagents show the
+  user-level ones (stored under `GLOBAL` = `''` in `mcpBy` / `definedBy`; main runs `claude mcp list` in the home folder and
+  reads only `~/.claude/agents`), and Running lists every session's servers.
   - MCPs: only connected ones are listed; the rest are behind a "Show N more" row (`mcpMore`, not persisted). `claude mcp list` run in the project folder (main `mcpList`, `cmd.exe /c claude mcp list`, cached 5 min (activating a tab of another project polls it), never overlapping;
     it health-checks every server, so it takes seconds). Output lines `name: target - ✔ Connected | ! Needs authentication | ...` map to
     connected (success) / failed + needs_client_registration (destructive) / needs_auth (warning) / disabled + unknown (muted).
@@ -277,7 +281,9 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   mtime+size. `pollSessions` lists the projects on screen (open tabs, expanded in the sidebar, `currentProject`) every 4 s and
   all projects every 20 s and on focus (`pollSessions(all)`, partial results merged into `sessionsBy`; a full poll asked for
   during a partial one is queued, `sessionsQueued`, as in `pollGit`). The sidebar footer row shows plan limits (session / weekly / per-model % and reset times, from `api.anthropic.com/api/oauth/usage`
-  using the token in `~/.claude/.credentials.json`, cached 2 min in main, never written; a failure blocks requests for its `Retry-After` (429 default 5 min, max 15) and the last good numbers are served as `stale`, because retrying a 429 keeps the limit from clearing), context fill of the active tab's
+  using the token in `~/.claude/.credentials.json`, cached 2 min in main, never written; the token lasts hours and only Claude
+  Code refreshes it, so with no session running it expires: `refreshLogin` then runs `claude mcp list` in the home folder
+  (it refreshes the token; `claude auth status` does not, tested on v2.1.296), at most once per 10 min, also on a 401; a failure blocks requests for its `Retry-After` (429 default 5 min, max 15) and the last good numbers are served as `stale`, because retrying a 429 keeps the limit from clearing), context fill of the active tab's
   session, and tab state. Fresh and `--continue` tabs are matched to their transcript heuristically (`assignSessions`).
   Until a tab's transcript is listed (after the first reply) it shows as an italic "New session" placeholder row;
   PowerShell tabs get a "PowerShell" row. Every open tab has a row (there is no tab strip).
