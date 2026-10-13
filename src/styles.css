@@ -156,6 +156,8 @@ button { font: inherit; color: inherit; }
 #brand { display: flex; align-items: center; gap: 8px; flex: none; height: 40px; padding: 0 8px 0 4px; -webkit-app-region: drag; }
 #brand .logo { width: 20px; height: 20px; display: inline-flex; }
 #brand .logo img { width: 100%; height: 100%; display: block; }
+/* 1px ring on the tile's rounded edge (22% = the icon's corner radius), so the black tile still reads on the dark theme */
+#brand .logo img, .welcome-inner .big-logo img { border-radius: 22%; box-shadow: 0 0 0 1px var(--border); }
 .brand-name { font-weight: 500; white-space: nowrap; }
 #topbar #brand { padding: 0; }
 /* macOS: window buttons (traffic lights) sit at the top-left, where #brand always is, instead of the top-right */
@@ -437,7 +439,7 @@ body.no-tabs #close-tab, body.no-tabs #split-tab { display: none; }
 #welcome { position: absolute; inset: 0; display: none; overflow-y: auto; padding: 32px; }
 body.no-tabs #welcome { display: flex; flex-direction: column; }
 .welcome-inner { width: 100%; max-width: 680px; margin: auto; padding-bottom: 4vh; text-align: center; }
-.welcome-inner .big-logo { width: 56px; height: 56px; margin: 0 auto 24px; border-radius: 14px; box-shadow: var(--shadow-md); }
+.welcome-inner .big-logo { width: 56px; height: 56px; margin: 0 auto 24px; border-radius: 22%; box-shadow: var(--shadow-md); }
 .welcome-inner .big-logo img { width: 100%; height: 100%; display: block; }
 .welcome-inner h1 { font-size: 32px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em; margin: 0 0 10px; }
 .welcome-inner p { color: var(--muted-foreground); margin: 0 0 36px; font-size: 14px; }

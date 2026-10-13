@@ -274,7 +274,7 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - One exception: the top bar's "Open in VS Code" button shows the official VS Code logo in its own blues
   (`VSCODE_SVG` in renderer.js), because it stands for that app. No other icon gets brand color; the Update
   button's `--primary` tint is the accent, not a brand color, and it only appears when there is something to do.
-- Logo: a black rounded tile with metallic silver beveled "C3" lettering, matching the supplied T3 Code reference with T replaced by C. `LOGO_IMG` in renderer.js uses `assets/icon.png` in the sidebar (20 px) and welcome screen (44 px).
+- Logo: a flat black rounded tile with a white stack of terminal windows (`>_` prompt on the front one), no gradients. `LOGO_IMG` in renderer.js uses `assets/icon.png` in the sidebar (20 px) and welcome screen (56 px). Both get a 1 px `--border` ring (`box-shadow`, `border-radius: 22%` = the icon's corner), so the black tile still reads on the dark theme; on light it vanishes into the tile's edge.
 
 ## 4. Layout and behavior (tweaks kept from before)
 
