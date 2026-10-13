@@ -247,7 +247,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   PowerShell tabs get a "PowerShell" row. Every open tab has a row (there is no tab strip).
 - **Session info** (right side of the status bar for Claude tabs, `session:info`): model = last reply's model or `/model` output in the transcript tail,
   effort = `/effort` / `/model` output, else `modelSettings[<id>].effortLevel` in `~/.claude/settings.json`. Subagents come from
-  `<session>/subagents/agent-*.jsonl` + `.meta.json`; finished = tail has a `SubagentHandback` call or ends in a text-only reply.
+  `<session>/subagents/agent-*.jsonl` + `.meta.json`; finished = tail has a `SubagentHandback` call, ends in a text-only reply, or ends in a `[Request interrupted by user]` line (stopped; otherwise it would stay "working" for `AGENT_STALE_MS`).
 - **Scrollbar**: our own `.vbar` replaces xterm's. Normal buffer = real position. Claude's `"tui": "fullscreen"` uses the
   alternate screen (no scrollback), so there the strip forwards synthetic wheel events to `.xterm-screen` (Claude has mouse
   tracking on) and the thumb rests in the middle.

@@ -806,12 +806,17 @@ async function readAgent(dir, name) {
   const meta = (await readJson(file.replace(/\.jsonl$/, '.meta.json'))) || {};
   const tail = await readTail(file, st.size, TAIL_BYTES);
   const lines = tail.split('\n').filter(Boolean);
-  // Finished = it handed its report back, or its last line is a reply with text and no further tool call.
+  // Finished = it handed its report back, its last line is a reply with text and no further tool call, or it was
+  // stopped (TaskStop / Esc leave a "[Request interrupted by user]" user line and nothing after it).
   let done = tail.includes('"name":"SubagentHandback"');
   if (!done) try {
     const j = JSON.parse(lines[lines.length - 1]);
-    const c = j.type === 'assistant' && j.message?.content;
+    const c = j.type === 'assistant' ? j.message?.content : null;
     done = Array.isArray(c) && c.some((x) => x.type === 'text') && !c.some((x) => x.type === 'tool_use');
+    if (!done && j.type === 'user') {
+      const u = j.message?.content;
+      done = (typeof u === 'string' ? u : Array.isArray(u) ? u.map((x) => x.text || '').join('') : '').startsWith('[Request interrupted by user');
+    }
   } catch { /* last line longer than the tail, or still being written: working */ }
   const models = tail.match(/"model":"([^"]+)"/g);
   const agent = {
