@@ -9,7 +9,7 @@ const pty = require('@lydell/node-pty');
 const {
   parseGitStatus, parentPid, parseNetstat, parseLsof, parsePs, macDevName, withoutFlagValues,
   oneLine, usageTokens, parseTail, firstPrompt, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel,
-  parseMcpList, remapSplits,
+  parseAgentFile, parseMcpList, remapSplits,
 } = require('./lib/parse');
 const { scanImages } = require('./lib/images');
 
@@ -696,10 +696,8 @@ async function definedAgents(cwd) {
     try { names = (await fs.promises.readdir(dir)).filter((n) => n.endsWith('.md')); } catch { continue; }
     for (const n of names) {
       try {
-        const head = (await fs.promises.readFile(path.join(dir, n), 'utf8')).replace(/^\uFEFF/, '').split(/\r?\n---/)[0];
-        const field = (k) => new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(head)?.[1].trim().replace(/^["']|["']$/g, '');
-        const name = oneLine(field('name') || n.slice(0, -3));
-        out.set(name, { name, model: oneLine(field('model')) || 'inherit' }); // project agents override user ones
+        const { name, model } = parseAgentFile(await fs.promises.readFile(path.join(dir, n), 'utf8'), n);
+        out.set(name, { name, model: oneLine(model) || 'inherit' }); // project agents override user ones
       } catch { /* unreadable file */ }
     }
   }
@@ -721,13 +719,10 @@ async function agentPrompts(cwd, sessionId, name) {
     try { names = (await fs.promises.readdir(dir)).filter((n) => n.endsWith('.md')); } catch { continue; }
     for (const n of names) {
       try {
-        const text = (await fs.promises.readFile(path.join(dir, n), 'utf8')).replace(/^\uFEFF/, '');
-        const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text);
-        const fm = m ? m[1] : '';
-        const own = /^name:\s*(.+)$/m.exec(fm)?.[1].trim().replace(/^["']|["']$/g, '') || n.slice(0, -3);
-        if (own !== name) continue;
-        out.definition = (m ? m[2] : text).trim().slice(0, PROMPT_CAP);
-        defModel = /^model:\s*(.+)$/m.exec(fm)?.[1].trim().replace(/^["']|["']$/g, '') || null;
+        const def = parseAgentFile(await fs.promises.readFile(path.join(dir, n), 'utf8'), n);
+        if (def.name !== name) continue;
+        out.definition = def.body.slice(0, PROMPT_CAP);
+        defModel = def.model;
         break;
       } catch { /* unreadable file */ }
     }

@@ -176,6 +176,7 @@ test('defaultEffort: by model id, then by unique family, then global', () => {
   assert.equal(p.defaultEffort(settings, 'claude-opus-5-5[1m]'), 'high');
   assert.equal(p.defaultEffort(settings, 'sonnet'), 'low'); // only one sonnet entry
   assert.equal(p.defaultEffort(settings, 'claude-haiku-5-5'), 'medium');
+  assert.equal(p.defaultEffort({ modelSettings: { 'claude-mythos-1': { effortLevel: 'max' } } }, 'Mythos'), 'max');
   assert.equal(p.defaultEffort(null, 'x'), null);
 });
 
@@ -216,9 +217,27 @@ test('agentDone: handback, final text reply or interrupt = finished; a tool call
   assert.equal(p.agentDone(''), false);
 });
 
-test('lastModel takes the last model in the tail', () => {
-  assert.equal(p.lastModel('{"model":"claude-haiku-5-5"}\n{"model":"claude-sonnet-5-5"}'), 'claude-sonnet-5-5');
+test('lastModel takes the last real reply, not synthetic replies or tool inputs', () => {
+  const reply = (model, content = []) => ({ type: 'assistant', message: { model, content } });
+  assert.equal(p.lastModel(jl(reply('claude-haiku-5-5'), reply('claude-sonnet-5-5'))), 'claude-sonnet-5-5');
+  assert.equal(p.lastModel(jl(reply('claude-sonnet-5-5'), reply('<synthetic>'))), 'claude-sonnet-5-5');
+  assert.equal(p.lastModel(jl(
+    reply('claude-opus-5-5', [{ type: 'tool_use', name: 'Agent', input: { model: 'haiku', prompt: 'x' } }]),
+    { type: 'user', message: { content: [{ type: 'tool_result', content: '{"model":"haiku"}' }] } },
+  )), 'claude-opus-5-5');
+  assert.equal(p.lastModel(jl(reply('claude-haiku-5-5')) + '\n{"type":"assistant","message":{"model":"claude-son'), 'claude-haiku-5-5');
   assert.equal(p.lastModel('{}'), null);
+});
+
+test('parseAgentFile reads frontmatter name and model, the body after it', () => {
+  const def = p.parseAgentFile('\uFEFF---\r\nname: "code-scout"\r\nmodel: haiku\r\ndescription: x\r\n---\r\nYou search code.\r\n', 'scout.md');
+  assert.deepEqual(def, { name: 'code-scout', model: 'haiku', body: 'You search code.' });
+  assert.deepEqual(p.parseAgentFile('---\nname: a\n---', 'a.md'), { name: 'a', model: null, body: '' });
+  // No frontmatter: a "name:" line in the body or a later "---" rule doesn't count
+  assert.deepEqual(p.parseAgentFile('Use name: fake\n\n---\nmore', 'helper.md'),
+    { name: 'helper', model: null, body: 'Use name: fake\n\n---\nmore' });
+  // A "---" inside the body after the frontmatter stays in the body
+  assert.equal(p.parseAgentFile('---\nname: b\n---\nintro\n---\nend', 'b.md').body, 'intro\n---\nend');
 });
 
 // ------------------------------------------------------------------ mcp ----

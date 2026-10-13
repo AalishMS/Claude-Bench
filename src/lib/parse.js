@@ -170,7 +170,7 @@ function defaultEffort(settings, model) {
   const m = String(model || '').toLowerCase().replace(/\[1m\]$/, '');
   const id = m.startsWith('claude-') ? m : `claude-${m.replace(/[\s.]+/g, '-')}`;
   if (per[id]?.effortLevel) return per[id].effortLevel;
-  const fam = /opus|sonnet|haiku|fable/.exec(m)?.[0];
+  const fam = /opus|sonnet|haiku|fable|mythos/.exec(m)?.[0];
   const keys = fam ? Object.keys(per).filter((k) => k.includes(fam) && per[k]?.effortLevel) : [];
   return keys.length === 1 ? per[keys[0]].effortLevel : settings?.effortLevel || null;
 }
@@ -229,10 +229,34 @@ function agentDone(tail) {
   return false;
 }
 
-/** The last `"model":"..."` in a subagent transcript tail, or null. */
+/**
+ * The model of the last real reply in a subagent transcript tail, or null. Synthetic replies (API errors, interrupts)
+ * don't count, nor does a "model" inside a tool call's input.
+ */
 function lastModel(tail) {
-  const models = tail.match(/"model":"([^"]+)"/g);
-  return models ? models[models.length - 1].slice(9, -1) : null;
+  const lines = tail.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i].includes('"type":"assistant"')) continue;
+    try {
+      const j = JSON.parse(lines[i]);
+      const m = j.type === 'assistant' ? j.message?.model : null;
+      if (typeof m === 'string' && m && m !== '<synthetic>') return m;
+    } catch { /* line still being written */ }
+  }
+  return null;
+}
+
+/**
+ * A subagent definition (~/.claude/agents/<file>.md) -> { name, model, body }. The frontmatter is the block between a
+ * leading `---` line and the next one; without it the name is the file name and the whole text is the body.
+ * `model` is null when not set.
+ */
+function parseAgentFile(text, fileName) {
+  const t = text.replace(/^\uFEFF/, '');
+  const m = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)([\s\S]*)$/.exec(t);
+  const fm = m ? m[1] : '';
+  const field = (k) => new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(fm)?.[1].trim().replace(/^["']|["']$/g, '') || null;
+  return { name: oneLine(field('name') || fileName.replace(/\.md$/i, '')), model: field('model'), body: (m ? m[2] : t).trim() };
 }
 
 // ------------------------------------------------------------------ mcp ----
@@ -273,7 +297,7 @@ module.exports = {
   parseGitStatus,
   parentPid, parseNetstat, etimeSeconds, parseLsof, parsePs, macDevName, withoutFlagValues,
   oneLine, usageTokens, parseTail, firstPrompt, defaultEffort, modelFamily, withLongContext, parseModelEffort,
-  agentDone, lastModel,
+  agentDone, lastModel, parseAgentFile,
   parseMcpList,
   remapSplits,
 };
