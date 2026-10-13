@@ -248,8 +248,9 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   - Subagents: definitions from `~/.claude/agents/*.md` and `<project>/.claude/agents/*.md` (frontmatter `name`, `model`; `inherit` shows the
     session model) merged with this session's runs from `session:info` (`running` = working dot, finished = check, else idle). Each
     running run is its own row (`type · description`, so parallel agents of one type don't fold into one; newest first, and a missing or repeated description gets the start time); finished runs and idle
-    definitions stay one row per type, and the header counts running runs. A run's
-    real model (last `"model"` in its transcript tail) beats the definition's. Clicking a row (a running run's row lists its own prompt first) opens `agentDialog` (read-only popup in
+    definitions stay one row per type, and the header counts running runs. A run's model is the last `"model"` of its
+    replies (1 MB tail when the 64 KB one has none, else the last one seen), before its first reply the Agent call's
+    `model` from `.meta.json` (`requested`) or the definition's; never the session's (only an idle `inherit` definition shows that). Clicking a row (a running run's row shows only that run; a type's row lists each run with its own model) opens `agentDialog` (read-only popup in
     `#modal`, Esc / backdrop / × close): the definition's prompt (`agents:prompt`, body after the frontmatter) and the prompt each run of
     that type was given (first line of its `agent-*.jsonl`), each with its own Context bar (a subagent has a separate window; last reply's usage in its transcript, same assumed 200k/1M rule). `assignSessions` also re-points a running tab at a newer unclaimed
     transcript (`/clear` and `/resume` start a new session file in the same tab), otherwise the sidebar reads the old session's `subagents/`.
@@ -289,7 +290,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   PowerShell tabs get a "PowerShell" row. Every open tab has a row (there is no tab strip).
 - **Session info** (right side of the status bar for Claude tabs, `session:info`): model = last reply's model or `/model` output in the transcript tail,
   effort = `/effort` / `/model` output, else `modelSettings[<id>].effortLevel` in `~/.claude/settings.json`. Subagents come from
-  `<session>/subagents/agent-*.jsonl` + `.meta.json`; finished = tail has a `SubagentHandback` call, ends in a text-only reply, or ends in a `[Request interrupted by user]` line (stopped; otherwise it would stay "working" for `AGENT_STALE_MS`).
+  `<session>/subagents/agent-*.jsonl` + `.meta.json`; finished = the last message line (`agentDone` skips attachments) is a `SubagentHandback` call or its result, a text reply with `stop_reason` `end_turn`/`stop_sequence` (Explore, Plan and /code-review runs never hand back; mid-run text lines have `stop_reason` null, since text and the next tool call are separate lines), or a `[Request interrupted by user]` line (stopped; otherwise it would stay "working" for `AGENT_STALE_MS`). A finished run is followed by a ~100 KB `prompt_snapshot` attachment whose tool list names SubagentHandback, so never text-search the tail for it; with no message line in 64 KB, `readAgent` reads 1 MB.
 - **Scrollbar**: our own `.vbar` replaces xterm's. Normal buffer = real position. Claude's `"tui": "fullscreen"` uses the
   alternate screen (no scrollback), so there the strip forwards synthetic wheel events to `.xterm-screen` (Claude has mouse
   tracking on) and the thumb rests in the middle.

@@ -222,23 +222,31 @@ function parseModelEffort(text) {
 }
 
 /**
- * Is the subagent whose transcript ends in `tail` finished? It handed its report back, its last line is a reply with
- * text and no further tool call, or it was stopped (TaskStop / Esc leave a "[Request interrupted by user]" user line
- * and nothing after it).
+ * Is the subagent whose transcript ends in `tail` finished? Judged by its last message line: a SubagentHandback call
+ * (or its tool result), a text reply that ended the turn (Explore, Plan and /code-review runs report this way, no
+ * handback), or a stop (TaskStop / Esc leave a "[Request interrupted by user]" user line). Text and the next tool call
+ * are separate lines, and mid-run text has `stop_reason` null, so only end_turn / stop_sequence count (else a run that
+ * talks before acting would blink done). Other lines are skipped: a finished run is followed by a ~100 KB
+ * `prompt_snapshot` attachment whose tool list names SubagentHandback, so a text search would call any run done.
+ * null = no complete message line in the tail (read more of the file).
  */
 function agentDone(tail) {
-  if (tail.includes('"name":"SubagentHandback"')) return true;
-  const lines = tail.split('\n').filter(Boolean);
-  try {
-    const j = JSON.parse(lines[lines.length - 1]);
-    const c = j.type === 'assistant' ? j.message?.content : null;
-    if (Array.isArray(c) && c.some((x) => x.type === 'text') && !c.some((x) => x.type === 'tool_use')) return true;
-    if (j.type === 'user') {
-      const u = j.message?.content;
-      return (typeof u === 'string' ? u : Array.isArray(u) ? u.map((x) => x.text || '').join('') : '').startsWith('[Request interrupted by user');
+  const lines = tail.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i].includes('"type":"assistant"') && !lines[i].includes('"type":"user"')) continue;
+    let j;
+    try { j = JSON.parse(lines[i]); } catch { continue; } // cut off at the tail's start, or still being written
+    const c = j.message?.content;
+    if (j.type === 'assistant' && Array.isArray(c)) {
+      if (c.some((x) => x.type === 'tool_use')) return c.some((x) => x.type === 'tool_use' && x.name === 'SubagentHandback');
+      const stop = j.message.stop_reason;
+      return (stop === 'end_turn' || stop === 'stop_sequence') && c.some((x) => x.type === 'text');
     }
-  } catch { /* last line longer than the tail, or still being written: working */ }
-  return false;
+    if (j.type !== 'user') continue;
+    if (Array.isArray(c) && c.length && c.every((x) => x.type === 'tool_result')) continue; // judged by the call before it
+    return (typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => x.text || '').join('') : '').startsWith('[Request interrupted by user');
+  }
+  return null;
 }
 
 /**

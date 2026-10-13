@@ -215,18 +215,34 @@ test('parseModelEffort follows /model, /effort and replies', () => {
     { model: 'claude-haiku-5-5', effort: null });
 });
 
-test('agentDone: handback, final text reply or interrupt = finished; a tool call or a partial line = working', () => {
-  const text = { type: 'assistant', message: { content: [{ type: 'text', text: 'Report' }] } };
-  const tool = { type: 'assistant', message: { content: [{ type: 'text', text: 'Let me look' }, { type: 'tool_use', name: 'Read' }] } };
+test('agentDone: handback, final text reply or interrupt = finished; a tool call, mid-run text or a partial line = working', () => {
+  const text = { type: 'assistant', message: { stop_reason: null, content: [{ type: 'text', text: 'Let me look' }] } };
+  const report = { type: 'assistant', message: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Report' }] } };
+  const thinking = { type: 'assistant', message: { stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: 'x' }] } };
+  const tool = { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read' }] } };
   const result = { type: 'user', message: { content: [{ type: 'tool_result', content: 'x' }] } };
   assert.equal(p.agentDone(jl(tool, { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'SubagentHandback' }] } })), true);
-  assert.equal(p.agentDone(jl(tool, result, text) + '\n'), true);
+  // text and the next tool call are separate lines: mid-run text has no stop_reason, a final report ends the turn
+  assert.equal(p.agentDone(jl(tool, result, text) + '\n'), false);
+  assert.equal(p.agentDone(jl(tool, result, report) + '\n'), true);
+  assert.equal(p.agentDone(jl(tool, result, thinking)), false);
   assert.equal(p.agentDone(jl(text, tool)), false);
   assert.equal(p.agentDone(jl(tool, result)), false);
   assert.equal(p.agentDone(jl(tool, { type: 'user', message: { content: '[Request interrupted by user]' } })), true);
   assert.equal(p.agentDone(jl(tool, { type: 'user', message: { content: [{ type: 'text', text: '[Request interrupted by user for tool use]' }] } })), true);
   assert.equal(p.agentDone(jl(tool) + '\n{"type":"assistant","message":{"content":[{"type":"te'), false);
-  assert.equal(p.agentDone(''), false);
+  assert.equal(p.agentDone(''), null);
+  // Real order (Claude Code 2.x): the handback call, its result, then a prompt_snapshot attachment whose tool list
+  // names SubagentHandback; the same snapshot also lands mid-run, where it must not count.
+  const handback = { type: 'assistant', message: { model: 'claude-haiku-5-5', content: [{ type: 'tool_use', name: 'SubagentHandback', input: { message: 'Done' } }] } };
+  const delivered = { type: 'user', message: { content: [{ type: 'tool_result', content: [{ type: 'text', text: '{"success":true}' }] }] } };
+  const snapshot = { type: 'attachment', attachment: { type: 'prompt_snapshot', tools: [{ name: 'Read' }, { name: 'SubagentHandback' }] } };
+  assert.equal(p.agentDone(jl(tool, handback, delivered, snapshot)), true);
+  assert.equal(p.agentDone(jl(tool, result, report, snapshot)), true); // Explore / review runs: no handback
+  assert.equal(p.agentDone(jl(tool, result, snapshot)), false);
+  assert.equal(p.agentDone(jl(snapshot)), null);
+  // a tail that starts inside one huge line has no message to judge by
+  assert.equal(p.agentDone(JSON.stringify(snapshot).slice(20)), null);
 });
 
 test('lastModel takes the last real reply, not synthetic replies or tool inputs', () => {

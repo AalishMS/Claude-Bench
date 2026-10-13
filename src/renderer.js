@@ -365,7 +365,8 @@ function openModal(title, extra, body) {
 /** Read-only popup with a subagent's prompt: its definition's system prompt and/or what each run of it was given. */
 async function agentDialog(a, tab) {
   const body = h('div', { class: 'ag-body' }, h('div', { class: 'rnote' }, 'Loading…'));
-  const dlg = openModal(a.name, h('span', { class: 'ag-model mono' }, a.model ? prettyModel(a.model) : ''), body);
+  const model = h('span', { class: 'ag-model mono' }, a.model ? prettyModel(a.model) : '');
+  const dlg = openModal(a.name, model, body);
 
   const sec = (label, text) => h('section', { class: 'ag-sec' }, h('div', { class: 'ag-label' }, label), h('pre', { class: 'ag-prompt' }, text));
   let res = null;
@@ -373,18 +374,20 @@ async function agentDialog(a, tab) {
   if (!dlg.isOpen()) return; // closed while loading
   const parts = [];
   if (res?.definition) parts.push(sec('Agent prompt', res.definition));
-  const runs = res?.runs || [];
-  const mine = a.runId ? runs.findIndex((r) => r.id === a.runId) : -1; // a running run's row: its own prompt first
-  if (mine > 0) runs.unshift(...runs.splice(mine, 1));
+  // A running run's row is that one run; a type's row lists its runs, each under the model it ran on.
+  const all = res?.runs || [];
+  const runs = a.runId && all.some((r) => r.id === a.runId) ? all.filter((r) => r.id === a.runId) : all; // its run unreadable: all of them
+  if (a.runId && runs[0]?.model) model.textContent = prettyModel(runs[0].model);
   const ctxLine = (r) => {
-    if (!r.ctx) return null;
-    const win = contextWindow(r.model || a.model, r.ctx);
+    if (!r.ctx || !r.model) return null;
+    const win = contextWindow(r.model, r.ctx);
     const pct = Math.min(100, Math.round((r.ctx / win) * 100));
     return h('div', { class: 'ag-ctx' }, h('div', { class: 'ctx-line' }, h('span', { class: 'ctx-title' }, 'Context'),
       h('span', { class: 'ctx-val' }, `${fmtTok(r.ctx)} / ${fmtTok(win)} (${pct}%)`)),
       h('span', { class: `meter big ${levelOf(pct)}`.trim() }, h('i', { style: `width:${pct}%` })));
   };
-  runs.slice(0, 5).forEach((r) => parts.push(h('div', {}, ctxLine(r), sec(runs.length > 1 || res?.definition ? `Prompt given${r.description ? `: ${r.description}` : ''}` : (r.description ? `Prompt given: ${r.description}` : 'Prompt given'), r.prompt || '(empty)'))));
+  const runLabel = (r) => `Prompt given${r.description ? `: ${r.description}` : ''}${runs.length > 1 && r.model ? ` (${prettyModel(r.model)})` : ''}`;
+  runs.slice(0, 5).forEach((r) => parts.push(h('div', {}, ctxLine(r), sec(runLabel(r), r.prompt || '(empty)'))));
   if (runs.length > 5) parts.push(h('div', { class: 'rnote' }, `${runs.length - 5} older runs not shown.`));
   body.replaceChildren(...(parts.length ? parts : [h('div', { class: 'rnote' }, 'No prompt found: this agent is not defined in a file and has not run in this session.')]));
 }
@@ -2365,15 +2368,19 @@ function agentRows(proj, tab) {
   const defs = new Map((definedBy.get(proj?.path || GLOBAL) || []).map((d) => [d.name, d.model]));
   const rows = new Map([...defs].map(([name, model]) => [name, { name, model, running: 0, done: 0 }]));
   const live = [];
+  // A run shows the model its replies carry, else the one the Agent call or its definition asked for, else nothing:
+  // never the session's, which a run only has when it inherits (and then its first reply says so).
   for (const a of info?.agents || []) { // newest first
+    const def = defs.get(a.type);
+    const model = a.model || a.requested || (def !== 'inherit' && def) || null;
     if (a.running) {
-      live.push({ name: a.type, runId: a.id, desc: a.description || '', start: a.start, model: a.model || defs.get(a.type) || null, running: 1, done: 0 });
+      live.push({ name: a.type, runId: a.id, desc: a.description || '', start: a.start, model, running: 1, done: 0 });
       continue;
     }
     if (!rows.has(a.type)) rows.set(a.type, { name: a.type, model: null, running: 0, done: 0 });
     const r = rows.get(a.type);
     r.done++;
-    if (a.model && !r.live) { r.model = a.model; r.live = true; } // the model it actually ran with beats the definition's
+    if (!r.ran) { r.model = model; r.ran = true; } // the newest finished run beats the definition's
   }
   // A type with runs going and none finished is shown by those rows alone (no idle row beside them).
   for (const l of live) if (!rows.get(l.name)?.done) rows.delete(l.name);
@@ -2385,7 +2392,7 @@ function agentRows(proj, tab) {
   }
   const rank = (r) => (r.running ? 0 : r.done ? 1 : 2);
   return [...live, ...rows.values()] // sort is stable: runs of one type stay newest first
-    .map((r) => ({ ...r, model: !r.model || r.model === 'inherit' ? info?.model || null : r.model }))
+    .map((r) => (r.running || r.ran || r.model !== 'inherit' ? r : { ...r, model: info?.model || null })) // an idle definition that inherits
     .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 

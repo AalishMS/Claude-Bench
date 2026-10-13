@@ -645,6 +645,9 @@ async function readModelEffort(file) {
   return value;
 }
 
+// A run's model is the one its replies carry, never the parent session's: big lines (screenshots, the prompt_snapshot
+// appended at the end) can push every reply out of the tail, so the wide tail is read next and the last model seen is
+// kept. `requested` is the Agent call's `model` from .meta.json ("haiku"), shown until the first reply.
 const agentCache = new Map(); // file -> { sig, agent }
 async function readAgent(dir, name) {
   const file = path.join(dir, name);
@@ -653,13 +656,23 @@ async function readAgent(dir, name) {
   const hit = agentCache.get(file);
   if (hit?.sig === sig) return hit.agent;
   const meta = (await readJson(file.replace(/\.jsonl$/, '.meta.json'))) || {};
-  const tail = await readTail(file, st.size, TAIL_BYTES);
+  let tail = await readTail(file, st.size, TAIL_BYTES);
+  let done = agentDone(tail);
+  let model = lastModel(tail);
+  if ((done == null || !model) && st.size > TAIL_BYTES) {
+    tail = await readTail(file, st.size, WIDE_TAIL_BYTES);
+    done = agentDone(tail);
+    model = lastModel(tail);
+  }
+  const requested = oneLine(meta.model);
   const agent = {
     id: name.slice(6, -6),
     type: oneLine(meta.agentType) || 'agent',
-    model: lastModel(tail),
+    model: model || hit?.agent.model || null,
+    requested: requested && requested !== 'inherit' ? requested : null,
     description: oneLine(meta.description),
-    done: agentDone(tail),
+    done: done === true,
+    ctx: usageTokens(parseTail(tail).usage) || hit?.agent.ctx || 0, // each subagent has its own context window
     start: Math.round(st.birthtimeMs),
     mtime: Math.round(st.mtimeMs),
   };
@@ -786,9 +799,9 @@ async function agentPrompts(cwd, sessionId, name) {
           const first = (await readRange(file, 0, 512 * 1024)).split('\n')[0];
           const c = JSON.parse(first).message?.content;
           const prompt = typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => x.text || '').join('\n') : '';
-          const st = await fs.promises.stat(file);
-          const t = parseTail(await readTail(file, st.size, TAIL_BYTES)); // each subagent has its own context window
-          out.runs.push({ id: n.slice(6, -6), description: oneLine(meta.description), prompt: prompt.trim().slice(0, PROMPT_CAP), start: Math.round(st.birthtimeMs), ctx: usageTokens(t.usage), model: withLongContext(t.model, configured) });
+          const a = await readAgent(dir, n);
+          out.runs.push({ id: a.id, description: a.description, prompt: prompt.trim().slice(0, PROMPT_CAP), start: a.start, ctx: a.ctx,
+            model: withLongContext(withLongContext(a.model, a.requested), configured) || a.requested });
         } catch { /* partial first line or unreadable */ }
       }
     } catch { /* no subagents */ }
