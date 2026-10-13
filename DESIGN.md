@@ -143,7 +143,7 @@ the control. **Theme**: three preview cards (16:10, `rounded-lg`, 1 px `--border
 `--muted` lines, a `--primary` button); System shows dark and light cut diagonally. Label under the card, 12 px / 500,
 `--foreground` when selected. **Accent color**: outline-style option buttons (h 32) with a 14 px swatch dot + name;
 selected = `--ring` border. **Terminal text size**: outline icon `−` / `+`, the value in mono, and a ghost
-"Reset to 14" when changed. All are `role=radio` groups; a re-render puts focus back on the same control (`data-fk`).
+"Reset to 14" when changed. **Interface zoom** uses the same control (`110 %`, "Reset to 100 %"). All are `role=radio` groups; a re-render puts focus back on the same control (`data-fk`).
 
 Chats: one field, **Chat folder**: the path in a bordered box (`.set-path`, 12 px muted, `rounded-md`, wraps anywhere),
 then `Change…` (outline sm, folder icon), `Show in Explorer` (ghost sm) and, when not the default, `Reset to default`

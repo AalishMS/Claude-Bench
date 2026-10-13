@@ -43,7 +43,7 @@ no Electron, no node-pty), so keep `src/lib/` and the tests free of both. Test p
 - **Terminal first.** The terminal gets the space and the focus. Chrome around it stays quiet.
 - **Don't fight Claude Code.** Our shortcuts mostly avoid keys it uses (`Ctrl+B/W/J`...); `Ctrl+T` (new session), `Ctrl+S` (sidebar) and `Ctrl+W` (close session; costs Claude's delete-word) are deliberate exceptions. The defaults are `Ctrl+T`, `Ctrl+S`, `Ctrl+W` (also `Ctrl+Shift+W`), `Ctrl+Shift+S` (servers),
   `Ctrl+Tab`, `Alt+1..9`, `Ctrl+,` (settings), and for split view `Ctrl+Shift+→` (new session beside), `Ctrl+Shift+↓` / `Ctrl+Shift+↑` (new session below), `Ctrl+Shift+\` (unsplit),
-  `Alt+arrows` (move pane focus) and `Ctrl+Alt+arrows` (move the divider). The two arrow shortcuts only act while split; otherwise the keys reach the terminal.
+  `Alt+arrows` (move pane focus) and `Ctrl+Alt+arrows` (move the divider), `Ctrl+=` / `Ctrl+-` / `Ctrl+0` (terminal text size while a terminal has focus, else window zoom). The two arrow shortcuts only act while split; otherwise the keys reach the terminal.
   On macOS the same shortcuts use Cmd (`⌘1..9` / `⌘arrows` for `Alt+1..9` / `Alt+arrows`), so Ctrl stays entirely Claude's; `Ctrl+Tab` stays.
   All of them are editable on the settings page (see "Shortcuts"); never add a hard-coded app shortcut, add a `SHORTCUTS` entry.
 - Prefer the smallest change that works. No speculative settings screens, plugin systems or abstractions.
@@ -132,6 +132,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
   - Images (right sidebar): no Mac branch. `nativeImage` decodes the thumbnails, `shell.showItemInFolder` backs "Show in Finder"
     (label via `FILES_APP`); transcript paths are the same as on Windows.
+  - Zoom: `setWindowButtonPosition` (y scaled with the zoom) keeps the traffic lights centred; `#brand`'s 72 px padding divides by `--zoom`.
   - Appearance: `nativeTheme.themeSource` also themes the traffic-light area and menus; `setTitleBarOverlay` is skipped
     (Windows only). System follows macOS appearance.
   - Notifications: plain Electron `Notification` (no registry step). An unsigned app may show as "Electron" from
@@ -195,9 +196,14 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   the OS live). `data-theme` is set at the top of renderer.js (before first paint); `applyTheme()` sets `data-theme` /
   `data-accent` and restyles every terminal (`xtermTheme()`, `termWeight()`), on the media query's `change` and on an
   accent change. Claude Code's own colors follow its `/theme`, not ours.
+- **Zoom** (`ui.zoom`, `ZOOM_STEPS` 75-150 %): the `zoomIn/zoomOut/zoomReset` keys change the terminal text size when
+  focus is in a `.xterm` (`inTerminal`), otherwise `setZoom` / `stepZoom`. Main applies it with `webPreferences.zoomFactor`
+  at start and `applyZoom` (`setZoomFactor`) on `ui:set`. Window buttons are in screen px, so they follow it: Windows'
+  overlay height = `overlayH()` (zoomed 40 px top bar - 1), macOS `setWindowButtonPosition`; the CSS paddings that leave
+  room for them divide by `--zoom`. Terminals refit through their ResizeObservers.
 - **Settings page** (`#settings` over `#main`, gear at the left of the sidebar footer or `Ctrl+,`; `toggleSettings` /
   `renderSettings`): a section nav (`SETTINGS_TABS`, `settingsTab`, runtime only) with Appearance (`appearanceSection`:
-  theme preview cards, accent options, terminal text size), Chats (`chatsSection`: the chat folder, see "Chats") and Shortcuts (`shortcutsSection`, a bordered card per group).
+  theme preview cards, accent options, terminal text size, interface zoom), Chats (`chatsSection`: the chat folder, see "Chats") and Shortcuts (`shortcutsSection`, a bordered card per group).
   A re-render refocuses the control that had focus (`data-fk`). Shortcuts: clicking a chip (or +) records the next combo with Ctrl/Alt/Cmd (or an F key);
   a combo another action uses is moved over (`keysNote` says so). Esc cancels recording, then closes the page; activating
   any tab closes it too.

@@ -128,6 +128,7 @@ Things that differ on a Mac:
   has run for hours the token has expired; the app then runs `claude mcp list` once, which renews it.
 - Notifications go through Notification Center. Allow them when asked (under `npm start` they show as Electron).
 - Settings > Appearance > System follows macOS light/dark mode, and the traffic lights and menus follow the chosen theme.
+- Interface zoom (`⌘=` / `⌘-` outside a terminal) moves the traffic lights to stay centred in the taller or shorter top bar.
 
 If something goes wrong:
 
@@ -178,9 +179,10 @@ projects, tabs and settings. On macOS, a Claude Bench icon kept in the Dock need
 | `Ctrl+S` / `Ctrl+Shift+S` | Toggle left / right sidebar |
 | `Ctrl+Shift+F` | Search sessions |
 | `Ctrl+,` | Settings |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Terminal text size when a terminal has focus, else zoom the whole window |
 
 Settings (the gear at the bottom left) has two pages. **Appearance**: dark, light or system theme, an accent color
-(blue, violet, teal, rose) and the terminal text size. Claude Code picks some of its colors itself, so after switching
+(blue, violet, teal, rose), the terminal text size and the interface zoom. Claude Code picks some of its colors itself, so after switching
 to light run `/theme` in a session and pick a light theme there too. **Shortcuts**: every shortcut can be changed. The defaults stay clear of keys Claude Code
 uses, except `Ctrl+T`, `Ctrl+S` and `Ctrl+W`. Drop files onto a terminal to paste their paths. `F12` opens DevTools.
 

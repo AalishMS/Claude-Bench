@@ -76,7 +76,7 @@ if (IS_MAC && !process.env.LANG) process.env.LANG = 'en_US.UTF-8'; // Finder lau
 
 const defaults = {
   projects: [], // [{ path, name }]
-  ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, fontSize: 14, theme: 'dark', accent: 'blue', expanded: [], collapsed: [], keys: {} }, // theme: dark | light | system; accent: ACCENTS; expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut; keys: shortcut overrides (action id -> combos)
+  ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, fontSize: 14, zoom: 1, theme: 'dark', accent: 'blue', expanded: [], collapsed: [], keys: {} }, // theme: dark | light | system; accent: ACCENTS; expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut; keys: shortcut overrides (action id -> combos)
   bounds: null,
   maximized: false,
   tabs: [], // open tabs in tab order, reopened at launch: [{ project: path, kind: 'claude' | 'shell', sessionId }]
@@ -1144,6 +1144,10 @@ const THEMES = ['dark', 'light', 'system'];
 const ACCENTS = ['blue', 'violet', 'teal', 'rose'];
 const CHROME = { dark: { bg: '#0a0a0a', symbol: '#a1a1a1' }, light: { bg: '#ffffff', symbol: '#525252' } };
 const chrome = () => CHROME[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'];
+// Window zoom (ui.zoom, Settings > Appearance / Ctrl+= outside a terminal). The window buttons are sized in screen
+// pixels, not page pixels, so they follow it: the overlay stays 1 px short of the zoomed 40 px top bar.
+const zoom = () => Math.min(2, Math.max(0.5, Number(state.ui.zoom) || 1));
+const overlayH = () => Math.round(40 * zoom()) - 1;
 
 function applyTheme() {
   if (!THEMES.includes(state.ui.theme)) state.ui.theme = 'dark';
@@ -1158,8 +1162,17 @@ function applyChrome() {
   const c = chrome();
   try {
     mainWindow.setBackgroundColor(c.bg);
-    if (!IS_MAC) mainWindow.setTitleBarOverlay({ color: c.bg, symbolColor: c.symbol, height: 39 });
+    if (!IS_MAC) mainWindow.setTitleBarOverlay({ color: c.bg, symbolColor: c.symbol, height: overlayH() });
   } catch { /* older Electron or no overlay: cosmetic only */ }
+}
+
+function applyZoom() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.setZoomFactor(zoom());
+  applyChrome();
+  if (IS_MAC) {
+    try { mainWindow.setWindowButtonPosition({ x: 14, y: Math.round(13 + 20 * (zoom() - 1)) }); } catch { /* cosmetic only */ }
+  }
 }
 
 function createWindow() {
@@ -1176,13 +1189,14 @@ function createWindow() {
     icon: ICON,
     titleBarStyle: 'hidden',
     ...(IS_MAC
-      ? { trafficLightPosition: { x: 14, y: 13 } } // centred in the 40 px top row; #brand leaves room (body.mac in styles.css)
-      : { titleBarOverlay: { color: chrome().bg, symbolColor: chrome().symbol, height: 39 } }), // sits on the top bar (--background), 1 px short so the bar's border-bottom (row 40) runs under it to the edge
+      ? { trafficLightPosition: { x: 14, y: Math.round(13 + 20 * (zoom() - 1)) } } // centred in the 40 px top row; #brand leaves room (body.mac in styles.css)
+      : { titleBarOverlay: { color: chrome().bg, symbolColor: chrome().symbol, height: overlayH() } }), // sits on the top bar (--background), 1 px short so the bar's border-bottom (row 40) runs under it to the edge
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      zoomFactor: zoom(),
     },
   });
   if (state.maximized) mainWindow.maximize();
@@ -1429,7 +1443,9 @@ function registerIpc() {
       state.ui.expanded = patch.expanded.filter((p) => typeof p === 'string').slice(0, 200);
     }
     state.ui.fontSize = Math.min(24, Math.max(10, Math.round(state.ui.fontSize) || 14));
+    state.ui.zoom = zoom();
     if (patch?.theme || patch?.accent) applyTheme();
+    if (patch?.zoom) applyZoom();
     saveState();
   });
 

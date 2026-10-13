@@ -111,6 +111,9 @@ const FILES_APP = IS_MAC ? 'Finder' : 'Explorer';
 
 const M = IS_MAC ? 'Cmd' : 'Ctrl'; // macOS: Cmd, so Ctrl stays Claude's
 const JUMP = IS_MAC ? 'Cmd' : 'Alt'; // Alt+1..9 / Alt+arrows are Cmd+1..9 / Cmd+arrows on macOS
+// Zoom keys: with a terminal focused they change its text size, anywhere else the whole window's zoom.
+const ZOOM_HINT = 'In a terminal: its text size. Elsewhere: the whole window';
+const inTerminal = () => !!document.activeElement?.closest('.xterm');
 const SHORTCUTS = [
   { id: 'newSession', group: 'Sessions', label: 'New Claude session', keys: [`${M}+KeyT`, `${M}+Shift+KeyT`], run: () => newSessionHere() },
   { id: 'closeSession', group: 'Sessions', label: 'Close session', keys: [`${M}+KeyW`, `${M}+Shift+KeyW`], run: () => { if (activeId) closeTab(activeId); } },
@@ -130,9 +133,12 @@ const SHORTCUTS = [
   { id: 'search', group: 'Window', label: 'Search sessions', keys: [`${M}+Shift+KeyF`],
     run: () => { setSidebar(true); $('#session-search').focus(); $('#session-search').select(); } },
   { id: 'settings', group: 'Window', label: 'Settings', keys: [`${M}+Comma`], run: () => toggleSettings() },
-  { id: 'zoomIn', group: 'Terminal', label: 'Larger text', keys: [`${M}+Equal`, `${M}+NumpadAdd`], run: () => setFontSize(ui.fontSize + 1) },
-  { id: 'zoomOut', group: 'Terminal', label: 'Smaller text', keys: [`${M}+Minus`, `${M}+NumpadSubtract`], run: () => setFontSize(ui.fontSize - 1) },
-  { id: 'zoomReset', group: 'Terminal', label: 'Default text size', keys: [`${M}+Digit0`, `${M}+Numpad0`], run: () => setFontSize(FONT_SIZE.default) },
+  { id: 'zoomIn', group: 'Zoom', label: 'Zoom in', hint: ZOOM_HINT, keys: [`${M}+Equal`, `${M}+NumpadAdd`],
+    run: () => (inTerminal() ? setFontSize(ui.fontSize + 1) : stepZoom(1)) },
+  { id: 'zoomOut', group: 'Zoom', label: 'Zoom out', hint: ZOOM_HINT, keys: [`${M}+Minus`, `${M}+NumpadSubtract`],
+    run: () => (inTerminal() ? setFontSize(ui.fontSize - 1) : stepZoom(-1)) },
+  { id: 'zoomReset', group: 'Zoom', label: 'Reset zoom', hint: ZOOM_HINT, keys: [`${M}+Digit0`, `${M}+Numpad0`],
+    run: () => (inTerminal() ? setFontSize(FONT_SIZE.default) : setZoom(1)) },
 ];
 
 const defaultKeys = (s) => s.keys.map(normCombo);
@@ -182,7 +188,7 @@ const tip = (label, id) => (keyText(id) ? `${label} (${keyText(id)})` : label);
 // --------------------------------------------------------------- state ----
 
 let projects = [];
-let ui = { sidebar: true, servers: true, fontSize: 14, theme: 'dark', accent: 'blue', collapsed: [] }; // replaced by the saved state in init()
+let ui = { sidebar: true, servers: true, fontSize: 14, zoom: 1, theme: 'dark', accent: 'blue', collapsed: [] }; // replaced by the saved state in init()
 const tabs = new Map(); // id -> tab
 let activeId = null;
 // Split groups (runtime only): [{ ids: [tab id, 2-4 of them], cx, ry, v }], newest first; a tab is in at most one.
@@ -232,6 +238,7 @@ const TERM_FONT = {
 };
 const termWeight = () => (themeName() === 'light' ? '400' : '300');
 const FONT_SIZE = { min: 10, max: 24, default: 14 };
+const ZOOM_STEPS = [0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5]; // window zoom (ui.zoom), main clamps it too
 
 // ANSI palettes per theme (DESIGN.md section 5). Claude Code's message bar is brightWhite on brightBlack, so
 // brightBlack is a quiet bar one step off --background and brightWhite the strongest text: white in dark, black in light.
@@ -2119,6 +2126,7 @@ function appearanceSection() {
     h('div', { class: 'pv-side' }, line('sel'), line(null, 80), line(null, 65)),
     h('div', { class: 'pv-main' }, line('fg', 80), line(null, 60), line(null, 70), line('acc')));
   const def = FONT_SIZE.default;
+  const zoom = ui.zoom || 1;
   return h('section', {},
     secHead('Appearance', 'How Stanza looks. Changes apply at once.'),
     field('Theme', `System follows ${IS_MAC ? 'macOS' : 'Windows'}. Claude Code picks some colors itself: run /theme in a session to match.`,
@@ -2140,6 +2148,14 @@ function appearanceSection() {
         h('button', { class: 'btn outline icon sm', title: tip('Larger text', 'zoomIn'), 'data-fk': 'size-up', disabled: ui.fontSize >= FONT_SIZE.max, onclick: () => setFontSize(ui.fontSize + 1) }, ico('plus')),
         ui.fontSize !== def
           ? h('button', { class: 'btn ghost sm', title: tip('Default text size', 'zoomReset'), 'data-fk': 'size-reset', onclick: () => setFontSize(def) }, `Reset to ${def}`)
+          : null)),
+    field('Interface zoom', `The whole window.${keyText('zoomIn') ? ` ${keyText('zoomIn')} / ${keyText('zoomOut')} while no terminal has focus.` : ''}`,
+      h('div', { class: 'size-ctl' },
+        h('button', { class: 'btn outline icon sm', title: 'Zoom out', 'data-fk': 'zoom-down', disabled: zoom <= ZOOM_STEPS[0], onclick: () => stepZoom(-1) }, ico('minus')),
+        h('span', { class: 'size-val' }, `${Math.round(zoom * 100)} %`),
+        h('button', { class: 'btn outline icon sm', title: 'Zoom in', 'data-fk': 'zoom-up', disabled: zoom >= ZOOM_STEPS.at(-1), onclick: () => stepZoom(1) }, ico('plus')),
+        zoom !== 1
+          ? h('button', { class: 'btn ghost sm', 'data-fk': 'zoom-reset', onclick: () => setZoom(1) }, 'Reset to 100 %')
           : null)));
 }
 
@@ -2612,6 +2628,19 @@ function setFontSize(size) {
   api.setUi({ fontSize: ui.fontSize });
   requestAnimationFrame(fitActive);
   renderSettings();
+}
+
+/** Whole-window zoom: main calls setZoomFactor (and resizes the title bar buttons); terminals refit via their ResizeObservers. */
+function setZoom(z) {
+  ui.zoom = z;
+  document.documentElement.style.setProperty('--zoom', z);
+  api.setUi({ zoom: z });
+  renderSettings();
+}
+function stepZoom(d) {
+  const cur = ui.zoom || 1;
+  const next = d > 0 ? ZOOM_STEPS.find((s) => s > cur + 0.001) : ZOOM_STEPS.findLast((s) => s < cur - 0.001);
+  if (next) setZoom(next);
 }
 
 // Sidebar widths: the CSS vars hold the live value, ui.sidebarW / ui.rsideW the saved one.
@@ -3134,6 +3163,7 @@ async function init() {
   chatInfo = state.chat;
   ui = state.ui;
   ui.collapsed ||= [];
+  document.documentElement.style.setProperty('--zoom', ui.zoom || 1);
   applyTheme();
   loadKeys(ui.keys);
   applyKeyTitles();
