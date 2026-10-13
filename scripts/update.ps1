@@ -48,6 +48,9 @@ if (-not (EndLeftover)) { Finish 'Claude Bench is still running. Close it, then 
 Set-Location -LiteralPath $Repo
 $before = git rev-parse HEAD
 
+# npm install rewrites the lockfile, and a dirty one makes the pull abort. It is generated, so drop local changes.
+git checkout -- package-lock.json 2>$null
+
 Write-Host "`n> git pull --ff-only" -ForegroundColor Cyan
 git pull --ff-only
 if ($LASTEXITCODE) { Finish 'git pull failed (see above). Nothing was changed; reopening the app.' }

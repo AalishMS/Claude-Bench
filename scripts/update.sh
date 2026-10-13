@@ -27,6 +27,9 @@ kill -0 "$APP_PID" 2>/dev/null && finish "Claude Bench is still running. Close i
 cd "$REPO" || finish "Repo folder not found: $REPO"
 before=$(git rev-parse HEAD)
 
+# npm install rewrites the lockfile, and a dirty one makes the pull abort. It is generated, so drop local changes.
+git checkout -- package-lock.json 2>/dev/null
+
 echo "> git pull --ff-only"
 git pull --ff-only || finish "git pull failed (see above). Nothing was changed; reopening the app."
 

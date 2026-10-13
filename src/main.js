@@ -1013,6 +1013,8 @@ async function applyUpdate() {
   await shellEnvReady; // macOS: npm on the login shell's PATH
   const env = gitEnv();
   const before = (await runFull('git', ['-C', dir, 'rev-parse', 'HEAD'], { env })).out;
+  // npm install rewrites the lockfile; a dirty one would make the pull abort. It is generated, so drop local changes.
+  await runFull('git', ['-C', dir, 'checkout', '--', 'package-lock.json'], { env });
   const pull = await runFull('git', ['-C', dir, 'pull', '--ff-only'], { env, timeout: 60000 });
   if (!pull.ok) return { ok: false, error: pull.err || 'git pull failed.' };
   const changed = (await runFull('git', ['-C', dir, 'diff', '--name-only', before, 'HEAD'], { env })).out;

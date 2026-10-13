@@ -141,7 +141,11 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   `git log --format=%s HEAD..@{u}`; Later / Update; Update turns the popover into a confirm step (`runUpdate`) whose button runs `startUpdate`, then a progress view; no separate dialog). Dismissing records the `behind` count
   (`updateSeen`, runtime only), so it returns only when more commits arrive or after a restart. Source runs: confirm (lists working tabs), then `applyUpdate` = `git pull --ff-only`,
   `npm install` only if `package.json`/`package-lock.json` changed, `app.relaunch()` + quit. Any failure (local edits,
-  diverged branch, npm) shows git's/npm's message and keeps the app running. Packaged builds can't rebuild while running
+  diverged branch, npm) shows git's/npm's message and keeps the app running. Every update path (`applyUpdate`,
+  `update.ps1`, `update.sh`) first runs `git checkout -- package-lock.json`: npm rewrites the lockfile whenever it differs
+  from `package.json` (it did at `53f34ee`), and a dirty lockfile makes `git pull` abort ("local changes would be
+  overwritten"). Keep the lockfile in sync when changing dependencies. A clone stuck on that error before this fix runs the
+  old script (copied before the pull), so it needs `git checkout -- package-lock.json` by hand once. Packaged builds can't rebuild while running
   (the exe is locked), so `startExternalUpdate` copies `scripts/update.ps1` (`update.sh` on macOS) to the temp folder
   (git pull may rewrite it), starts it detached and quits. The script waits for the app's pid and any process of the same
   exe path to end (20 s, then it force-ends them: a copy that closed its window but never exited keeps the exe locked and
