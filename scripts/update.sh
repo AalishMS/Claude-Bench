@@ -1,9 +1,9 @@
 #!/bin/bash
-# Updates a built copy of Claude Bench (macOS). Started by the app's Update button, which then quits, because the
+# Updates a built copy of Stanza (macOS). Started by the app's Update button, which then quits, because the
 # app can't be rebuilt while it runs. Runs from a temp copy, since git pull may rewrite this file. Output goes to a log,
 # which opens in TextEdit if something fails.
 #
-#   update.sh <checkout> <app pid> <path to Claude Bench.app> <log file>
+#   update.sh <checkout> <app pid> <path to Stanza.app> <log file>
 
 REPO="$1"; APP_PID="$2"; APP="$3"; LOG="$4"
 exec >"$LOG" 2>&1
@@ -14,15 +14,15 @@ finish() {
   exit $([ -n "$1" ] && echo 1 || echo 0)
 }
 
-echo "Waiting for Claude Bench to close..."
+echo "Waiting for Stanza to close..."
 for _ in $(seq 1 40); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.5; done
 # A copy that never exits would keep the build locked and block the reopen: end it (its own pid only).
 if kill -0 "$APP_PID" 2>/dev/null; then
-  echo "Claude Bench did not exit; ending it..."
+  echo "Stanza did not exit; ending it..."
   kill -9 "$APP_PID" 2>/dev/null
   for _ in $(seq 1 20); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.5; done
 fi
-kill -0 "$APP_PID" 2>/dev/null && finish "Claude Bench is still running. Close it, then run git pull and npm run package:mac in the repo folder."
+kill -0 "$APP_PID" 2>/dev/null && finish "Stanza is still running. Close it, then run git pull and npm run package:mac in the repo folder."
 
 cd "$REPO" || finish "Repo folder not found: $REPO"
 

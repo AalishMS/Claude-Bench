@@ -1,5 +1,5 @@
-# Creates "Claude Bench" shortcuts on the Desktop and in the Start menu.
-# Prefers the packaged app (dist\win-unpacked\Claude Bench.exe, built by `npm run package`)
+# Creates "Stanza" shortcuts on the Desktop and in the Start menu.
+# Prefers the packaged app (dist\win-unpacked\Stanza.exe, built by `npm run package`)
 # and falls back to launching the source folder through Electron.
 #
 #   npm run shortcut
@@ -7,7 +7,7 @@
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $icon = Join-Path $root 'assets\icon.ico'
-$packaged = Join-Path $root 'dist\win-unpacked\Claude Bench.exe'
+$packaged = Join-Path $root 'dist\win-unpacked\Stanza.exe'
 $electron = Join-Path $root 'node_modules\electron\dist\electron.exe'
 
 if (Test-Path $packaged) {
@@ -29,11 +29,13 @@ $places = @{
     'Start menu' = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
 }
 foreach ($name in $places.Keys) {
-    # The app used to be called "Claude Terminal"; drop those shortcuts so they don't point at a missing exe.
-    $old = Join-Path $places[$name] 'Claude Terminal.lnk'
-    if (Test-Path $old) { Remove-Item $old; Write-Host "Removed old $name shortcut" }
+    # The app used to be called "Claude Bench" and "Claude Terminal"; drop those shortcuts so they don't point at a missing exe.
+    foreach ($oldName in 'Claude Bench.lnk', 'Claude Terminal.lnk') {
+        $old = Join-Path $places[$name] $oldName
+        if (Test-Path $old) { Remove-Item $old; Write-Host "Removed old $name shortcut ($oldName)" }
+    }
 
-    $lnk = $shell.CreateShortcut((Join-Path $places[$name] 'Claude Bench.lnk'))
+    $lnk = $shell.CreateShortcut((Join-Path $places[$name] 'Stanza.lnk'))
     $lnk.TargetPath = $target
     $lnk.Arguments = $arguments
     $lnk.WorkingDirectory = $workdir

@@ -2,7 +2,7 @@
   <img src="assets/icon.png" width="96" alt="">
 </p>
 
-<h1 align="center">Claude Bench</h1>
+<h1 align="center">Stanza</h1>
 
 <p align="center">
   A desktop app for running several Claude Code sessions side by side.<br>
@@ -14,13 +14,13 @@
 **Windows** (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/AalishMS/Claude-Bench/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/install.ps1 | iex
 ```
 
 **macOS** (Terminal):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AalishMS/Claude-Bench/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/install.sh | bash
 ```
 
 Needs [Node.js](https://nodejs.org) 20+, git and the [`claude` CLI](https://claude.com/claude-code) (logged in).
@@ -29,12 +29,12 @@ More in [Install](#install).
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="promo/screenshots/main-light.png">
-    <img src="promo/screenshots/main-dark.png" alt="Claude Bench with a Claude session open: projects on the left, the answer with clickable file:line links, and context, MCPs, subagents and running servers on the right">
+    <img src="promo/screenshots/main-dark.png" alt="Stanza with a Claude session open: projects on the left, the answer with clickable file:line links, and context, MCPs, subagents and running servers on the right">
   </picture>
 </p>
 
 Every tab is the real `claude` CLI in a real terminal, so slash commands, permissions, models and speed are exactly
-what you get in a shell. Claude Bench only adds the things a terminal window doesn't have: a project sidebar, tabs,
+what you get in a shell. Stanza only adds the things a terminal window doesn't have: a project sidebar, tabs,
 split panes, git status and a list of the dev servers your sessions started.
 
 ## What it does
@@ -72,25 +72,25 @@ You need [Node.js](https://nodejs.org) 20+, git, and the `claude` CLI installed 
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/AalishMS/Claude-Bench/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/install.ps1 | iex
 ```
 
 macOS (Terminal):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AalishMS/Claude-Bench/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/install.sh | bash
 ```
 
-It clones the repo, builds the app and opens it. Windows installs to `%LOCALAPPDATA%\Programs\claude-bench` with
-Desktop and Start menu shortcuts; macOS installs to `~/.claude-bench` with a link in `~/Applications`. Set
-`CLAUDE_BENCH_DIR` first to pick another folder. Running the line again updates that copy. To uninstall, delete the
+It clones the repo, builds the app and opens it. Windows installs to `%LOCALAPPDATA%\Programs\stanza` with
+Desktop and Start menu shortcuts; macOS installs to `~/.stanza` with a link in `~/Applications`. Set
+`STANZA_DIR` first to pick another folder. Running the line again updates that copy. To uninstall, delete the
 folder and the shortcuts (or the link).
 
 ### Manual install
 
 ```
-git clone https://github.com/AalishMS/Claude-Bench.git
-cd Claude-Bench
+git clone https://github.com/AalishMS/Stanza.git
+cd Stanza
 npm install
 npm start
 ```
@@ -98,11 +98,11 @@ npm start
 To use it as a normal app on Windows, build it and add shortcuts:
 
 ```
-npm run package     # builds dist\win-unpacked\Claude Bench.exe
+npm run package     # builds dist\win-unpacked\Stanza.exe
 npm run shortcut    # Desktop and Start menu shortcuts
 ```
 
-`Claude Bench.exe C:\some\folder` adds that folder as a project and opens a session in it.
+`Stanza.exe C:\some\folder` adds that folder as a project and opens a session in it.
 
 ### macOS
 
@@ -112,7 +112,7 @@ above, or by hand in the clone:
 ```
 npm install
 npm start
-npm run package:mac   # optional: dist/mac-*/Claude Bench.app, unsigned, for your own machine
+npm run package:mac   # optional: dist/mac-*/Stanza.app, unsigned, for your own machine
 ```
 
 Things that differ on a Mac:
@@ -135,7 +135,7 @@ If something goes wrong:
 | --- | --- |
 | Electron missing after `npm install` | `node node_modules/electron/install.js` |
 | Tabs fail with `posix_spawnp failed` | `chmod +x node_modules/@lydell/node-pty-darwin-*/spawn-helper` |
-| "The app is damaged" | `codesign --force --deep -s - "dist/mac-arm64/Claude Bench.app"` |
+| "The app is damaged" | `codesign --force --deep -s - "dist/mac-arm64/Stanza.app"` |
 
 ## Updating
 
@@ -160,6 +160,15 @@ The first line drops npm's local changes to the lockfile, which would otherwise 
 fails with "Your local changes to the following files would be overwritten by merge: package-lock.json", run these
 steps once by hand; later updates handle it themselves. Projects and settings live outside the repo, so they survive
 updates.
+
+**Coming from Claude Bench** (the app's old name): the update builds `Stanza.exe` / `Stanza.app`, but the old
+updater looks for the old name, so the app won't reopen by itself. Once, after that update:
+
+- Windows: run `npm run shortcut` in the repo folder (it replaces the old "Claude Bench" shortcuts), then open Stanza.
+- macOS: run the install line again (it updates `~/.claude-bench` in place and swaps the `~/Applications` link), or
+  open `dist/mac-*/Stanza.app`.
+
+Projects, tabs and settings are carried over from the old settings folder on first launch.
 
 ## Shortcuts
 
@@ -197,4 +206,4 @@ Electron, xterm.js and node-pty, with no bundler or framework.
 - `scripts/` has the shortcut creator and update helpers
 - `assets/` has the logo: `icon-source.png` is the master, the rest are derived from it
 
-State is saved in `%APPDATA%\claude-bench` on Windows and `~/Library/Application Support` on macOS.
+State is saved in `%APPDATA%\stanza` on Windows and `~/Library/Application Support` on macOS.

@@ -1,4 +1,4 @@
-# Claude Bench
+# Stanza
 
 Desktop wrapper around the real `claude` CLI (Windows first, macOS best effort). Electron + xterm.js + `@lydell/node-pty`
 (ConPTY on Windows).
@@ -20,8 +20,8 @@ notes below and the README's macOS section in the same change, and tell the user
 ```
 npm start            # run from source (fastest loop)
 npm run check        # lint + tests; run before every commit
-npm run package      # build dist\win-unpacked\Claude Bench.exe (fails if that exe is running)
-npm run package:mac  # macOS only: dist/mac-*/Claude Bench.app (unsigned)
+npm run package      # build dist\win-unpacked\Stanza.exe (fails if that exe is running)
+npm run package:mac  # macOS only: dist/mac-*/Stanza.app (unsigned)
 npm run shortcut     # Desktop + Start menu shortcuts -> packaged exe
 ```
 
@@ -85,9 +85,14 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
                  install.ps1 / install.sh (the README's one-line install, see "Install")
 ```
 
-- **State** lives in `%APPDATA%\claude-bench\state.json`, on macOS in Electron's userData under `~/Library/Application Support` (projects, ui flags incl. sidebar widths, theme, accent and shortcut overrides, window bounds). Written
-  synchronously via tmp file + rename. The app used to be "Claude Terminal": if no state exists yet, the loader
-  reads `%APPDATA%\claude-terminal\state.json` once (`legacyStateFile`).
+- **State** lives in `%APPDATA%\stanza\state.json`, on macOS in Electron's userData under `~/Library/Application Support` (projects, ui flags incl. sidebar widths, theme, accent and shortcut overrides, window bounds). Written
+  synchronously via tmp file + rename. The app used to be "Claude Bench" and before that "Claude Terminal": if no state
+  exists yet, the loader reads `%APPDATA%\claude-bench\state.json`, else `claude-terminal\state.json`, once (`legacyStateFile`, a sibling of userData, so a `--user-data-dir` test instance never loads the real state and resumes its tabs).
+  The rename to Stanza (package name `stanza`, appId `com.local.stanza`) also left: `registerToastIdentity` deleting the
+  old `com.local.claudebench` key, `create-shortcut.ps1` removing "Claude Bench.lnk", and the install scripts reusing an
+  existing `Programs\claude-bench` / `~/.claude-bench` clone and swapping the old `~/Applications` link. An old build's
+  updater (copied before the pull) reopens the old exe/.app path, which the new build doesn't produce: README "Updating"
+  lists the one-time step.
 - **Restore tabs**: `state.tabs` (`{ project, kind, sessionId }` in tab order) + `state.activeTab`, sent by the renderer's
   `saveTabs` (key-diffed; called from `activate`, `closeTab`, `assignSessions`, `toFront`), never on a timer. Claude tabs
   without a transcript yet are not saved. At launch `state:get` returns `restore` = `restorableTabs()` (drops entries whose
@@ -130,7 +135,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     `npm start`; if the user denied permission nothing shows and `notify` swallows any error.
   - Packaged update: `/bin/bash update.sh` detached with the login shell's PATH (after `shellEnvReady`); waits on the
     pid with `kill -0` (20 s, then `kill -9` on that pid only); reopens the bundle (`execPath` three levels up) with `open`. No visible window, so the log is it.
-  - Install: `install.sh` builds into `~/.claude-bench` and links `~/Applications/Claude Bench.app` to the built bundle
+  - Install: `install.sh` builds into `~/.stanza` and links `~/Applications/Stanza.app` to the built bundle
     (the .app must stay in the clone for `repoDir()`); a real app already at that path is left alone. Untested on a Mac.
   - Shortcuts: the `SHORTCUTS` defaults use `M` = Cmd and `JUMP` = Cmd (Windows: Ctrl / Alt); `comboText` draws ⌃⌥⇧⌘,
     and the recorder reads `e.code`, so Option's special characters don't matter. `Cmd+Alt+arrows` resizes panes.
@@ -138,7 +143,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     the custom Ctrl+C/V handler is skipped. Labels say "Shell" / "Finder"; tooltips go through `kbd()` (⌘ ⇧ ⌥).
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled from the renderer: the active project every 4 s (8 s while the window is visible but unfocused, `idle()`), all projects every 20 s (and on focus).
 - **Update** (people install by cloning): `repoDir()` = the app folder for `npm start`, or the repo above `dist/` for a
-  packaged build (walks up to a `.git` + `package.json` named `claude-bench`; a `.app` copied elsewhere finds none).
+  packaged build (walks up to a `.git` + `package.json` named `stanza`; a `.app` copied elsewhere finds none).
   `checkUpdate` runs `git fetch` + `rev-list --count HEAD..@{u}` 10 s after start and every 30 min (and on demand via the footer's update button, `#update-slot` / `updateBtn` / `checkNow`, which
   reports "up to date" or git's error, `error` in the result, in `#update-pop`; skipped while
   hidden; `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never` so no credential prompt). If behind, the same
@@ -165,7 +170,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   clone (junction its `node_modules`), never the real `dist\`.
 - **Install** (`scripts/install.ps1` / `install.sh`, piped from raw.githubusercontent.com: `irm ... | iex` / `curl ... | bash`;
   free, no GitHub Release, needs the repo public). Produces a normal git clone, so the Update button works unchanged:
-  `%LOCALAPPDATA%\Programs\claude-bench` / `~/.claude-bench` (or `CLAUDE_BENCH_DIR`). Checks git, Node 20+ (claude only
+  `%LOCALAPPDATA%\Programs\stanza` / `~/.stanza` (or `STANZA_DIR`). Checks git, Node 20+ (claude only
   warns), refuses a running build of that install (path match) and a non-empty folder that isn't a clone; an existing
   clone gets the update steps (lockfile reset, `pull --ff-only`). Then `npm install` (+ Electron's `install.js` if its
   `dist` is missing), `npm run package[:mac]`, Windows `npm run shortcut`, start the app. The .ps1 runs inside the
@@ -231,10 +236,10 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   `Esc to cancel` footer in the bottom 3 non-empty lines (permission prompt, AskUserQuestion, trust dialog), once per
   dialog; a bell / OSC 9 / OSC 777 also counts unless that idle stretch was already announced. Each notification consumes
   the run, so one event gives one notification. No mute setting (the OS has per-app notification settings).
-  Windows: `registerToastIdentity` writes `HKCU\Software\Classes\AppUserModelId\com.local.claudebench` (DisplayName,
+  Windows: `registerToastIdentity` writes `HKCU\Software\Classes\AppUserModelId\com.local.stanza` (DisplayName,
   IconUri = a copy of the icon in userData) at every launch, otherwise toasts say "Electron" under `npm start`.
   Windows caches the name at an ID's first toast: if one fired before the key existed, delete
-  `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\com.local.claudebench` to reset it.
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\com.local.stanza` to reset it.
 - **Right sidebar** (`#rside`, toggled by the top-bar button or `Ctrl+Shift+S`, saved as `ui.servers`; `renderRside`): the active tab's
   **Context** (`x / yk` + %), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**, **Images**.
   Subagents and Running show `RSIDE_SHOWN` (5) rows, then "Show N more" / "Show less" (`foldRows`, `rsideMore`, runtime only;
@@ -358,13 +363,13 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   macOS is not affected (cwd doesn't block deletion there).
 - `state.json` may carry a BOM (PowerShell `Set-Content -Encoding utf8`); the loader strips it.
 - Dev run passes the app folder as an argv entry (`electron .`); `pathFromArgv` skips it. A real folder arg
-  (`Claude Bench.exe C:\proj`) adds a project and opens a session.
+  (`Stanza.exe C:\proj`) adds a project and opens a session.
 - `electron-builder` needs `electron` in `devDependencies` and `@lydell/**` in `asarUnpack` (native pty).
   Electron's own install script is gated by npm `allow-scripts`; if `node_modules\electron\dist` is missing run
   `node node_modules\electron\install.js`.
 - The packaged exe is locked while the app runs, so close it before `npm run package`.
-- **Never kill processes by matching the app name in the path**: "Claude Bench" matches the user's real
-  packaged `Claude Bench.exe`, and "Claude Terminal" matches this source folder.
+- **Never kill processes by matching the app name in the path**: "Stanza" matches the user's real
+  packaged `Stanza.exe`, and "Claude Terminal" matches this source folder.
   Match `node_modules\electron\dist` to stop only dev instances.
 - **Claude sends no bell by default.** With its default notification channel it emits neither BEL nor OSC 9 in our
   terminal (tested on v2.1.296), and a pending tool call is not in the transcript until it has run. That's why "needs
@@ -407,6 +412,6 @@ scripts can open sessions, write to ptys (`api.ptyWrite`), and read xterm buffer
 
 ## Ideas not built yet
 
-Per-project quick commands, "Open in Claude Bench"
+Per-project quick commands, "Open in Stanza"
 Explorer context menu, auto-detect git worktrees.
 Only build these when asked.

@@ -1,4 +1,4 @@
-# Claude Bench design system
+# Stanza design system
 
 The UI follows **[shadcn/ui](https://ui.shadcn.com/)**: the dark (default) and light themes on the neutral base color (v4 tokens), plus a
 short list of deliberate tweaks for a compact, terminal-first desktop tool. This file is the source of truth for how
@@ -173,7 +173,7 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   `·` bullets, "and N more" in `--faint`), and the AlertDialog button row (`Later` outline sm, `Update` primary sm). `Update`
   turns the same popover into a confirm step ("Update and restart?": the commit list, a 12 px muted warning with the
   open-session count, a bordered list of tabs where Claude is working, `Back` outline sm / `Update and restart`
-  primary sm, destructive when a tab is working) and then a progress view (spinner + "Updating Claude Bench…"). There is no
+  primary sm, destructive when a tab is working) and then a progress view (spinner + "Updating Stanza…"). There is no
   separate update dialog. It stays until dismissed: no outside-click or Escape close, so it can't vanish unseen while typing in a terminal.
 - Search: a plain 32 px row (search icon + "Search" placeholder), no border; hover/focus = `--sidebar-hover`.
   The row ends with "add project" and `+`; `+` opens a DropdownMenu: "No project" (chat icon), a separator, then
@@ -275,7 +275,7 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - One exception: the top bar's "Open in VS Code" button shows the official VS Code logo in its own blues
   (`VSCODE_SVG` in renderer.js), because it stands for that app. No other icon gets brand color; the Update
   button's `--primary` tint is the accent, not a brand color, and it only appears when there is something to do.
-- Logo: a flat black rounded tile with a white stack of terminal windows (`>_` prompt on the front one), no gradients. `LOGO_IMG` in renderer.js uses `assets/icon.png` in the sidebar (20 px) and welcome screen (56 px). Both get a 1 px `--border` ring (`box-shadow`, `border-radius: 22%` = the icon's corner), so the black tile still reads on the dark theme; on light it vanishes into the tile's edge.
+- Logo: a flat black rounded tile with five white lines of text whose lengths form an S, the last one ending in a blue block cursor (`#4f7be0`, fixed: the icon doesn't follow `ui.accent`), no gradients. `LOGO_IMG` in renderer.js uses `assets/icon.png` in the sidebar (20 px) and welcome screen (56 px). Both get a 1 px `--border` ring (`box-shadow`, `border-radius: 22%` = the icon's corner), so the black tile still reads on the dark theme; on light it vanishes into the tile's edge.
 
 ## 4. Layout and behavior (tweaks kept from before)
 

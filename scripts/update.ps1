@@ -1,11 +1,11 @@
-# Updates a built copy of Claude Bench (Windows). Started by the app's Update button, which then quits, because the
+# Updates a built copy of Stanza (Windows). Started by the app's Update button, which then quits, because the
 # exe can't be rebuilt while it runs. Runs from a temp copy, since git pull may rewrite this file.
 #
-#   update.ps1 -Repo <checkout> -AppPid <pid> -Exe <path to Claude Bench.exe>
+#   update.ps1 -Repo <checkout> -AppPid <pid> -Exe <path to Stanza.exe>
 
 param([string]$Repo, [int]$AppPid, [string]$Exe)
 
-$Host.UI.RawUI.WindowTitle = 'Updating Claude Bench'
+$Host.UI.RawUI.WindowTitle = 'Updating Stanza'
 
 # This process inherits the app's working directory (the shortcuts start the exe inside dist\win-unpacked), and a
 # working directory keeps the folder from being deleted: electron-builder then fails with EBUSY on rmdir.
@@ -28,7 +28,7 @@ function WaitGone([int]$seconds) {
 # A copy that closed its window but never exited holds the single-instance lock, so a reopened exe would quit at once.
 function EndLeftover {
     if (WaitGone 20) { return $true }
-    Write-Host 'Claude Bench did not exit; ending it...' -ForegroundColor Yellow
+    Write-Host 'Stanza did not exit; ending it...' -ForegroundColor Yellow
     AppProcs | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
     WaitGone 10
 }
@@ -42,8 +42,8 @@ function Finish([string]$err) {
     exit $(if ($err) { 1 } else { 0 })
 }
 
-Write-Host 'Waiting for Claude Bench to close...'
-if (-not (EndLeftover)) { Finish 'Claude Bench is still running. Close it, then run "git pull" and "npm run package" in the repo folder.' }
+Write-Host 'Waiting for Stanza to close...'
+if (-not (EndLeftover)) { Finish 'Stanza is still running. Close it, then run "git pull" and "npm run package" in the repo folder.' }
 
 Set-Location -LiteralPath $Repo
 
@@ -70,5 +70,5 @@ if ($LASTEXITCODE) {
 }
 if ($LASTEXITCODE) { Finish 'The build failed (see above). The source was updated but not rebuilt, so the app will keep running the old build and say it is up to date. Run "npm run package" in the repo folder to retry.' }
 
-Write-Host "`nUpdated. Starting Claude Bench..." -ForegroundColor Green
+Write-Host "`nUpdated. Starting Stanza..." -ForegroundColor Green
 Finish $null

@@ -1,5 +1,5 @@
 {
-  "name": "claude-bench",
+  "name": "stanza",
   "version": "0.1.0",
   "description": "A desktop wrapper for Claude Code: project sidebar, tabs, git status and a running-servers panel.",
   "main": "src/main.js",
@@ -29,8 +29,8 @@
     "globals": "^17.13.0"
   },
   "build": {
-    "appId": "com.local.claudebench",
-    "productName": "Claude Bench",
+    "appId": "com.local.stanza",
+    "productName": "Stanza",
     "directories": { "output": "dist" },
     "files": ["src/**", "assets/**", "package.json"],
     "asarUnpack": ["node_modules/@lydell/**"],

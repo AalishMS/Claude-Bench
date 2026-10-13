@@ -2120,7 +2120,7 @@ function appearanceSection() {
     h('div', { class: 'pv-main' }, line('fg', 80), line(null, 60), line(null, 70), line('acc')));
   const def = FONT_SIZE.default;
   return h('section', {},
-    secHead('Appearance', 'How Claude Bench looks. Changes apply at once.'),
+    secHead('Appearance', 'How Stanza looks. Changes apply at once.'),
     field('Theme', `System follows ${IS_MAC ? 'macOS' : 'Windows'}. Claude Code picks some colors itself: run /theme in a session to match.`,
       h('div', { class: 'theme-opts', role: 'radiogroup', 'aria-label': 'Theme' }, THEMES.map(([id, label]) =>
         h('button', {
@@ -2711,7 +2711,7 @@ async function onCloseRequest() {
       }),
     ];
     const ok = await confirmDialog({
-      title: 'Quit Claude Bench?',
+      title: 'Quit Stanza?',
       message: 'Quitting will stop:',
       items,
       okLabel: 'Quit and stop',
@@ -2777,7 +2777,7 @@ function renderUpdatePop() {
     : 'Pulls the update, runs npm install if dependencies changed, and restarts the app.';
   if (updating) { // progress: no buttons, the app restarts by itself
     pop.replaceChildren(
-      h('h4', {}, 'Updating Claude Bench…'),
+      h('h4', {}, 'Updating Stanza…'),
       h('p', { class: 'up-sub' }, update.packaged ? 'Closing now so the rebuild can run.' : 'Pulling changes, the app restarts when done.'),
       h('div', { class: 'up-busy' }, ico('redo'), h('span', {}, update.packaged ? 'A minute or two' : 'Hold on')));
     placeUpdatePop();
@@ -2808,7 +2808,7 @@ function renderUpdatePop() {
   }
   pop.replaceChildren(...[
     h('h4', {}, 'Update available'),
-    h('p', { class: 'up-sub' }, `${what} for Claude Bench.`),
+    h('p', { class: 'up-sub' }, `${what} for Stanza.`),
     log,
     h('div', { class: 'row' },
       h('button', { class: 'btn outline sm', onclick: later }, 'Later'),
@@ -2846,7 +2846,7 @@ async function checkNow() {
     const next = await api.checkUpdate();
     update = next;
     if (next?.available) { updateSeen = 0; updateStep = 'info'; } // reopen the "Update available" popover even if it was dismissed before
-    else checkNote = next?.error ? { text: next.error, error: true } : { text: 'Claude Bench is on the latest version.' };
+    else checkNote = next?.error ? { text: next.error, error: true } : { text: 'Stanza is on the latest version.' };
   } catch (e) {
     checkNote = { text: String(e?.message || e).slice(0, 160), error: true };
   } finally {

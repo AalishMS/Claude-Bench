@@ -1,6 +1,6 @@
 # macOS test checklist
 
-Claude Bench is built and tested on Windows. The macOS code has never run on a real Mac, so this list covers
+Stanza is built and tested on Windows. The macOS code has never run on a real Mac, so this list covers
 everything that needs checking there. Tick what works. For anything that fails, note what you did and any error text.
 
 ## Setup
@@ -9,8 +9,8 @@ everything that needs checking there. Tick what works. For anything that fails, 
 - [ ] `git` works. If it doesn't, run `xcode-select --install`.
 - [ ] Clone and install:
   ```
-  git clone https://github.com/AalishMS/Claude-Bench.git
-  cd Claude-Bench
+  git clone https://github.com/AalishMS/Stanza.git
+  cd Stanza
   npm install
   ```
 - [ ] If `node_modules/electron/dist` is missing after `npm install`, run `node node_modules/electron/install.js`.
@@ -68,7 +68,7 @@ everything that needs checking there. Tick what works. For anything that fails, 
 - [ ] A quick reply (under 10 seconds) in a background tab gives no notification.
 - [ ] With the app in the foreground on that same tab, nothing is shown. With another app in front, notifications
       appear even for the active tab.
-- [ ] Clicking a notification brings Claude Bench to the front, focused, on that tab: with another app in front, and
+- [ ] Clicking a notification brings Stanza to the front, focused, on that tab: with another app in front, and
       with the window minimized (⌘M).
 - [ ] Deny notifications in System Settings → Notifications, then repeat a "Done" case: nothing shows and the app
       keeps working normally.
@@ -88,8 +88,8 @@ everything that needs checking there. Tick what works. For anything that fails, 
 
 Apps opened from Finder don't get your shell's PATH, so this checks the fix for that.
 
-- [ ] `npm run package:mac`, then open `dist/mac-*/Claude Bench.app` from Finder.
-- [ ] If macOS says the app is damaged, run `codesign --force --deep -s - "dist/mac-arm64/Claude Bench.app"`.
+- [ ] `npm run package:mac`, then open `dist/mac-*/Stanza.app` from Finder.
+- [ ] If macOS says the app is damaged, run `codesign --force --deep -s - "dist/mac-arm64/Stanza.app"`.
 - [ ] Claude tabs and the MCP list work in the built app.
 - [ ] If your `~/.zshrc` is slow or asks a question at startup, the first tab still opens within about 5 seconds.
 
@@ -97,21 +97,21 @@ Apps opened from Finder don't get your shell's PATH, so this checks the fix for 
 
 Needs a new commit on `main` to show up.
 
-- [ ] In the copy you run with `npm start`, a download icon appears next to "Claude Bench" at the top of the sidebar
+- [ ] In the copy you run with `npm start`, a download icon appears next to "Stanza" at the top of the sidebar
       within 30 minutes, or right away after restarting the app.
 - [ ] At the same time a popup opens under the icon: "Update available", the new commit messages, and Later /
       Update… buttons. It doesn't cover the traffic lights, and it sits right with the sidebar hidden (⌘S) too.
 - [ ] Later closes it and it stays closed. Update… opens the update confirmation.
 - [ ] Clicking it and confirming pulls the update and restarts the app.
 - [ ] In the built `.app`, Update… closes the app, and after a minute or two it reopens updated (with your tabs). If it
-      doesn't come back, look at `~/Library/Application Support/claude-bench/update.log` (it opens in TextEdit by
+      doesn't come back, look at `~/Library/Application Support/stanza/update.log` (it opens in TextEdit by
       itself when a step fails).
 - [ ] Make a local commit in the repo that clashes with the update, then click Update in the `.app`: the log opens with
       git's message and the old app reopens unchanged.
 
 ## Check for updates button
 
-- [ ] A refresh icon sits right after "Claude Bench" at the top of the sidebar (and stays next to the logo with the
+- [ ] A refresh icon sits right after "Stanza" at the top of the sidebar (and stays next to the logo with the
       sidebar hidden, ⌘S), whether or not an update exists.
 - [ ] Clicking it spins the icon while it checks. With no new commit, a popup under the icon says "You're up to date"
       and closes by itself after about 5 seconds (or with OK). It doesn't cover the traffic lights.

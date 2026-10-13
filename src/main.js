@@ -18,12 +18,12 @@ const IS_MAC = process.platform === 'darwin';
 const ICON = path.join(__dirname, '..', 'assets', IS_MAC ? 'icon-mac.png' : 'icon.ico');
 const ICON_PNG = path.join(__dirname, '..', 'assets', 'icon.png');
 
-const AUMID = 'com.local.claudebench'; // = build.appId
+const AUMID = 'com.local.stanza'; // = build.appId
 if (!IS_MAC) app.setAppUserModelId(AUMID);
 
 /**
  * Windows shows toasts of an unregistered AppUserModelID under the host exe's name ("Electron" for npm start).
- * Registering a display name and icon for it (per user, no installer needed) gives "Claude Bench" for both the packaged
+ * Registering a display name and icon for it (per user, no installer needed) gives "Stanza" for both the packaged
  * exe and source runs. The icon is copied out of the asar, which Windows can't read. Best effort.
  */
 function registerToastIdentity() {
@@ -31,9 +31,11 @@ function registerToastIdentity() {
     const icon = path.join(app.getPath('userData'), 'toast-icon.png');
     fs.copyFileSync(ICON_PNG, icon); // Refresh existing profiles when the app logo changes.
     const key = `HKCU\\Software\\Classes\\AppUserModelId\\${AUMID}`;
-    for (const [name, value] of [['DisplayName', 'Claude Bench'], ['IconUri', icon]]) {
+    for (const [name, value] of [['DisplayName', 'Stanza'], ['IconUri', icon]]) {
       execFile('reg.exe', ['add', key, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'], { windowsHide: true }, () => {});
     }
+    // The ID of the app's old name ("Claude Bench"); fails quietly once it is gone.
+    execFile('reg.exe', ['delete', 'HKCU\\Software\\Classes\\AppUserModelId\\com.local.claudebench', '/f'], { windowsHide: true }, () => {});
   } catch { /* toasts still work, just under the exe's name */ }
 }
 
@@ -84,8 +86,11 @@ const defaults = {
 };
 let state = structuredClone(defaults);
 const stateFile = () => path.join(app.getPath('userData'), 'state.json');
-// The app was called "Claude Terminal" (userData = %APPDATA%\claude-terminal); read that once if nothing is saved yet.
-const legacyStateFile = () => path.join(app.getPath('appData'), 'claude-terminal', 'state.json');
+// The app was called "Claude Bench" and before that "Claude Terminal" (userData = %APPDATA%\claude-bench, \claude-terminal);
+// the newest of those is read once if nothing is saved yet. undefined when there is none. Looked up next to userData, not
+// in appData, so a test instance with its own --user-data-dir never loads (and restores the tabs of) the real install.
+const legacyStateFile = () => ['claude-bench', 'claude-terminal']
+  .map((name) => path.join(path.dirname(app.getPath('userData')), name, 'state.json')).find((f) => fs.existsSync(f));
 let firstRun = false; // no state file at all: the sidebar is seeded with recent Claude Code projects (recentProjects)
 
 function loadState() {
@@ -103,7 +108,7 @@ function loadState() {
     }
   } catch {
     /* first run or unreadable file: keep defaults */
-    firstRun = !fs.existsSync(stateFile()) && !fs.existsSync(legacyStateFile());
+    firstRun = !fs.existsSync(stateFile()) && !legacyStateFile();
   }
 }
 
@@ -287,7 +292,7 @@ function createSession({ id, cwd, kind, args, resumeId, fork, cols, rows }) {
     return { ok: false, error: 'Invalid session id' };
   }
 
-  const env = { ...process.env, COLORTERM: 'truecolor', TERM_PROGRAM: 'ClaudeBench' };
+  const env = { ...process.env, COLORTERM: 'truecolor', TERM_PROGRAM: 'Stanza' };
   for (const k of STRIP_ENV) delete env[k];
   delete env.NO_COLOR; // an inherited NO_COLOR makes claude and shells print everything uncolored
   if (env.FORCE_COLOR === '0') delete env.FORCE_COLOR;
@@ -1024,7 +1029,7 @@ function repoDir() {
   let dir = app.isPackaged ? path.dirname(process.execPath) : app.getAppPath();
   for (let i = 0; i < 8; i++) {
     try {
-      if (fs.existsSync(path.join(dir, '.git')) && JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).name === 'claude-bench') {
+      if (fs.existsSync(path.join(dir, '.git')) && JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).name === 'stanza') {
         repoDirCache = dir;
         break;
       }
@@ -1062,18 +1067,18 @@ function checkUpdate() { // overlapping calls share one fetch
 async function startExternalUpdate(dir) {
   try {
     const name = IS_MAC ? 'update.sh' : 'update.ps1';
-    const tmp = path.join(os.tmpdir(), `claude-bench-${name}`);
+    const tmp = path.join(os.tmpdir(), `stanza-${name}`);
     fs.copyFileSync(path.join(dir, 'scripts', name), tmp);
     let child;
     if (IS_MAC) {
       await shellEnvReady; // git and npm from the login shell's PATH
-      const bundle = path.resolve(process.execPath, '..', '..', '..'); // .../Claude Bench.app/Contents/MacOS/Claude Bench
+      const bundle = path.resolve(process.execPath, '..', '..', '..'); // .../Stanza.app/Contents/MacOS/Stanza
       const log = path.join(app.getPath('userData'), 'update.log');
       child = spawn('/bin/bash', [tmp, dir, String(process.pid), bundle, log], { detached: true, stdio: 'ignore', env: process.env });
     } else {
       // Through `start`, which gives PowerShell its own visible console. Spawned directly with detached (no console),
       // PowerShell 5.1 exits at once. /s strips only the outer quotes, so the quoted paths survive (no quotes in Windows paths).
-      const cmdline = `/d /s /c "start "Updating Claude Bench" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tmp}"`
+      const cmdline = `/d /s /c "start "Updating Stanza" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tmp}"`
         + ` -Repo "${dir}" -AppPid ${process.pid} -Exe "${process.execPath}""`;
       // cwd outside dist\: the app's own cwd (win-unpacked, from the shortcuts) would be inherited and block electron-builder's rmdir.
       child = spawn('cmd.exe', [cmdline], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true, cwd: os.tmpdir() });
@@ -1090,7 +1095,7 @@ async function startExternalUpdate(dir) {
 
 async function applyUpdate() {
   const dir = repoDir();
-  if (!dir) return { ok: false, error: 'This copy is not inside a git checkout of Claude Bench, so it cannot update itself.' };
+  if (!dir) return { ok: false, error: 'This copy is not inside a git checkout of Stanza, so it cannot update itself.' };
   if (app.isPackaged) return startExternalUpdate(dir);
   await shellEnvReady; // macOS: npm on the login shell's PATH
   const env = gitEnv();
@@ -1167,7 +1172,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 560,
     backgroundColor: chrome().bg, // = --background (DESIGN.md sync point)
-    title: 'Claude Bench',
+    title: 'Stanza',
     icon: ICON,
     titleBarStyle: 'hidden',
     ...(IS_MAC
@@ -1319,7 +1324,7 @@ async function openFileAt(file, line, col) {
   return err ? { ok: false, error: err } : { ok: true };
 }
 
-// A folder passed on the command line: `claude-bench.exe C:\some\project`.
+// A folder passed on the command line: `stanza.exe C:\some\project`.
 // In dev the app's own folder ("electron .") is also an argument, so skip that one.
 function pathFromArgv(argv) {
   const self = path.resolve(app.getAppPath()).toLowerCase();
