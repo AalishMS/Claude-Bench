@@ -10,7 +10,10 @@
 </p>
 
 <p align="center">
-  <img src="docs/main.png" alt="Claude Bench with a Claude session open, projects on the left and context, MCPs, subagents and running servers on the right">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="promo/screenshots/main-light.png">
+    <img src="promo/screenshots/main-dark.png" alt="Claude Bench with a Claude session open: projects on the left, the answer with clickable file:line links, and context, MCPs, subagents and running servers on the right">
+  </picture>
 </p>
 
 Every tab is the real `claude` CLI in a real terminal, so slash commands, permissions, models and speed are exactly
@@ -38,7 +41,10 @@ split panes, git status and a list of the dev servers your sessions started.
 - **Plan limits.** Session and weekly usage in the footer.
 
 <p align="center">
-  <img src="docs/split.png" alt="Two Claude sessions in split view">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="promo/screenshots/split-light.png">
+    <img src="promo/screenshots/split-dark.png" alt="Three panes in split view: two Claude sessions in different projects and a shell">
+  </picture>
 </p>
 
 ## Install
@@ -124,7 +130,10 @@ to light run `/theme` in a session and pick a light theme there too. **Shortcuts
 uses, except `Ctrl+T`, `Ctrl+S` and `Ctrl+W`. Drop files onto a terminal to paste their paths. `F12` opens DevTools.
 
 <p align="center">
-  <img src="docs/settings.png" alt="Settings page with editable shortcuts">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="promo/screenshots/settings-appearance-light.png">
+    <img src="promo/screenshots/settings-appearance-dark.png" alt="Settings page: theme, accent color and terminal text size">
+  </picture>
 </p>
 
 ## How it's built
