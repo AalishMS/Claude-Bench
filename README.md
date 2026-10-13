@@ -9,6 +9,23 @@
   Windows first, macOS best effort.
 </p>
 
+## Install in one line
+
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/AalishMS/Claude-Bench/main/scripts/install.ps1 | iex
+```
+
+**macOS** (Terminal):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AalishMS/Claude-Bench/main/scripts/install.sh | bash
+```
+
+Needs [Node.js](https://nodejs.org) 20+, git and the [`claude` CLI](https://claude.com/claude-code) (logged in).
+More in [Install](#install).
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="promo/screenshots/main-light.png">
@@ -50,7 +67,26 @@ split panes, git status and a list of the dev servers your sessions started.
 
 ## Install
 
-You need [Node.js](https://nodejs.org), git, and the `claude` CLI installed and logged in.
+You need [Node.js](https://nodejs.org) 20+, git, and the `claude` CLI installed and logged in. Then paste one line.
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/AalishMS/Claude-Bench/main/scripts/install.ps1 | iex
+```
+
+macOS (Terminal):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AalishMS/Claude-Bench/main/scripts/install.sh | bash
+```
+
+It clones the repo, builds the app and opens it. Windows installs to `%LOCALAPPDATA%\Programs\claude-bench` with
+Desktop and Start menu shortcuts; macOS installs to `~/.claude-bench` with a link in `~/Applications`. Set
+`CLAUDE_BENCH_DIR` first to pick another folder. Running the line again updates that copy. To uninstall, delete the
+folder and the shortcuts (or the link).
+
+### Manual install
 
 ```
 git clone https://github.com/AalishMS/Claude-Bench.git
@@ -70,7 +106,8 @@ npm run shortcut    # Desktop and Start menu shortcuts
 
 ### macOS
 
-macOS works but isn't tested by the author. Install git with `xcode-select --install`, then:
+macOS works but isn't tested by the author. Install git with `xcode-select --install`, then use the one-line install
+above, or by hand in the clone:
 
 ```
 npm install

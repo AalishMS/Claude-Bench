@@ -81,7 +81,8 @@ src/lib/ui.js    pure renderer helpers (contextWindow, shortcuts matching, disti
 test/            node:test files, one per lib module
 src/index.html   shell + CSP (script-src 'self'); src/styles.css (tokens on :root, see DESIGN.md)
 DESIGN.md        design system (shadcn/ui + tweaks): tokens, component recipes, terminal palette rules
-scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged copy, see "Update")
+scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged copy, see "Update"),
+                 install.ps1 / install.sh (the README's one-line install, see "Install")
 ```
 
 - **State** lives in `%APPDATA%\claude-bench\state.json`, on macOS in Electron's userData under `~/Library/Application Support` (projects, ui flags incl. sidebar widths, theme, accent and shortcut overrides, window bounds). Written
@@ -128,6 +129,8 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     `npm start`; if the user denied permission nothing shows and `notify` swallows any error.
   - Packaged update: `/bin/bash update.sh` detached with the login shell's PATH (after `shellEnvReady`); waits on the
     pid with `kill -0` (20 s, then `kill -9` on that pid only); reopens the bundle (`execPath` three levels up) with `open`. No visible window, so the log is it.
+  - Install: `install.sh` builds into `~/.claude-bench` and links `~/Applications/Claude Bench.app` to the built bundle
+    (the .app must stay in the clone for `repoDir()`); a real app already at that path is left alone. Untested on a Mac.
   - Shortcuts: the `SHORTCUTS` defaults use `M` = Cmd and `JUMP` = Cmd (Windows: Ctrl / Alt); `comboText` draws ⌃⌥⇧⌘,
     and the recorder reads `e.code`, so Option's special characters don't matter. `Cmd+Alt+arrows` resizes panes.
   - Terminal: `macOptionIsMeta` (Claude's Option shortcuts), `rightClickSelectsWord: false` (right-click pastes);
@@ -159,6 +162,17 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   reopens the exe/.app (tabs restore). Windows: a visible console; on failure it shows the error, waits for Enter and
   reopens the old build. macOS: output in `<userData>/update.log`, opened in TextEdit on failure. Test it against a scratch
   clone (junction its `node_modules`), never the real `dist\`.
+- **Install** (`scripts/install.ps1` / `install.sh`, piped from raw.githubusercontent.com: `irm ... | iex` / `curl ... | bash`;
+  free, no GitHub Release, needs the repo public). Produces a normal git clone, so the Update button works unchanged:
+  `%LOCALAPPDATA%\Programs\claude-bench` / `~/.claude-bench` (or `CLAUDE_BENCH_DIR`). Checks git, Node 20+ (claude only
+  warns), refuses a running build of that install (path match) and a non-empty folder that isn't a clone; an existing
+  clone gets the update steps (lockfile reset, `pull --ff-only`). Then `npm install` (+ Electron's `install.js` if its
+  `dist` is missing), `npm run package[:mac]`, Windows `npm run shortcut`, start the app. The .ps1 runs inside the
+  caller's PowerShell (`iex`), so its body is a `& { }` block with `throw`/`catch` (never `exit`, which would close
+  their window) and it calls `npm.cmd` (the `npm.ps1` shim fails under the default execution policy). The .sh body is
+  in `main`, called on the last line, so a cut-off download runs nothing. Testing it here overwrites the real
+  shortcuts: run `npm run shortcut` in the real checkout afterwards, and don't let it start the scratch exe (same
+  userData and single-instance lock as the real app).
 - **Shortcuts** (`SHORTCUTS` in renderer.js): each action has an id, a label, default combos and `run`. Combos name physical
   keys (`KeyboardEvent.code`, canonical modifier order Ctrl, Alt, Shift, Cmd: `"Ctrl+Shift+KeyT"`), so Shift/Option never
   change the key; `Digits` (1..9) and `Arrows` are patterns whose action gets the number / direction. `runShortcut` (the one
