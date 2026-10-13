@@ -24,12 +24,13 @@ function blockAt(file, it) {
 
 test('indexes pastes and Read results by byte range', async () => {
   const file = transcript();
+  const shot = path.resolve('/shots/x.png'); // in this platform's form: Read paths are, and path.basename is per platform
   fs.writeFileSync(file, [
     line({ type: 'user', message: { content: 'ünïcödé first, so byte and char offsets differ' } }),
     line({ type: 'user', imagePasteIds: [3, 4], message: { content: [
       { type: 'text', text: '[Attached image "a.png" is saved at: C:\\tmp\\a.png]' }, img('AAAA'), img('BBBB'),
     ] } }),
-    line({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: 'C:\\shots\\x.png' } }] } }),
+    line({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: shot } }] } }),
     line({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tu1', content: [img('CCCC')] }] } }),
     line({ type: 'user', message: { content: [img('DDDD')] } }), // no imagePasteIds: numbered by block order
   ].join(''));
@@ -38,7 +39,7 @@ test('indexes pastes and Read results by byte range', async () => {
   assert.deepEqual(st.items.map((i) => [i.kind, i.label, i.file]), [
     ['paste', '#3', 'C:\\tmp\\a.png'],
     ['paste', '#4', null],
-    ['file', 'x.png', 'C:\\shots\\x.png'],
+    ['file', 'x.png', shot],
     ['paste', '#1', null],
   ]);
   assert.deepEqual(st.items.map((i) => blockAt(file, i).source.data), ['AAAA', 'BBBB', 'CCCC', 'DDDD']);
