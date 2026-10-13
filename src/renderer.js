@@ -200,6 +200,8 @@ let sessionsBy = {}; // projectPath -> [{ id, title, mtime, birth, model, ctx }]
 let usage = null; // { ok, limits: [{ kind, label, percent, resetsAt }] } plan limits from Anthropic
 let update = null; // { available, behind, packaged, subjects } new commits upstream of the app's own git checkout
 let updating = false; // git pull / npm install running
+let checking = false; // manual "check for updates" fetch running
+let checkNote = null; // { text, error } shown in #update-pop after a manual check that found nothing to install
 const expanded = new Set(); // project paths whose sessions are shown
 const showMore = new Set(); // projects listing every session instead of the newest few
 let query = '';
@@ -1846,14 +1848,13 @@ function closeMenu() {
 }
 
 // ---------------------------------------------------------------- footer ----
-// One slim row under the project list: compact plan usage, context of the active session
-// and what is running on the right. Each stat opens a details popover (`#detail`) above it.
+// One slim row under the project list: compact plan usage, the update button and what is running
+// on the right. Each stat opens a details popover (`#detail`) above it.
 
 const fmtTok = (n) => (n < 1000 ? String(n)
   : n < 1e4 ? `${(n / 1e3).toFixed(1)}k`
   : n < 1e6 ? `${Math.round(n / 1e3)}k`
   : `${+(n / 1e6).toFixed(1)}M`);
-const modelName = (m) => (m || 'unknown').replace(/^claude-/, '');
 /** A limit whose window already reset counts as 0% until the next window starts. */
 const limitPct = (l) => (l.resetsAt && l.resetsAt < Date.now() ? 0 : l.percent);
 function fmtReset(l) {
@@ -1895,14 +1896,13 @@ const gauge = (pct) => h('span', { class: `gauge ${pct == null ? '' : levelOf(pc
 
 let lastFootKey = '';
 function renderFoot(force = false) {
-  const ctx = contextInfo();
   const live = liveTabs();
   const working = live.filter(isWorking).length;
   const lim = (kind) => usage?.ok && usage.limits.find((l) => l.kind === kind);
   const sess = lim('session');
   const week = lim('weekly_all');
 
-  const key = JSON.stringify([usage, Math.floor(Date.now() / 60000), ctx && [ctx.session?.id, ctx.session?.ctx, ctx.pct, ctx.tab.id], detailKind,
+  const key = JSON.stringify([usage, Math.floor(Date.now() / 60000), detailKind, update, updating, checking,
     [...tabs.values()].map((t) => [t.id, tabLabel(t), tabState(t)]), sessionsVer, settingsOpen, keyText('settings')]);
   if (!force && key === lastFootKey) return;
   lastFootKey = key;
@@ -1919,8 +1919,7 @@ function renderFoot(force = false) {
     }, ico('settings')),
     h('div', { class: 'fstats' },
       fstat('usage', usageTip, gauge(sessPct), sess ? pctText(sessPct) : '—'),
-      fstat('context', ctx?.pct != null ? `Context of this session: ${ctx.pct}% of ${fmtTok(ctx.win)}` : 'Context of this session',
-        ico('pie'), ctx?.pct != null ? pctText(ctx.pct) : '—'),
+      h('span', { id: 'update-slot' }, updateBtn()),
       fstat('state', 'Open sessions',
         h('i', { class: `dot${working ? ' working' : live.length ? ' running' : ''}` }),
         working ? `${working} working` : `${live.length} running`)));
@@ -1928,7 +1927,6 @@ function renderFoot(force = false) {
 }
 
 const dNote = (text, cls = '') => h('p', { class: `d-note ${cls}`.trim() }, text);
-const dRow = (k, ...vals) => h('div', { class: 'd-row' }, h('span', { class: 'd-k' }, k), vals.map((v) => h('span', { class: 'd-v' }, v)));
 
 const DETAILS = {
   usage() {
@@ -1943,19 +1941,6 @@ const DETAILS = {
           h('span', { class: `meter big ${levelOf(pct)}` }, h('i', { style: `width:${pct}%` })),
           h('div', { class: 'd-reset' }, fmtReset(l)));
       }));
-  },
-
-  context() {
-    const c = contextInfo();
-    if (!c) return h('div', {}, h('h4', {}, 'Context'), dNote('Open a Claude tab to see how full its context is.'));
-    if (c.pct == null) return h('div', {}, h('h4', {}, 'Context'), dNote('Nothing to show yet. It appears after Claude\'s first reply in this session.'));
-    return h('div', {},
-      h('h4', {}, 'Context'),
-      h('div', { class: 'd-sub' }, c.session.title),
-      h('span', { class: `meter big ${levelOf(c.pct)}` }, h('i', { style: `width:${c.pct}%` })),
-      dRow('Used', `${fmtTok(c.session.ctx)} of ${fmtTok(c.win)} (${c.pct}%)`),
-      dRow('Model', modelName(c.session.model)),
-      dNote(WINDOW_NOTE));
   },
 
   state() {
@@ -2673,7 +2658,7 @@ function placeBrand() {
   nt.classList.toggle('sm', ui.sidebar);
   if (ui.sidebar) $('.search-row').append(nt);
   else $('#brand').after(nt);
-  placeUpdatePop(); // the update icon moved with #brand
+  placeUpdatePop(); // the footer (its anchor) hides while collapsed
 }
 
 function setSidebar(open) {
@@ -2739,15 +2724,28 @@ async function onCloseRequest() {
   }
 }
 
-/** Update button at the end of the brand row, only while the app's repo has new commits upstream. */
+/**
+ * The one update button in the footer: download (accent-tinted) while the app's repo has new commits upstream,
+ * else refresh = check now (the periodic poll runs every 30 min). A check that finds commits turns it into download.
+ */
+function updateBtn() {
+  if (update?.available) {
+    const n = update.behind || 0;
+    return h('button', {
+      class: `btn ghost icon sm update${updating ? ' busy' : ''}`,
+      title: updating ? 'Updating…' : `Update available: ${n} new commit${n === 1 ? '' : 's'}`,
+      disabled: updating, onclick: runUpdate,
+    }, ico('download'));
+  }
+  return h('button', {
+    class: `btn ghost icon sm${checking ? ' busy' : ''}`,
+    title: checking ? 'Checking for updates…' : 'Check for updates',
+    disabled: checking || updating, onclick: checkNow,
+  }, ico('redo'));
+}
+
 function renderUpdate() {
-  const n = update?.behind || 0;
-  renderCheck(); // its disabled state follows `updating`
-  $('#update-slot').replaceChildren(...(update?.available ? [h('button', {
-    class: `btn ghost icon sm update${updating ? ' busy' : ''}`,
-    title: updating ? 'Updating…' : `Update available: ${n} new commit${n === 1 ? '' : 's'}`,
-    disabled: updating, onclick: runUpdate,
-  }, ico('download'))] : []));
+  $('#update-slot')?.replaceChildren(updateBtn());
   renderUpdatePop();
 }
 
@@ -2794,7 +2792,7 @@ function renderUpdatePop() {
   if (updateStep === 'confirm') {
     const working = [...tabs.values()].filter(isWorking);
     const live = liveTabs().length;
-    pop.replaceChildren(
+    pop.replaceChildren(...[ // replaceChildren would print a null as "null"
       h('h4', {}, 'Update and restart?'),
       h('p', { class: 'up-sub' }, `${what}. ${how}`),
       log,
@@ -2804,41 +2802,31 @@ function renderUpdatePop() {
         : null,
       h('div', { class: 'row' },
         h('button', { class: 'btn outline sm', onclick: back }, 'Back'),
-        h('button', { class: `btn ${working.length ? 'destructive' : 'primary'} sm`, onclick: startUpdate }, 'Update and restart')));
+        h('button', { class: `btn ${working.length ? 'destructive' : 'primary'} sm`, onclick: startUpdate }, 'Update and restart'))].filter(Boolean));
     placeUpdatePop();
     return;
   }
-  pop.replaceChildren(
+  pop.replaceChildren(...[
     h('h4', {}, 'Update available'),
     h('p', { class: 'up-sub' }, `${what} for Claude Bench.`),
     log,
     h('div', { class: 'row' },
       h('button', { class: 'btn outline sm', onclick: later }, 'Later'),
-      h('button', { class: 'btn primary sm', onclick: runUpdate }, 'Update')));
+      h('button', { class: 'btn primary sm', onclick: runUpdate }, 'Update'))].filter(Boolean));
   placeUpdatePop();
 }
 
-/** Under the update icon (sidebar top row, or the top bar while the sidebar is collapsed). */
+/** Above the update button in the footer; the bottom-left corner while the sidebar is collapsed (footer hidden). */
 function placeUpdatePop() {
   const pop = $('#update-pop');
   if (pop.hidden) return;
-  const r = $(checkNote ? '#check-slot' : '#update-slot').getBoundingClientRect();
-  const left = !r.width ? 8 : checkNote ? r.left - 4 : r.right - pop.offsetWidth + 4;
+  const r = $('#update-slot')?.getBoundingClientRect();
+  const left = r?.width ? r.left - 4 : 8;
   pop.style.left = `${Math.max(8, Math.min(left, window.innerWidth - pop.offsetWidth - 8))}px`;
-  pop.style.top = `${(r.height ? r.bottom : 40) + 6}px`;
+  pop.style.bottom = `${r?.height ? window.innerHeight - r.top + 6 : 8}px`;
 }
 
-/** The always-visible refresh icon next to the app name: check for updates now (the periodic poll runs every 30 min). */
-let checking = false;
-let checkNote = null; // { text, error } shown in #update-pop after a manual check that found nothing to install
 let checkNoteTimer = 0;
-function renderCheck() {
-  $('#check-slot').replaceChildren(h('button', {
-    class: `btn ghost icon sm${checking ? ' busy' : ''}`,
-    title: checking ? 'Checking for updates…' : 'Check for updates',
-    disabled: checking || updating, onclick: checkNow,
-  }, ico('redo')));
-}
 
 function closeCheckNote() {
   clearTimeout(checkNoteTimer);
@@ -2853,8 +2841,7 @@ async function checkNow() {
   updateBusy = true; // keeps the periodic poll from overlapping
   clearTimeout(checkNoteTimer);
   checkNote = null;
-  renderCheck();
-  renderUpdatePop();
+  renderUpdate();
   try {
     const next = await api.checkUpdate();
     update = next;
@@ -2866,7 +2853,6 @@ async function checkNow() {
     checking = false;
     updateBusy = false;
   }
-  renderCheck();
   renderUpdate();
   if (checkNote) checkNoteTimer = setTimeout(closeCheckNote, 5000);
 }
@@ -3126,7 +3112,6 @@ function wireGlobalEvents() {
 async function init() {
   $('#logo').innerHTML = LOGO_IMG;
   $('#toggle-sidebar').append(ico('sidebar'));
-  renderCheck();
   $('#new-tab').append(ico('plus'));
   $('#close-tab').append(ico('x'));
   $('#split-tab').append(ico('columns'));

@@ -164,16 +164,15 @@ button { font: inherit; color: inherit; }
 body.mac #topbar { padding-right: 8px; }
 body.mac #brand, body.mac #topbar #brand { padding-left: 72px; }
 body.sidebar-collapsed .brand-name { display: none; }
-/* Update available (end of the brand row): tinted with the accent, the only colored icon there; pulses while pulling */
-#update-slot { display: flex; margin-left: auto; }
+/* The update button (footer, between usage and sessions): refresh = check now, spins while the git fetch runs;
+   download = update available, tinted with the accent (the only colored icon there), pulses while pulling */
+#update-slot { display: flex; }
 #update-slot .update .ico { color: color-mix(in srgb, var(--primary) 60%, var(--foreground)); }
 #update-slot .update.busy { animation: pulse 1.2s ease-in-out infinite; cursor: default; }
+#update-slot .btn.busy:not(.update) .ico { animation: spin 1s linear infinite; }
+#update-slot .btn:disabled { opacity: 1; cursor: default; }
 @keyframes pulse { 50% { opacity: 0.3; } }
 @keyframes spin { to { transform: rotate(360deg); } }
-/* Check for updates: always there, muted ghost icon; spins while the git fetch runs */
-#check-slot { display: flex; }
-#check-slot .btn.busy .ico { animation: spin 1s linear infinite; }
-#check-slot .btn:disabled { opacity: 1; cursor: default; }
 
 /* --------------------------------------------------------------- body --- */
 #body { display: flex; min-height: 0; }
@@ -300,7 +299,7 @@ body.resizing .rz { pointer-events: auto; }
 .dot.working { background: var(--warning); animation: pulse 1s ease-in-out infinite; }
 .dot.attention { background: var(--primary); animation: pulse 0.9s ease-in-out infinite; }
 
-/* footer: one slim row, icon buttons left, compact usage / context / running text right (each opens #detail) */
+/* footer: one slim row, settings left, then usage, the update button and running sessions (the stats open #detail) */
 /* every stat is icon (14px slot) + value, same height and padding, 2px apart; the row aligns with the list's 8px inset */
 #side-foot { display: flex; align-items: center; gap: 2px; height: 44px; flex: none; padding: 0 8px 0 4px; border-top: 1px solid var(--border); }
 .fstats { display: flex; align-items: center; justify-content: space-between; flex: 1; min-width: 0; }
@@ -337,7 +336,7 @@ body.resizing .rz { pointer-events: auto; }
 /* footer details popover */
 #detail { position: fixed; z-index: 40; width: 300px; padding: 14px; background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); user-select: text; }
 #detail[hidden] { display: none; }
-/* update popover: the Popover recipe under the update icon, with the AlertDialog's button row */
+/* update popover: the Popover recipe above the footer update button, with the AlertDialog's button row */
 #update-pop { position: fixed; z-index: 45; width: 300px; padding: 14px; background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
 #update-pop[hidden] { display: none; }
 #update-pop h4 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--foreground); }

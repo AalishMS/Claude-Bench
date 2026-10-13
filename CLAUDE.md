@@ -139,10 +139,10 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled from the renderer: the active project every 4 s (8 s while the window is visible but unfocused, `idle()`), all projects every 20 s (and on focus).
 - **Update** (people install by cloning): `repoDir()` = the app folder for `npm start`, or the repo above `dist/` for a
   packaged build (walks up to a `.git` + `package.json` named `claude-bench`; a `.app` copied elsewhere finds none).
-  `checkUpdate` runs `git fetch` + `rev-list --count HEAD..@{u}` 10 s after start and every 30 min (and on demand via the refresh icon next to the app name, `#check-slot` / `checkNow`, which
+  `checkUpdate` runs `git fetch` + `rev-list --count HEAD..@{u}` 10 s after start and every 30 min (and on demand via the footer's update button, `#update-slot` / `updateBtn` / `checkNow`, which
   reports "up to date" or git's error, `error` in the result, in `#update-pop`; skipped while
-  hidden; `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never` so no credential prompt). If behind, `renderUpdate` shows the
-  button in `#update-slot`, and `renderUpdatePop` opens `#update-pop` under it (the newest 5 subjects from
+  hidden; `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never` so no credential prompt). If behind, the same
+  button turns into download (`runUpdate`; one button, refresh or download), and `renderUpdatePop` opens `#update-pop` above it (the newest 5 subjects from
   `git log --format=%s HEAD..@{u}`; Later / Update; Update turns the popover into a confirm step (`runUpdate`) whose button runs `startUpdate`, then a progress view; no separate dialog). Dismissing records the `behind` count
   (`updateSeen`, runtime only), so it returns only when more commits arrive or after a restart. Source runs: confirm (lists working tabs), then `applyUpdate` = `git pull --ff-only`,
   `npm install` (always, see below; a no-op install touches no files, so the running Electron doesn't block it), `app.relaunch()` + quit. Any failure (local edits,
@@ -236,7 +236,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   Windows caches the name at an ID's first toast: if one fired before the key existed, delete
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\com.local.claudebench` to reset it.
 - **Right sidebar** (`#rside`, toggled by the top-bar button or `Ctrl+Shift+S`, saved as `ui.servers`; `renderRside`): the active tab's
-  **Context** (`x / yk` + %, same numbers as the footer tile), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**, **Images**.
+  **Context** (`x / yk` + %), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**, **Images**.
   Subagents and Running show `RSIDE_SHOWN` (5) rows, then "Show N more" / "Show less" (`foldRows`, `rsideMore`, runtime only;
   collapsing the section clears it, so reopening shows 5 again). Images is last and never folded.
   Home screen (no active tab): Context and Images are left out; with no `currentProject()` MCPs and Subagents show the
@@ -284,8 +284,8 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   during a partial one is queued, `sessionsQueued`, as in `pollGit`). The sidebar footer row shows plan limits (session / weekly / per-model % and reset times, from `api.anthropic.com/api/oauth/usage`
   using the token in `~/.claude/.credentials.json`, cached 2 min in main, never written; the token lasts hours and only Claude
   Code refreshes it, so with no session running it expires: `refreshLogin` then runs `claude mcp list` in the home folder
-  (it refreshes the token; `claude auth status` does not, tested on v2.1.296), at most once per 10 min, also on a 401; a failure blocks requests for its `Retry-After` (429 default 5 min, max 15) and the last good numbers are served as `stale`, because retrying a 429 keeps the limit from clearing), context fill of the active tab's
-  session, and tab state. Fresh and `--continue` tabs are matched to their transcript heuristically (`assignSessions`).
+  (it refreshes the token; `claude auth status` does not, tested on v2.1.296), at most once per 10 min, also on a 401; a failure blocks requests for its `Retry-After` (429 default 5 min, max 15) and the last good numbers are served as `stale`, because retrying a 429 keeps the limit from clearing), the update button
+  (see "Update"), and tab state. Fresh and `--continue` tabs are matched to their transcript heuristically (`assignSessions`).
   Until a tab's transcript is listed (after the first reply) it shows as an italic "New session" placeholder row;
   PowerShell tabs get a "PowerShell" row. Every open tab has a row (there is no tab strip).
 - **Session info** (right side of the status bar for Claude tabs, `session:info`): model = last reply's model or `/model` output in the transcript tail,

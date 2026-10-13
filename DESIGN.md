@@ -166,13 +166,9 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - `#sidebar` is a full-height column: bg `--sidebar` (the darkest surface), width 232 by default (resizable, see below), 1 px `--sidebar-border` on the
   terminal side. Nothing inside has its own box, card, tint or border.
 - Top row (40 px, draggable): sidebar toggle, logo, app name (`#brand`). While collapsed, `#brand` moves to the start
-  of the top bar so the toggle stays reachable. A ghost `redo` (refresh) icon button, always visible right after the app name
-  (`#check-slot`), checks for updates now; it spins while the fetch runs. With nothing to install, the same popover opens
-  as a short note ("You're up to date" / "Couldn't check for updates" + the reason, one `OK` button, closes itself after 5 s).
-  When the app's own repo has new commits, a ghost `download` icon button
-  sits at the row's right end (`#update-slot`), its icon tinted `color-mix(--primary 60%, --foreground)`; it pulses
-  while updating. Nothing shows otherwise. (Not in the footer: the footer has no room at 232 px.)
-  When an update is first seen, an **update popover** (`#update-pop`, the Popover recipe, 300 px) opens under the icon:
+  of the top bar so the toggle stays reachable. No update icons here: the single update button is in the footer.
+  When an update is first seen, an **update popover** (`#update-pop`, the Popover recipe, 300 px) opens above the footer's
+  update button (bottom-left corner of the window while the sidebar is collapsed):
   "Update available" (13 px / 600), `N new commits` (12 px muted), up to 5 commit subjects (12 px muted, one line each,
   `·` bullets, "and N more" in `--faint`), and the AlertDialog button row (`Later` outline sm, `Update` primary sm). `Update`
   turns the same popover into a confirm step ("Update and restart?": the commit list, a 12 px muted warning with the
@@ -203,9 +199,14 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   Right-click a transcript row opens the DropdownMenu at the pointer: Open/Show, Open beside, Fork session, Fork beside.
 - Footer: one slim 44 px row. A ghost `settings` (gear) icon button on the left (`.on` while the settings page is open); stats right, each **icon + value** in a
   28 px `rounded-md` button (padding 0 8, gap 6, 2 px apart, 12 px tabular numbers): plan **session** usage as a ring
-  gauge + `10%`, context as the pie icon + `24%`, running as a status dot + `3 running`. Icons `--faint`, values
-  `--foreground`, colored only at warn/crit levels. Weekly usage lives in the tooltip and the popover. Each opens its
-  `#detail` popover; hover `--sidebar-hover`, `.on` = bg `--sidebar-accent`.
+  gauge + `10%`, then the update button, then running as a status dot + `3 running`. Icons `--faint`, values
+  `--foreground`, colored only at warn/crit levels. Weekly usage lives in the tooltip and the popover. Each stat opens its
+  `#detail` popover; hover `--sidebar-hover`, `.on` = bg `--sidebar-accent`. No context stat (the right sidebar shows it).
+- Update button (`#update-slot`, ghost `icon sm`, one button with two states): `redo` (refresh) = check for updates now,
+  spins while the fetch runs; with nothing to install, the update popover opens as a short note ("You're up to date" /
+  "Couldn't check for updates" + the reason, one `OK` button, closes itself after 5 s). When the app's own repo has new
+  commits (from the 30 min poll or that check) it becomes `download`, tinted `color-mix(--primary 60%, --foreground)`,
+  pulsing while updating; click opens the update popover's confirm step.
 - **Resizing**: both sidebars are drag-resizable (`.rz` handles, 4 px overlaying the divider with no layout width; hover/drag = `--primary` tint; double-click resets). Left 180–480 (default 232), right 240–600 (default 300), saved as `ui.sidebarW` / `ui.rsideW` and applied to `--sidebar-w` / `--rside-w`. Content sits 4 px from the left edge of the sidebar (8 px right).
 - The right sidebar (`#rside`, 300 px by default) uses the `--background` surface (same as the terminal) with a 1 px `--sidebar-border` on its terminal side.
   Top: **Context** header (12 px muted title + `150k / 200k`, the % at 20 px/600 colored only at warn/crit, a `.meter.big`).
