@@ -21,8 +21,9 @@ split panes, git status and a list of the dev servers your sessions started.
 
 - **Projects and sessions.** Add a folder once, then start a session in it with one click. Past sessions are listed
   under each project by their title; click one to resume it, or right-click to fork it.
-- **Chats without a project.** The `+` next to "add project" also offers "No project": a session in your home
-  folder for questions or small chores like tidying the Desktop. They are listed under "Chats" at the top.
+- **Chats without a project.** The `+` next to "add project" also offers "No project": a session for questions or
+  small chores like tidying the Desktop. Chats run in `Claude Chats` in your home folder (change it in Settings >
+  Chats) with your home folder added, and are listed under "Chats" at the top.
 - **Tabs that come back.** Open sessions reopen on the next launch, resumed where they left off.
 - **Split view.** Up to four sessions on screen at once. Drag a session from the sidebar onto the terminal, or press
   `Ctrl+\`. You can keep several splits around; each gets its own box in the sidebar.
@@ -75,7 +76,7 @@ Things that differ on a Mac:
 - Shortcuts use `⌘` where the table below says `Ctrl`, and `⌘` instead of `Alt` (`⌘1`..`9`, `⌘` + arrows).
   `Ctrl+Tab` stays. Plain `Ctrl` is left to Claude Code, so `Ctrl+C` interrupts and `Ctrl+V` pastes images.
 - Copy and paste are `⌘C` / `⌘V` or right-click. Option acts as Meta, so Claude's Option shortcuts work.
-- "No project" chats run in your home folder (`~`).
+- "No project" chats run in `~/Claude Chats` (or the folder set in Settings > Chats), with `~` added.
 - Sessions use your login shell's PATH, so `claude` and `node` are found even when the app is opened from Finder.
 - File links open at the right line if VS Code's `code` command is installed ("Shell Command: Install 'code' command
   in PATH"), otherwise VS Code opens the file without the line. Binary files open in their default app (`open`).

@@ -74,6 +74,7 @@ const defaults = {
   tabs: [], // open tabs in tab order, reopened at launch: [{ project: path, kind: 'claude' | 'shell', sessionId }]
   activeTab: -1, // index into tabs
   splits: [], // split groups of the open tabs: [{ tabs: [index into tabs, 2-4], cx, ry, v }]
+  chatDir: null, // folder of "No project" chats chosen in settings; null = ~/Claude Chats
 };
 let state = structuredClone(defaults);
 const stateFile = () => path.join(app.getPath('userData'), 'state.json');
@@ -87,6 +88,12 @@ function loadState() {
     state = { ...defaults, ...saved, ui: { ...defaults.ui, ...saved.ui } };
     // The right sidebar used to default to closed, so a saved `false` is usually just that old default: reopen it once.
     if (!saved.ui?.rsideMigrated) { state.ui.servers = true; state.ui.rsideMigrated = true; }
+    // Chats used to live in the home folder (Claude Code never keeps trust there): move the entry to its own folder.
+    for (const p of state.projects) {
+      if (!p.chat || !samePath(p.path, os.homedir())) continue;
+      try { fs.mkdirSync(chatDir(), { recursive: true }); p.path = chatDir(); } catch { continue; /* stays at home */ }
+      if (Array.isArray(state.ui.expanded)) state.ui.expanded.push(p.path); // shown open, like before
+    }
   } catch {
     /* first run or unreadable file: keep defaults */
   }
@@ -160,17 +167,55 @@ const isDir = (p) => {
 const samePath = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 
 /**
- * The "No project" area: a project entry for the home folder, flagged `chat`, always first. Created on first use.
- * If home is already a real project it stays one, and chats just open there. Returns the projects and the path to open.
+ * "No project" chats run in their own folder, not in home: Claude Code never saves trust for the home folder, so every
+ * chat there asked again. Claude tabs started in it get `--add-dir <home>` (createSession) for Desktop/Downloads chores.
+ */
+const defaultChatDir = () => path.join(os.homedir(), 'Claude Chats');
+const chatDir = () => (typeof state.chatDir === 'string' && state.chatDir) || defaultChatDir();
+/** For the settings page: where chats run, and whether that is the default or the home folder (trust asked every time). */
+const chatInfo = () => ({ dir: chatDir(), isDefault: !state.chatDir, isHome: samePath(chatDir(), os.homedir()) });
+
+/** Settings: run chats in `dir` (null = the default folder). Moves the Chats entry if there is one; old chats stay on disk. */
+function setChatDir(dir) {
+  const target = dir || defaultChatDir();
+  if (state.projects.some((x) => !x.chat && samePath(x.path, target))) {
+    return { error: 'That folder is already a project in the sidebar.' };
+  }
+  const cur = state.projects.find((x) => x.chat);
+  if (cur && [...sessions.values()].some((s) => samePath(s.cwd, cur.path))) {
+    return { error: 'Close the open chats to change the folder.' }; // their tabs belong to the current folder
+  }
+  if (!dir) {
+    try { fs.mkdirSync(target, { recursive: true }); } catch (err) { return { error: `Could not create ${target}: ${err.message}` }; }
+  } else if (!isDir(target)) {
+    return { error: `Folder not found: ${target}` };
+  }
+  state.chatDir = dir && !samePath(dir, defaultChatDir()) ? path.resolve(dir) : null;
+  const entry = state.projects.find((x) => x.chat);
+  if (entry) entry.path = chatDir();
+  saveState();
+  return { projects: state.projects, chat: chatInfo() };
+}
+
+/**
+ * The project entry for chats, flagged `chat`, always first. Created on first use (and its folder with it).
+ * If that folder is already a real project it stays one, and chats just open there. Returns the projects and the path to open.
  */
 function chatProject() {
-  const home = os.homedir();
-  if (!state.projects.some((x) => samePath(x.path, home))) {
-    state.projects.unshift({ path: home, name: 'Chats', chat: true });
+  const dir = chatDir();
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (err) {
+    return { error: `The chat folder isn't available: ${dir}\n${err.message}` }; // e.g. a drive that is gone; settings can change it
+  }
+  if (!state.projects.some((x) => samePath(x.path, dir))) {
+    state.projects = state.projects.filter((x) => !x.chat); // one Chats entry (an older one may sit at home)
+    state.projects.unshift({ path: dir, name: 'Chats', chat: true });
     saveState();
   }
-  return { projects: state.projects, path: state.projects.find((x) => samePath(x.path, home)).path };
+  return { projects: state.projects, path: state.projects.find((x) => samePath(x.path, dir)).path };
 }
+
+/** Is `cwd` the chat folder of the Chats entry? */
+const isChatDir = (cwd) => state.projects.some((x) => x.chat && samePath(x.path, cwd));
 
 function addProject(p) {
   const abs = path.resolve(p);
@@ -249,6 +294,7 @@ function createSession({ id, cwd, kind, args, resumeId, fork, cols, rows }) {
   if (kind === 'claude') {
     const extra = resumeId ? ['--resume', resumeId, ...(fork === true ? ['--fork-session'] : [])]
       : (args || []).filter((a) => ALLOWED_CLAUDE_ARGS.has(a));
+    if (isChatDir(cwd)) extra.push('--add-dir', os.homedir()); // chats may tidy the Desktop, Downloads...
     if (IS_MAC) {
       // Found on the login shell's PATH (shellEnvReady); the tab ends when claude exits, like cmd /c.
       file = 'claude';
@@ -500,7 +546,7 @@ async function scanPorts() {
     if (s.pty.pid) sessionByPid.set(s.pty.pid, { id, cwd: s.cwd, kind: s.kind });
   }
 
-  // Not the Chats entry (the home folder): nearly every command line would match it.
+  // Not the Chats entry: it may be set to the home folder, which nearly every command line would match.
   const projectsByLength = state.projects.filter((p) => !p.chat).sort((a, b) => b.path.length - a.path.length);
 
   const ownerOf = (pid, cmd) => {
@@ -1532,7 +1578,7 @@ app.on('before-quit', () => {
 // ------------------------------------------------------------------ ipc ----
 
 function registerIpc() {
-  ipcMain.handle('state:get', () => ({ projects: state.projects, ui: state.ui, restore: restorableTabs() }));
+  ipcMain.handle('state:get', () => ({ projects: state.projects, ui: state.ui, restore: restorableTabs(), chat: chatInfo() }));
   ipcMain.on('tabs:set', (_e, payload) => saveTabs(payload));
 
   ipcMain.handle('projects:add', async () => {
@@ -1545,6 +1591,11 @@ function registerIpc() {
   });
 
   ipcMain.handle('projects:chat', () => chatProject());
+  ipcMain.handle('chat:pickDir', async () => {
+    const r = await dialog.showOpenDialog(mainWindow, { title: 'Folder for chats', defaultPath: chatDir(), properties: ['openDirectory', 'createDirectory'] });
+    return r.canceled ? null : setChatDir(r.filePaths[0]);
+  });
+  ipcMain.handle('chat:resetDir', () => setChatDir(null));
 
   ipcMain.handle('projects:reorder', (_e, paths) => {
     if (!Array.isArray(paths)) return state.projects;

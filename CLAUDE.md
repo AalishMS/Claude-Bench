@@ -156,7 +156,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   accent change. Claude Code's own colors follow its `/theme`, not ours.
 - **Settings page** (`#settings` over `#main`, gear at the left of the sidebar footer or `Ctrl+,`; `toggleSettings` /
   `renderSettings`): a section nav (`SETTINGS_TABS`, `settingsTab`, runtime only) with Appearance (`appearanceSection`:
-  theme preview cards, accent options, terminal text size) and Shortcuts (`shortcutsSection`, a bordered card per group).
+  theme preview cards, accent options, terminal text size), Chats (`chatsSection`: the chat folder, see "Chats") and Shortcuts (`shortcutsSection`, a bordered card per group).
   A re-render refocuses the control that had focus (`data-fk`). Shortcuts: clicking a chip (or +) records the next combo with Ctrl/Alt/Cmd (or an F key);
   a combo another action uses is moved over (`keysNote` says so). Esc cancels recording, then closes the page; activating
   any tab closes it too.
@@ -257,13 +257,19 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   `Code.exe -g file:line:col` (`findVsCode`), macOS the `code` CLI on the login PATH, then `open -a "Visual Studio Code"`
   (no line); last resort `shell.openPath`.
 - **Chats** ("No project"): the sidebar `+` (`#new-tab`, `newSessionMenu`) opens a menu: "No project", then every project.
-  A chat is a normal project entry `{ path: os.homedir(), name: 'Chats', chat: true }`, created on first use by main's
+  A chat is a normal project entry `{ path: chatDir(), name: 'Chats', chat: true }`, created on first use by main's
   `chatProject` (`projects:chat`, returns `{ projects, path }`), always first (`projects:reorder` keeps it there),
-  so tabs, transcripts, restore and splits need nothing new. If home is already a real project it is left alone and
+  so tabs, transcripts, restore and splits need nothing new. `chatDir()` = `state.chatDir` (Settings > Chats,
+  `chatsSection`; `chat:pickDir` / `chat:resetDir` -> `setChatDir`, refused for a folder that is a real project, and
+  while a pty runs in the chat folder, checked in main) else `~/Claude Chats`, created on demand. A folder that can't be
+  created is an error (`openChat` offers Settings), never a silent fallback to home. **Not the home folder**: Claude Code never saves
+  trust for home, so every chat there asked again (`hasTrustDialogAccepted` stays false in `~/.claude.json`); `loadState`
+  moves an old Chats entry from home to `chatDir()`. Claude tabs in the chat folder get `--add-dir <home>` (`isChatDir`
+  in `createSession`) for Desktop/Downloads chores. If the chat folder is already a real project it is left alone and
   "No project" opens a session there. `realProjects()` = everything but Chats: use it wherever "the user's projects" is
   meant (`currentProject`, `projectAction`, `pollGit`, `projParent`, welcome/empty states). Chats' row isn't draggable and
   has no "Move to top"; the port scan's path match ignores it (every command line would match home). `Ctrl+T` with no tab and
-  several projects opens the same menu, focused (arrows + Enter, `menuArrow`). macOS: the same, `~` as cwd.
+  several projects opens the same menu, focused (arrows + Enter, `menuArrow`). macOS: the same, `~/Claude Chats` + `--add-dir ~`.
 - **Projects**: order = `state.projects`, changed by dragging project rows (`projDragProps`, `projDrag` pauses `renderSidebar`
   like a session drag) or "Move to top" in the `…` menu; both call `moveProject` -> `projects:reorder`. Same-name folders:
   `projParent(p)` = the fewest parent folders that tell it apart, `projName(p)` = `app (clients)` for tab labels,

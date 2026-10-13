@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('api', {
   getState: () => ipcRenderer.invoke('state:get'),
   addProjects: () => ipcRenderer.invoke('projects:add'),
   chatProject: () => ipcRenderer.invoke('projects:chat'),
+  pickChatDir: () => ipcRenderer.invoke('chat:pickDir'),
+  resetChatDir: () => ipcRenderer.invoke('chat:resetDir'),
   removeProject: (p) => ipcRenderer.invoke('projects:remove', p),
   reorderProjects: (paths) => ipcRenderer.invoke('projects:reorder', paths),
   setUi: (patch) => ipcRenderer.invoke('ui:set', patch),

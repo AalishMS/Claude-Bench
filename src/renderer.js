@@ -1830,6 +1830,11 @@ function menuArrow(e) {
 /** A new Claude session in the home folder, listed under the pinned "Chats" group (or the home project, if it is one). */
 async function openChat() {
   const r = await api.chatProject();
+  if (r.error) {
+    const fix = await confirmDialog({ title: 'Chat folder not available', message: r.error, okLabel: 'Open settings', cancelLabel: 'Close' });
+    if (fix) { settingsTab = 'chats'; toggleSettings(true); }
+    return;
+  }
   projects = r.projects;
   const chat = projects.find((p) => p.path === r.path);
   if (!chat) return;
@@ -2090,7 +2095,9 @@ let settingsTab = 'appearance'; // section shown on the settings page (runtime o
 let recording = null; // { id, index } while waiting for keys: index of the combo to replace, or -1 to add one
 let keysNote = null; // { text, err } under the section header after the last change
 
-const SETTINGS_TABS = [['appearance', 'Appearance', 'palette'], ['shortcuts', 'Shortcuts', 'keyboard']];
+const SETTINGS_TABS = [['appearance', 'Appearance', 'palette'], ['chats', 'Chats', 'chat'], ['shortcuts', 'Shortcuts', 'keyboard']];
+let chatInfo = null; // { dir, isDefault, isHome } of the "No project" chat folder (main)
+let chatNote = null; // { text, err } after the last change on the Chats page
 const THEMES = [['dark', 'Dark'], ['light', 'Light'], ['system', 'System']];
 const ACCENTS = [['blue', 'Blue'], ['violet', 'Violet'], ['teal', 'Teal'], ['rose', 'Rose']];
 
@@ -2125,18 +2132,58 @@ function renderSettings() {
         h('button', {
           class: `set-nav-item${settingsTab === id ? ' on' : ''}`, 'data-fk': `nav-${id}`,
           'aria-current': settingsTab === id ? 'page' : null,
-          onclick: () => { settingsTab = id; recording = keysNote = null; renderSettings(); },
+          onclick: () => { settingsTab = id; recording = keysNote = chatNote = null; renderSettings(); },
         }, ico(icon), label))),
-      settingsTab === 'shortcuts' ? shortcutsSection() : appearanceSection())));
+      settingsTab === 'shortcuts' ? shortcutsSection() : settingsTab === 'chats' ? chatsSection() : appearanceSection())));
   if (fk) $(`#settings [data-fk="${fk}"]`)?.focus();
 }
 
 const secHead = (title, desc, action = null) => h('div', { class: 'set-sec-head' },
   h('div', {}, h('h2', {}, title), h('p', {}, desc)), action);
 
+const setField = (name, desc, control) => h('div', { class: 'set-field' },
+  h('div', { class: 'set-field-name' }, name), h('div', { class: 'set-field-desc' }, desc), control);
+
+/** Where "No project" sessions run. Changing it waits until no chat is open (their tabs belong to the old folder). */
+function chatsSection() {
+  const info = chatInfo || { dir: '', isDefault: true, isHome: false };
+  const busy = [...tabs.values()].some((t) => t.project.chat);
+  return h('section', {},
+    secHead('Chats', 'Sessions started with + > No project, for questions and small chores outside your projects.'),
+    setField('Chat folder', `Chats run here, and your home folder is added to each one, so they can work on your Desktop or Downloads. Claude Code asks once to trust a new folder.`,
+      h('div', {},
+        h('div', { class: 'set-path' }, h('bdi', {}, info.dir)),
+        h('div', { class: 'set-acts' },
+          h('button', { class: 'btn outline sm', 'data-fk': 'chat-pick', disabled: busy, onclick: () => changeChatDir(api.pickChatDir) }, ico('folder'), 'Change…'),
+          h('button', { class: 'btn ghost sm', 'data-fk': 'chat-show', onclick: () => api.openFolder(info.dir) }, `Show in ${FILES_APP}`),
+          info.isDefault ? null
+            : h('button', { class: 'btn ghost sm', 'data-fk': 'chat-reset', disabled: busy, onclick: () => changeChatDir(api.resetChatDir) }, 'Reset to default')))),
+    busy ? h('div', { class: 'set-note' }, 'Close the open chats to change the folder.') : null,
+    info.isHome ? h('div', { class: 'set-note err' }, 'Claude Code never remembers trust for the home folder, so every chat here asks again.') : null,
+    chatNote ? h('div', { class: `set-note${chatNote.err ? ' err' : ''}` }, chatNote.text) : null);
+}
+
+async function changeChatDir(call) {
+  const old = chatInfo?.dir;
+  const oldEntry = projects.find((p) => p.chat)?.path; // may differ from `old` in form
+  const r = await call();
+  if (!r) return; // dialog cancelled
+  if (r.error) chatNote = { text: r.error, err: true };
+  else {
+    projects = r.projects;
+    chatInfo = r.chat;
+    const chat = projects.find((p) => p.chat);
+    if (chat && oldEntry && expanded.delete(oldEntry)) { expanded.add(chat.path); saveExpanded(); }
+    chatNote = old && old.toLowerCase() !== chatInfo.dir.toLowerCase()
+      ? { text: 'New chats start here. Chats from the old folder stay on disk but no longer show under Chats.' } : null;
+    renderAll();
+    pollSessions(true);
+  }
+  renderSettings();
+}
+
 function appearanceSection() {
-  const field = (name, desc, control) => h('div', { class: 'set-field' },
-    h('div', { class: 'set-field-name' }, name), h('div', { class: 'set-field-desc' }, desc), control);
+  const field = setField;
   const line = (cls, width) => h('i', { class: `pv-line${cls ? ' ' + cls : ''}`, style: width ? `width: ${width}%` : null });
   // a mini window in that theme's own tokens (styles.css applies [data-theme] to any element)
   const mini = (theme) => h('div', { class: 'pv', 'data-theme': theme },
@@ -3117,6 +3164,7 @@ async function init() {
 
   const state = await api.getState();
   projects = state.projects;
+  chatInfo = state.chat;
   ui = state.ui;
   ui.collapsed ||= [];
   applyTheme();

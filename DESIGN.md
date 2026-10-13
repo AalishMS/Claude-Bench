@@ -133,7 +133,7 @@ different projects it sits at the top of the list and each row shows its project
 `#settings` covers the terminal area (top bar, sidebars and status bar stay). Centered 840 px column, 32 px padding:
 title 18 px / 600 with a ghost `×`, then a two-column layout (shadcn's settings example): a 168 px sticky section nav
 (32 px rows, 14 px icon, `--muted-foreground`; hover `--sidebar-hover`; the open one `--accent` bg, `--foreground`,
-500) and the open section. Sections: **Appearance** (default) and **Shortcuts**; the open one is runtime only. A
+500) and the open section. Sections: **Appearance** (default), **Chats** and **Shortcuts**; the open one is runtime only. A
 section header has a 14 px / 600 title, a 12 px muted line, an optional `Reset all` outline sm button on the right, and
 a 1 px `--border` rule under it.
 
@@ -144,6 +144,11 @@ the control. **Theme**: three preview cards (16:10, `rounded-lg`, 1 px `--border
 `--foreground` when selected. **Accent color**: outline-style option buttons (h 32) with a 14 px swatch dot + name;
 selected = `--ring` border. **Terminal text size**: outline icon `−` / `+`, the value in mono, and a ghost
 "Reset to 14" when changed. All are `role=radio` groups; a re-render puts focus back on the same control (`data-fk`).
+
+Chats: one field, **Chat folder**: the path in a bordered box (`.set-path`, 12 px muted, `rounded-md`, wraps anywhere),
+then `Change…` (outline sm, folder icon), `Show in Explorer` (ghost sm) and, when not the default, `Reset to default`
+(ghost sm). Change/Reset are disabled while a chat tab is open; `.set-note` lines under it explain that, warn (`.err`)
+when the folder is the home folder, and report the last change.
 
 Shortcuts: each group is a 12 px / 500 `--faint` label over one bordered card (`rounded-lg`, 1 px `--border`, rows
 split by 1 px `--border`). Rows are 44 px (hover: `--accent` 50 %) with the name (13 px) and an optional 11 px
