@@ -15,7 +15,7 @@ test('renderer.js declares only names lib/ui.js defines', () => {
   }
 });
 
-test('contextWindow: 1M for Opus 4.6+, Fable, Mythos, [1m] or past 200k; else 200k', () => {
+test('contextWindow: 1M for Opus/Sonnet 4.6+, Haiku 5+, Fable, Mythos, [1m] or past 200k; else 200k', () => {
   const M = 1000000;
   const K = 200000;
   for (const [model, want] of [
@@ -25,14 +25,23 @@ test('contextWindow: 1M for Opus 4.6+, Fable, Mythos, [1m] or past 200k; else 20
     ['claude-opus-5-5', M],
     ['claude-opus-4-5-20251101', K],
     ['claude-opus-4-20250514', K], // the date is not a minor version
-    ['claude-sonnet-5-5', K],
-    ['claude-sonnet-5-5[1m]', M],
+    ['claude-sonnet-5-5', M],
+    ['claude-sonnet-5', M],
+    ['claude-sonnet-4-6', M],
+    ['Sonnet 5.5', M],
+    ['claude-sonnet-4-5-20250929', K],
+    ['claude-sonnet-4-5[1m]', M],
     ['claude-fable-5-1', M],
     ['Mythos', M],
-    ['claude-haiku-5-5', K],
+    ['claude-haiku-5-5', M],
+    ['Haiku 5.5', M],
+    ['claude-haiku-4-5-20251001', K],
+    ['Haiku 4.5', K],
+    ['claude-3-opus-20240229', K], // old-style id: the date is not a version
+    ['claude-3-5-sonnet-20241022', K],
     [null, K],
   ]) assert.equal(ui.contextWindow(model, 0), want, String(model));
-  assert.equal(ui.contextWindow('claude-sonnet-5-5', 250000), M);
+  assert.equal(ui.contextWindow('claude-haiku-4-5', 250000), M);
 });
 
 test('normCombo puts modifiers in canonical order', () => {

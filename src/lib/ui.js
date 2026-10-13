@@ -6,19 +6,21 @@
 
 (() => {
   // ------------------------------------------------------------- context ----
-  // The window size is not stored in transcripts, so it is derived from the model. 1M is opt-in in Claude Code (a
-  // "[1m]" model, which main.js re-attaches from settings or /model since transcripts drop it), except for the models
-  // that get it by default: Opus 4.6+, Fable, Mythos. Everything else (Sonnet, Haiku, Claude 2/3, unknown) is 200k
-  // until a session has gone past it.
+  // The window size is not stored in transcripts, so it is derived from the model. Current models have 1M by default:
+  // Opus and Sonnet 4.6+, Haiku 5+, Fable, Mythos. Older ones (Haiku 4.5, Opus/Sonnet up to 4.5, Claude 2/3) and
+  // unknown names are 200k unless chosen with "[1m]" (main.js re-attaches it from settings or /model, since
+  // transcripts drop it) or a session has gone past it.
   const CONTEXT_WINDOW = 200000;
   const CONTEXT_WINDOW_LARGE = 1000000;
+  const LARGE_FROM = { opus: 4.6, sonnet: 4.6, haiku: 5 };
   function contextWindow(model, used) {
     const m = String(model || '').toLowerCase();
     if (used > CONTEXT_WINDOW || m.includes('[1m]')) return CONTEXT_WINDOW_LARGE;
     if (/\b(fable|mythos)\b/.test(m)) return CONTEXT_WINDOW_LARGE;
-    // "claude-opus-4-6-20260101", "Opus 4.6", "claude-opus-5-5"; the (?!\d) keeps a date out of the minor version
-    const v = /opus[- ]?(\d+)(?:[-.](\d)(?!\d))?/.exec(m);
-    if (v && Number(v[1]) + Number(v[2] || 0) / 10 >= 4.6) return CONTEXT_WINDOW_LARGE;
+    // "claude-sonnet-4-6-20260101", "Sonnet 4.6", "claude-haiku-5-5"; the (?!\d) keeps a date out of the version, so
+    // old-style ids ("claude-3-opus-20240229") don't match at all
+    const v = /(opus|sonnet|haiku)[- ]?(\d{1,2})(?!\d)(?:[-.](\d)(?!\d))?/.exec(m);
+    if (v && Number(v[2]) + Number(v[3] || 0) / 10 >= LARGE_FROM[v[1]]) return CONTEXT_WINDOW_LARGE;
     return CONTEXT_WINDOW;
   }
 

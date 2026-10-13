@@ -190,8 +190,8 @@ function defaultEffort(settings, model) {
 const modelFamily = (m) => /\b(opus|sonnet|haiku|fable|mythos)\b/i.exec(String(m || ''))?.[1].toLowerCase() || null;
 /**
  * Transcripts record the bare API id ("claude-sonnet-5-5"), never the "[1m]" a model was chosen with. Re-attach it when
- * the model that was configured ("sonnet[1m]", "claude-sonnet-5-5[1m]") is of the same family, so the renderer can tell
- * a 1M session from a 200k one.
+ * the model that was configured ("sonnet[1m]", "claude-sonnet-4-5[1m]") is of the same family, so the renderer can tell
+ * a 1M session of a 200k-by-default model (Sonnet/Opus 4.5) from a 200k one.
  */
 function withLongContext(model, configured) {
   if (!model || /\[1m\]$/i.test(model) || !/\[1m\]$/i.test(String(configured || ''))) return model;

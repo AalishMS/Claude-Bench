@@ -749,7 +749,7 @@ const PROMPT_CAP = 20000;
 async function agentPrompts(cwd, sessionId, name) {
   const out = { definition: null, runs: [] };
   if (typeof name !== 'string' || typeof cwd !== 'string') return out;
-  let defModel = null; // the definition's `model:`; a run gets 1M only from a "[1m]" there or, for inherit, the parent's
+  let defModel = null; // the definition's `model:`; a "[1m]" there (or, for inherit, the parent's) marks a 1M run of a 200k-by-default model
   const dirs = [path.join(cwd, '.claude', 'agents'), path.join(os.homedir(), '.claude', 'agents')]; // project wins
   for (const dir of dirs) {
     let names;

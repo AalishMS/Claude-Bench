@@ -215,7 +215,7 @@ const definedBy = new Map(); // project path -> [{ name, model }] subagents defi
 const SESSIONS_SHOWN = 6; // rows per project (open tabs included) before "Show N more"
 const CHATS_SHOWN = 4; // the same for the Chats group
 // contextWindow(model, used) is in lib/ui.js.
-const WINDOW_NOTE = 'Approximate: the window size is assumed from the model (1M for Opus 4.6+, Fable, or a model chosen with [1m]; 200k otherwise). Type /context in the tab for exact numbers.';
+const WINDOW_NOTE = 'Approximate: the window size is assumed from the model (1M for Opus and Sonnet 4.6+, Haiku 5+, Fable, Mythos or a model chosen with [1m]; 200k for older models). Type /context in the tab for exact numbers.';
 
 // Terminal typography. A light body weight with a clearly heavier bold, and generous line spacing, so
 // headings, prose, code and dim "thinking"/tool lines stay distinguishable. Size is user-adjustable (Ctrl +/-/0).
