@@ -161,14 +161,9 @@ fails with "Your local changes to the following files would be overwritten by me
 steps once by hand; later updates handle it themselves. Projects and settings live outside the repo, so they survive
 updates.
 
-**Coming from Claude Bench** (the app's old name): the update builds `Stanza.exe` / `Stanza.app`, but the old
-updater looks for the old name, so the app won't reopen by itself. Once, after that update:
-
-- Windows: run `npm run shortcut` in the repo folder (it replaces the old "Claude Bench" shortcuts), then open Stanza.
-- macOS: run the install line again (it updates `~/.claude-bench` in place and swaps the `~/Applications` link), or
-  open `dist/mac-*/Stanza.app`.
-
-Projects, tabs and settings are carried over from the old settings folder on first launch.
+**Coming from Claude Bench** (the app's old name): just click Update. The build replaces Claude Bench with Stanza,
+moves your Desktop and Start menu shortcuts (or the `~/Applications` link) over to it and opens it, with your
+projects, tabs and settings. On macOS, a Claude Bench icon kept in the Dock needs replacing by hand.
 
 ## Shortcuts
 

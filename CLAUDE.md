@@ -81,7 +81,7 @@ src/lib/ui.js    pure renderer helpers (contextWindow, shortcuts matching, disti
 test/            node:test files, one per lib module
 src/index.html   shell + CSP (script-src 'self'); src/styles.css (tokens on :root, see DESIGN.md)
 DESIGN.md        design system (shadcn/ui + tweaks): tokens, component recipes, terminal palette rules
-scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged copy, see "Update"),
+scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged copy, see "Update"), rename-handoff.js (see "State"),
                  install.ps1 / install.sh (the README's one-line install, see "Install")
 ```
 
@@ -91,8 +91,11 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   The rename to Stanza (package name `stanza`, appId `com.local.stanza`) also left: `registerToastIdentity` deleting the
   old `com.local.claudebench` key, `create-shortcut.ps1` removing "Claude Bench.lnk", and the install scripts reusing an
   existing `Programs\claude-bench` / `~/.claude-bench` clone and swapping the old `~/Applications` link. An old build's
-  updater (copied before the pull) reopens the old exe/.app path, which the new build doesn't produce: README "Updating"
-  lists the one-time step.
+  updater (copied before the pull) reopens the old exe/.app path, which the new build doesn't produce, but it runs the
+  new `npm run package[:mac]`: that wraps electron-builder in `scripts/rename-handoff.js before|after`, which, only when
+  a Claude Bench build was in `dist/` (a marker file survives a failed build for the retry), deletes it, re-runs
+  `create-shortcut.ps1` if a "Claude Bench.lnk" starts this clone's old exe (Mac: swaps the `~/Applications` link if it
+  points into this `dist/`) and opens the new build unless a Claude Bench still runs anywhere (`oldRunning`). Remove it once no Claude Bench builds are left.
 - **Restore tabs**: `state.tabs` (`{ project, kind, sessionId }` in tab order) + `state.activeTab`, sent by the renderer's
   `saveTabs` (key-diffed; called from `activate`, `closeTab`, `assignSessions`, `toFront`), never on a timer. Claude tabs
   without a transcript yet are not saved. At launch `state:get` returns `restore` = `restorableTabs()` (drops entries whose
