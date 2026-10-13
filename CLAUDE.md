@@ -208,8 +208,10 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     it health-checks every server, so it takes seconds). Output lines `name: target - ✔ Connected | ! Needs authentication | ...` map to
     connected (success) / failed + needs_client_registration (destructive) / needs_auth (warning) / disabled + unknown (muted).
   - Subagents: definitions from `~/.claude/agents/*.md` and `<project>/.claude/agents/*.md` (frontmatter `name`, `model`; `inherit` shows the
-    session model) merged with this session's runs from `session:info` (`running` = working dot, finished = check, else idle). A run's
-    real model (last `"model"` in its transcript tail) beats the definition's. Clicking a row opens `agentDialog` (read-only popup in
+    session model) merged with this session's runs from `session:info` (`running` = working dot, finished = check, else idle). Each
+    running run is its own row (`type · description`, so parallel agents of one type don't fold into one; newest first, and a missing or repeated description gets the start time); finished runs and idle
+    definitions stay one row per type, and the header counts running runs. A run's
+    real model (last `"model"` in its transcript tail) beats the definition's. Clicking a row (a running run's row lists its own prompt first) opens `agentDialog` (read-only popup in
     `#modal`, Esc / backdrop / × close): the definition's prompt (`agents:prompt`, body after the frontmatter) and the prompt each run of
     that type was given (first line of its `agent-*.jsonl`), each with its own Context bar (a subagent has a separate window; last reply's usage in its transcript, same assumed 200k/1M rule). `assignSessions` also re-points a running tab at a newer unclaimed
     transcript (`/clear` and `/resume` start a new session file in the same tab), otherwise the sidebar reads the old session's `subagents/`.
@@ -330,7 +332,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   during a restore used to cause strikes. `endSession` in main.js closes only the console for Claude tabs (and ends
   leftovers after 5 s); it relies on node-pty's private `_agent._getConsoleProcessList` (falls back to `kill()`), so
   recheck it after a node-pty update (tested on v2.1.296).
-- **Context tile**: the window size is not in the transcript, so `contextWindow(model, used)` in renderer.js derives it from the model id or display name: 1M for current models (Opus/Sonnet 4.6+, Haiku 5+, Fable, Mythos, anything unrecognised) or a `[1m]` model, 200k for Claude 3, Haiku 4.x and Opus/Sonnet up to 4.5 (1M once a session exceeds it). The main tab, the footer tile and each subagent run in the agent popup all use it, each with its own model. Update it when a new model family ships with a different window.
+- **Context tile**: the window size is not in the transcript, so `contextWindow(model, used)` in renderer.js derives it from the model id or display name: 1M for Opus 4.6+, Fable, Mythos or a `[1m]` model, 200k for everything else (Sonnet, Haiku, older and unrecognised models; 1M once a session exceeds it). Transcripts drop the `[1m]`, so main.js re-attaches it with `withLongContext` from settings `model`, a `/model` line, or for a subagent run its definition `model:` (or the parent session model when `inherit`). The main tab, the footer tile and each subagent run in the agent popup all use it, each with its own model. Update it when a new model family ships with a different window.
   Plan-limit percentages are not on disk; they come from the undocumented usage endpoint (may change).
 - A hidden window (`document.hidden`) skips all polling, so when driving a test instance over CDP, override `document.hidden`
   and call `pollSessions()` yourself. Start the test instance with PowerShell `Start-Process`; a plain bash `&` dies with the tool call.

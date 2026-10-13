@@ -226,22 +226,22 @@ const definedBy = new Map(); // project path -> [{ name, model }] subagents defi
 
 const SESSIONS_SHOWN = 6; // rows per project (open tabs included) before "Show N more"
 const CHATS_SHOWN = 4; // the same for the Chats group
-// The window size is not stored in transcripts, so it is derived from the model: 1M for current models (Opus/Sonnet
-// 4.6+, Haiku 5+, Fable, Mythos, unknown newer ones) or a "[1m]" model, 200k for older ones (Claude 3, Haiku 4.x,
-// Opus/Sonnet up to 4.5) until a session has gone past it.
+// The window size is not stored in transcripts, so it is derived from the model. 1M is opt-in in Claude Code (a
+// "[1m]" model, which main.js re-attaches from settings or /model since transcripts drop it), except for the models
+// that get it by default: Opus 4.6+, Fable, Mythos. Everything else (Sonnet, Haiku, Claude 2/3, unknown) is 200k
+// until a session has gone past it.
 const CONTEXT_WINDOW = 200000;
 const CONTEXT_WINDOW_LARGE = 1000000;
 function contextWindow(model, used) {
   const m = String(model || '').toLowerCase();
   if (used > CONTEXT_WINDOW || m.includes('[1m]')) return CONTEXT_WINDOW_LARGE;
-  if (/claude-(instant|2|3)\b/.test(m)) return CONTEXT_WINDOW;
-  // "claude-sonnet-4-5-20250929", "Sonnet 4.5", "claude-haiku-5-5"; the (?!\d) keeps a date out of the minor version
-  const v = /(haiku|sonnet|opus)[- ]?(\d+)(?:[-.](\d)(?!\d))?/.exec(m);
-  if (!v) return CONTEXT_WINDOW_LARGE;
-  const ver = Number(v[2]) + Number(v[3] || 0) / 10;
-  return (v[1] === 'haiku' ? ver < 5 : ver < 4.6) ? CONTEXT_WINDOW : CONTEXT_WINDOW_LARGE;
+  if (/\b(fable|mythos)\b/.test(m)) return CONTEXT_WINDOW_LARGE;
+  // "claude-opus-4-6-20260101", "Opus 4.6", "claude-opus-5-5"; the (?!\d) keeps a date out of the minor version
+  const v = /opus[- ]?(\d+)(?:[-.](\d)(?!\d))?/.exec(m);
+  if (v && Number(v[1]) + Number(v[2] || 0) / 10 >= 4.6) return CONTEXT_WINDOW_LARGE;
+  return CONTEXT_WINDOW;
 }
-const WINDOW_NOTE = 'Approximate: the window size is assumed from the model (1M for current models, 200k for Haiku 4.x and Opus/Sonnet up to 4.5). Type /context in the tab for exact numbers.';
+const WINDOW_NOTE = 'Approximate: the window size is assumed from the model (1M for Opus 4.6+, Fable, or a model chosen with [1m]; 200k otherwise). Type /context in the tab for exact numbers.';
 
 // Terminal typography. A light body weight with a clearly heavier bold, and generous line spacing, so
 // headings, prose, code and dim "thinking"/tool lines stay distinguishable. Size is user-adjustable (Ctrl +/-/0).
@@ -399,6 +399,8 @@ async function agentDialog(a, tab) {
   const parts = [];
   if (res?.definition) parts.push(sec('Agent prompt', res.definition));
   const runs = res?.runs || [];
+  const mine = a.runId ? runs.findIndex((r) => r.id === a.runId) : -1; // a running run's row: its own prompt first
+  if (mine > 0) runs.unshift(...runs.splice(mine, 1));
   const ctxLine = (r) => {
     if (!r.ctx) return null;
     const win = contextWindow(r.model || a.model, r.ctx);
@@ -2403,18 +2405,36 @@ function copyServer(s) {
   setTimeout(() => { if (copiedPort === s.port) { copiedPort = null; renderRside(); } }, 1200);
 }
 
-/** Subagents: everything defined for the project, plus built-in/plugin types that ran in this session. */
+/**
+ * Subagents: everything defined for the project, plus built-in/plugin types that ran in this session. Each running run
+ * gets its own row (three parallel general-purpose agents = three rows, labelled by their description); finished runs
+ * and definitions stay one row per type.
+ */
 function agentRows(proj, tab) {
   const info = tab?.kind === 'claude' ? infoBy.get(tab.id) : null;
-  const rows = new Map((definedBy.get(proj?.path) || []).map((d) => [d.name, { name: d.name, model: d.model, running: 0, done: 0 }]));
+  const defs = new Map((definedBy.get(proj?.path) || []).map((d) => [d.name, d.model]));
+  const rows = new Map([...defs].map(([name, model]) => [name, { name, model, running: 0, done: 0 }]));
+  const live = [];
   for (const a of info?.agents || []) { // newest first
+    if (a.running) {
+      live.push({ name: a.type, runId: a.id, desc: a.description || '', start: a.start, model: a.model || defs.get(a.type) || null, running: 1, done: 0 });
+      continue;
+    }
     if (!rows.has(a.type)) rows.set(a.type, { name: a.type, model: null, running: 0, done: 0 });
     const r = rows.get(a.type);
-    if (a.running) r.running++; else r.done++;
+    r.done++;
     if (a.model && !r.live) { r.model = a.model; r.live = true; } // the model it actually ran with beats the definition's
   }
+  // A type with runs going and none finished is shown by those rows alone (no idle row beside them).
+  for (const l of live) if (!rows.get(l.name)?.done) rows.delete(l.name);
+  // Runs of one type without a description, or with the same one, are told apart by their start time.
+  const dup = live.filter((l) => !l.desc || live.some((o) => o !== l && o.name === l.name && o.desc === l.desc));
+  for (const l of dup) {
+    const at = `started ${new Date(l.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    l.desc = l.desc ? `${l.desc} (${at})` : at;
+  }
   const rank = (r) => (r.running ? 0 : r.done ? 1 : 2);
-  return [...rows.values()]
+  return [...live, ...rows.values()] // sort is stable: runs of one type stay newest first
     .map((r) => ({ ...r, model: !r.model || r.model === 'inherit' ? info?.model || null : r.model }))
     .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
@@ -2467,10 +2487,10 @@ function renderRside(force = false) {
 
   const agentBody = agents.length ? agents.map((a) => {
     const st = a.running ? 'working' : a.done ? 'done' : 'idle';
-    const tip = `${a.name}: ${st}${a.running > 1 ? ` (${a.running} running)` : ''}${a.done ? `, ${a.done} finished this session` : ''}`;
+    const tip = `${a.name}: ${st}${a.desc ? `\n${a.desc}` : ''}${a.done ? `, ${a.done} finished this session` : ''}`;
     return h('div', { class: 'rrow copy', title: `${tip}\nClick to see its prompt`, onclick: () => agentDialog(a, activeTab()) },
       st === 'working' ? h('i', { class: 'dot s working' }) : st === 'done' ? h('span', { class: 't-ok' }, ico('check')) : statusDot('mute'),
-      h('span', { class: 'name' }, a.name),
+      h('span', { class: 'name' }, a.name, a.desc ? h('span', { class: 'ag-desc' }, ` · ${a.desc}`) : null),
       h('span', { class: 'meta mono' }, a.model ? prettyModel(a.model) : '—'));
   }) : h('div', { class: 'rnote' }, 'No subagents defined.');
 

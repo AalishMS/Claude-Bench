@@ -743,12 +743,24 @@ async function readJson(file) {
 /** Effort for a model from settings: modelSettings by id ("Opus 5.5" -> claude-opus-5-5), else by family, else global. */
 function defaultEffort(settings, model) {
   const per = settings?.modelSettings || {};
-  const m = String(model || '').toLowerCase();
+  const m = String(model || '').toLowerCase().replace(/\[1m\]$/, '');
   const id = m.startsWith('claude-') ? m : `claude-${m.replace(/[\s.]+/g, '-')}`;
   if (per[id]?.effortLevel) return per[id].effortLevel;
   const fam = /opus|sonnet|haiku|fable/.exec(m)?.[0];
   const keys = fam ? Object.keys(per).filter((k) => k.includes(fam) && per[k]?.effortLevel) : [];
   return keys.length === 1 ? per[keys[0]].effortLevel : settings?.effortLevel || null;
+}
+
+const modelFamily = (m) => /\b(opus|sonnet|haiku|fable|mythos)\b/i.exec(String(m || ''))?.[1].toLowerCase() || null;
+/**
+ * Transcripts record the bare API id ("claude-sonnet-5-5"), never the "[1m]" a model was chosen with. Re-attach it when
+ * the model that was configured ("sonnet[1m]", "claude-sonnet-5-5[1m]") is of the same family, so the renderer can tell
+ * a 1M session from a 200k one.
+ */
+function withLongContext(model, configured) {
+  if (!model || /\[1m\]$/i.test(model) || !/\[1m\]$/i.test(String(configured || ''))) return model;
+  const fam = modelFamily(model);
+  return fam && fam === modelFamily(configured) ? `${model}[1m]` : model;
 }
 
 /** Latest model (from replies or /model) and effort (from /effort or /model) in a transcript tail. */
@@ -758,12 +770,13 @@ function parseModelEffort(text) {
     try {
       if (line.includes('"type":"assistant"') && line.includes('"model"')) {
         const m = JSON.parse(line).message?.model;
-        if (m && m !== '<synthetic>') out.model = m;
+        if (m && m !== '<synthetic>') out.model = withLongContext(m, out.model); // keep a "[1m]" set by /model
       } else if (line.includes('local-command-stdout')) {
         const c = JSON.parse(line).message?.content;
         if (typeof c !== 'string') continue;
         const model = /Set model to `([^`]+)`/.exec(c)?.[1] || /Set model to ([^\s(<]+(?: [\d.]+)?)/.exec(c)?.[1];
-        if (model) out.model = model;
+        // "Set model to Opus 4.6 (1M context)" names the window only in the trailing note
+        if (model) out.model = /\[1m\]$/i.test(model) || !/\b1M context\b/i.test(c) ? model : `${model}[1m]`;
         const effort = /Set effort level to (\w+)/.exec(c)?.[1] || /with `?(\w+)`? effort/.exec(c)?.[1];
         if (effort) out.effort = effort;
       }
@@ -829,11 +842,12 @@ async function sessionInfo(cwd, sessionId) {
       agents = await Promise.all(names.map((n) => readAgent(dir, n).catch(() => null)));
     } catch { /* no subagents */ }
   }
-  model = model || settings?.model || null;
+  model = withLongContext(model, settings?.model) || settings?.model || null;
   // A bare alias from settings ("sonnet") has no version: use the one model of that family known in modelSettings.
-  if (model && /^[a-z]+$/i.test(model)) {
-    const ids = Object.keys(settings?.modelSettings || {}).filter((k) => k.startsWith(`claude-${model.toLowerCase()}-`));
-    if (ids.length === 1) model = ids[0];
+  const alias = model && /^([a-z]+)(\[1m\])?$/i.exec(model);
+  if (alias) {
+    const ids = Object.keys(settings?.modelSettings || {}).filter((k) => k.startsWith(`claude-${alias[1].toLowerCase()}-`));
+    if (ids.length === 1) model = ids[0] + (alias[2] || '');
   }
   effort = effort || defaultEffort(settings, model);
   const now = Date.now();
@@ -916,6 +930,7 @@ const PROMPT_CAP = 20000;
 async function agentPrompts(cwd, sessionId, name) {
   const out = { definition: null, runs: [] };
   if (typeof name !== 'string' || typeof cwd !== 'string') return out;
+  let defModel = null; // the definition's `model:`; a run gets 1M only from a "[1m]" there or, for inherit, the parent's
   const dirs = [path.join(cwd, '.claude', 'agents'), path.join(os.homedir(), '.claude', 'agents')]; // project wins
   for (const dir of dirs) {
     let names = [];
@@ -928,6 +943,7 @@ async function agentPrompts(cwd, sessionId, name) {
         const own = /^name:\s*(.+)$/m.exec(fm)?.[1].trim().replace(/^["']|["']$/g, '') || n.slice(0, -3);
         if (own !== name) continue;
         out.definition = (m ? m[2] : text).trim().slice(0, PROMPT_CAP);
+        defModel = /^model:\s*(.+)$/m.exec(fm)?.[1].trim().replace(/^["']|["']$/g, '') || null;
         break;
       } catch { /* unreadable file */ }
     }
@@ -935,6 +951,12 @@ async function agentPrompts(cwd, sessionId, name) {
   }
   if (typeof sessionId === 'string' && UUID_RE.test(sessionId)) {
     const dir = path.join(projectDir(cwd), sessionId, 'subagents');
+    let configured = defModel;
+    if (!configured || configured === 'inherit') {
+      const parent = await readModelEffort(path.join(projectDir(cwd), `${sessionId}.jsonl`)).catch(() => ({}));
+      const set = (await readJson(SETTINGS_FILE))?.model;
+      configured = withLongContext(parent.model, set) || set || null;
+    }
     try {
       const names = (await fs.promises.readdir(dir)).filter((n) => /^agent-.+\.jsonl$/.test(n));
       for (const n of names) {
@@ -947,7 +969,7 @@ async function agentPrompts(cwd, sessionId, name) {
           const prompt = typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => x.text || '').join('\n') : '';
           const st = await fs.promises.stat(file);
           const t = parseTail(await readTail(file, st.size, TAIL_BYTES)); // each subagent has its own context window
-          out.runs.push({ description: oneLine(meta.description), prompt: prompt.trim().slice(0, PROMPT_CAP), start: Math.round(st.birthtimeMs), ctx: usageTokens(t.usage), model: t.model });
+          out.runs.push({ id: n.slice(6, -6), description: oneLine(meta.description), prompt: prompt.trim().slice(0, PROMPT_CAP), start: Math.round(st.birthtimeMs), ctx: usageTokens(t.usage), model: withLongContext(t.model, configured) });
         } catch { /* partial first line or unreadable */ }
       }
     } catch { /* no subagents */ }
