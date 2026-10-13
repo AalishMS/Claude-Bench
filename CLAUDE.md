@@ -25,7 +25,7 @@ npm run package:mac  # macOS only: dist/mac-*/Claude Bench.app (unsigned)
 npm run shortcut     # Desktop + Start menu shortcuts -> packaged exe
 ```
 
-The logo master is `assets/icon-source.png` (1024 px, transparent outside the rounded tile); `assets/icon.png` (512 px), the multi-size `assets/icon.ico` and the macOS `assets/icon-mac.png` (tile at 824 px on a 1024 transparent canvas, Apple's grid) are derived from it. There is no `npm run icon` generator.
+The logo master is `assets/icon-source.png` (1024 px, transparent outside the rounded tile); `assets/icon.png` (512 px), the multi-size `assets/icon.ico` (mark scaled 1.2x inside the tile so it isn't small on the taskbar) and the macOS `assets/icon-mac.png` (tile at 824 px on a 1024 transparent canvas, Apple's grid) are derived from it. There is no `npm run icon` generator.
 
 `npm run lint` (ESLint, bug rules only, no style) and `npm test` (`node:test`, no framework) must pass. Tests cover the
 pure code in `src/lib/`; anything touching the UI, ptys or processes still needs a run of the real app (see "Testing").
