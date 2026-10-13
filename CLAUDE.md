@@ -19,6 +19,7 @@ notes below and the README's macOS section in the same change, and tell the user
 
 ```
 npm start            # run from source (fastest loop)
+npm run check        # lint + tests; run before every commit
 npm run package      # build dist\win-unpacked\Claude Bench.exe (fails if that exe is running)
 npm run package:mac  # macOS only: dist/mac-*/Claude Bench.app (unsigned)
 npm run shortcut     # Desktop + Start menu shortcuts -> packaged exe
@@ -26,7 +27,8 @@ npm run shortcut     # Desktop + Start menu shortcuts -> packaged exe
 
 The logo master is `assets/icon-source.png` (1024 px, transparent outside the rounded tile); `assets/icon.png` (512 px), the multi-size `assets/icon.ico` and the macOS `assets/icon-mac.png` (tile at 824 px on a 1024 transparent canvas, Apple's grid) are derived from it. There is no `npm run icon` generator.
 
-There is no test suite and no linter. Verify changes by running the app (see "Testing").
+`npm run lint` (ESLint, bug rules only, no style) and `npm test` (`node:test`, no framework) must pass. Tests cover the
+pure code in `src/lib/`; anything touching the UI, ptys or processes still needs a run of the real app (see "Testing").
 
 ## Principles: minimal and fast
 
@@ -70,6 +72,11 @@ tokens and component recipes, never installed (no React/Tailwind/Radix).
 src/main.js      window, ptys, git status, port scan, persistence, IPC handlers
 src/preload.js   window.api bridge (contextIsolation on, sandbox on, no nodeIntegration)
 src/renderer.js  all UI: tabs (as sidebar rows), sidebar, servers panel, status bar, dialogs, polling
+src/lib/parse.js pure parsers for main (git, netstat, lsof/ps, transcripts, mcp list, split remap); no Electron, no fs
+src/lib/images.js  transcript image index (scanImages) for main; fs only
+src/lib/ui.js    pure renderer helpers (contextWindow, shortcuts matching, distinctParent, dialogOpen, file links);
+                 a <script> before renderer.js (shared globals, listed in renderer.js's `/* global ... -- lib/ui.js */`)
+test/            node:test files, one per lib module
 src/index.html   shell + CSP (script-src 'self'); src/styles.css (tokens on :root, see DESIGN.md)
 DESIGN.md        design system (shadcn/ui + tweaks): tokens, component recipes, terminal palette rules
 scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged copy, see "Update")
@@ -337,12 +344,17 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
 - A hidden window (`document.hidden`) skips all polling, so when driving a test instance over CDP, override `document.hidden`
   and call `pollSessions()` yourself. Start the test instance with PowerShell `Start-Process`; a plain bash `&` dies with the tool call.
 - Windows paths and quoting: PowerShell mangles inline JS with quotes. Put test scripts in files.
-- macOS can't be tested here: keep Mac branches plain and fail-soft, and run `node --check` plus a parser test on sample
-  `lsof`/`ps` output. On Mac, node-pty's `spawn-helper` may lose its execute bit after install (`posix_spawnp failed`).
+- macOS can't be tested here: keep Mac branches plain and fail-soft, and add sample `lsof`/`ps` output to
+  `test/parse.test.js` for any parser change. On Mac, node-pty's `spawn-helper` may lose its execute bit after install (`posix_spawnp failed`).
 
-## Testing (no framework; drive the real app)
+## Testing
 
-Launch a throwaway instance so real settings stay untouched, with a debug port:
+**Unit tests** (`npm test`): new parsing or decision logic goes into `src/lib/` as a pure function (text or plain data
+in, plain data out) with a test next to the others, using sample output pasted from the real tool. That is also the
+only way Mac branches get exercised here: feed `lsof`/`ps` samples to the parsers. A renderer helper added to `lib/ui.js`
+must also be added to the `/* global */` line in renderer.js (a test checks the list against the exports).
+
+**The real app** (no framework): launch a throwaway instance so real settings stay untouched, with a debug port:
 
 ```
 node_modules\electron\dist\electron.exe --remote-debugging-port=9333 --user-data-dir=<scratch>\profile .

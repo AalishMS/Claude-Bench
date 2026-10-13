@@ -6,6 +6,12 @@ const fs = require('fs');
 const os = require('os');
 const { execFile, spawn } = require('child_process');
 const pty = require('@lydell/node-pty');
+const {
+  parseGitStatus, parentPid, parseNetstat, parseLsof, parsePs, macDevName, withoutFlagValues,
+  oneLine, usageTokens, parseTail, firstPrompt, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel,
+  parseMcpList, remapSplits,
+} = require('./lib/parse');
+const { scanImages } = require('./lib/images');
 
 // Windows is the main platform. macOS gets small `IS_MAC` branches next to the Windows code (best effort, untested here).
 const IS_MAC = process.platform === 'darwin';
@@ -84,7 +90,7 @@ const legacyStateFile = () => path.join(app.getPath('appData'), 'claude-terminal
 function loadState() {
   try {
     const file = fs.existsSync(stateFile()) ? stateFile() : legacyStateFile();
-    const saved = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, ''));
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
     state = { ...defaults, ...saved, ui: { ...defaults.ui, ...saved.ui } };
     // The right sidebar used to default to closed, so a saved `false` is usually just that old default: reopen it once.
     if (!saved.ui?.rsideMigrated) { state.ui.servers = true; state.ui.rsideMigrated = true; }
@@ -132,12 +138,7 @@ function restorableTabs() {
       if (i === state.activeTab) active = list.length - 1;
     } catch { /* skip this one */ }
   });
-  // Split groups name their members by saved index: keep the members still there, and groups that still have two.
-  const splits = (Array.isArray(state.splits) ? state.splits : []).map((g) => ({
-    cx: g?.cx, ry: g?.ry, v: g?.v === true,
-    tabs: (Array.isArray(g?.tabs) ? g.tabs : []).filter((i) => at.has(i)).map((i) => at.get(i)),
-  })).filter((g) => g.tabs.length >= 2);
-  return { tabs: list, active, splits };
+  return { tabs: list, active, splits: remapSplits(state.splits, at) };
 }
 
 function saveTabs(payload) {
@@ -360,37 +361,7 @@ async function gitStatus(cwd) {
   const out = await run('git', ['-C', cwd, 'status', '--porcelain=v2', '--branch'], {
     env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
   });
-  if (out == null) return null;
-
-  const info = {
-    branch: null, detached: false, upstream: null,
-    ahead: 0, behind: 0, staged: 0, modified: 0, untracked: 0, conflicts: 0,
-  };
-  let oid = null;
-  for (const line of out.split('\n')) {
-    if (line.startsWith('# branch.head ')) {
-      info.branch = line.slice(14).trim();
-      if (info.branch === '(detached)') info.detached = true;
-    } else if (line.startsWith('# branch.oid ')) {
-      oid = line.slice(13).trim();
-    } else if (line.startsWith('# branch.upstream ')) {
-      info.upstream = line.slice(18).trim();
-    } else if (line.startsWith('# branch.ab ')) {
-      const m = /\+(\d+) -(\d+)/.exec(line);
-      if (m) { info.ahead = +m[1]; info.behind = +m[2]; }
-    } else if (line.startsWith('1 ') || line.startsWith('2 ')) {
-      const xy = line.split(' ')[1];
-      if (xy[0] !== '.') info.staged++;
-      if (xy[1] !== '.') info.modified++;
-    } else if (line.startsWith('u ')) {
-      info.conflicts++;
-    } else if (line.startsWith('? ')) {
-      info.untracked++;
-    }
-  }
-  if (info.detached && oid && oid !== '(initial)') info.branch = oid.slice(0, 7);
-  info.dirty = info.staged + info.modified + info.untracked + info.conflicts;
-  return info;
+  return out == null ? null : parseGitStatus(out);
 }
 
 // ---------------------------------------------------------------- ports ----
@@ -410,31 +381,7 @@ $p = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, N
 @{ c = @($c); p = @($p) } | ConvertTo-Json -Compress -Depth 4
 `;
 
-/**
- * A process's real parent pid, or 0. Windows never clears ParentProcessId, so once the parent exits its pid can be
- * reused by an unrelated process; a parent that was created after its child cannot be the real one.
- */
-function parentPid(procs, p) {
-  const parent = procs.get(p.ParentProcessId);
-  return parent && parent.T > p.T ? 0 : p.ParentProcessId;
-}
-
 let portScan = null;
-
-/**
- * `netstat -ano` TCP rows whose foreign address is 0.0.0.0:0 / [::]:0 (listeners; the state column is localized)
- * -> [{ LocalAddress, LocalPort, OwningProcess }]. Relies on `-a` without `-q`: `-q` would add BOUND sockets, which
- * have the same zero foreign address but serve nothing.
- */
-function parseNetstat(out) {
-  const conns = [];
-  for (const line of out.split('\n')) {
-    const m = /^\s*TCP\s+(\S+):(\d+)\s+(\S+)\s.*?(\d+)\s*$/.exec(line);
-    if (!m || !/^(0\.0\.0\.0|\[::\]):0$/.test(m[3])) continue;
-    conns.push({ LocalAddress: m[1].replace(/^\[|\]$/g, '').replace(/%\d+$/, ''), LocalPort: +m[2], OwningProcess: +m[4] });
-  }
-  return conns;
-}
 
 // The process table from the last PowerShell scan, reused while no new listener appears. A cold powershell.exe + WMI
 // costs about a second of CPU; netstat costs ~30 ms. `keys` holds the "pid:port" listeners seen without a gap since that
@@ -470,50 +417,6 @@ async function winScan() {
   return { ok: true, data: { c, p: procScan.p } };
 }
 
-/** ps etime "[[dd-]hh:]mm:ss" -> seconds */
-function etimeSeconds(s) {
-  const [days, rest] = s.includes('-') ? s.split('-') : ['0', s];
-  return rest.split(':').reduce((acc, n) => acc * 60 + (+n || 0), 0) + (+days || 0) * 86400;
-}
-
-/** `lsof -F pcn` records -> [{ LocalAddress, LocalPort, OwningProcess }], plus pid -> command name. */
-function parseLsof(out) {
-  const conns = [];
-  const names = new Map();
-  let pid = 0;
-  for (const line of out.split('\n')) {
-    const v = line.slice(1).trim();
-    if (line[0] === 'p') pid = +v;
-    else if (line[0] === 'c') names.set(pid, v);
-    else if (line[0] === 'n') {
-      const m = /^(.*):(\d+)$/.exec(v); // 127.0.0.1:3000, *:3000, [::1]:3000
-      if (!m) continue;
-      const addr = m[1].replace(/^\[|\]$/g, '');
-      conns.push({ LocalAddress: addr === '*' ? '0.0.0.0' : addr, LocalPort: +m[2], OwningProcess: pid });
-    }
-  }
-  return { conns, names };
-}
-
-/** `ps -o pid=,ppid=,etime=,args=` lines -> processes in the Windows scan's shape. */
-function parsePs(out, names, now) {
-  const procs = [];
-  for (const line of out.split('\n')) {
-    const m = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(line);
-    if (!m) continue;
-    const pid = +m[1];
-    const cmd = m[4].trim();
-    procs.push({
-      ProcessId: pid,
-      ParentProcessId: +m[2],
-      Name: names.get(pid) || path.basename(cmd.split(' ')[0]),
-      CommandLine: cmd,
-      T: now - etimeSeconds(m[3]) * 1000, // creation time, so parentPid's pid-reuse guard works here too
-    });
-  }
-  return procs;
-}
-
 function macScan() {
   const exec = (file, args) => new Promise((resolve) => {
     execFile(file, args, { timeout: 20000, maxBuffer: 32 * 1024 * 1024 }, (err, stdout) => resolve({ err, stdout: stdout || '' }));
@@ -528,9 +431,6 @@ function macScan() {
     return { ok: true, data: { c: conns, p: parsePs(p.stdout, names, Date.now()) } };
   });
 }
-
-/** "python3.12" -> "python.exe", so DEV_PROCESSES serves both platforms. */
-const macDevName = (name) => `${name.toLowerCase().replace(/[\d.]+$/, '')}.exe`;
 
 async function scanPorts() {
   const scan = await (IS_MAC ? macScan() : winScan());
@@ -558,9 +458,8 @@ async function scanPorts() {
       const p = procs.get(cur);
       cur = p && parentPid(procs, p);
     }
-    // 2. Its executable or a script argument points inside a known project folder. Paths in flags don't count:
-    //    editor helpers (e.g. Antigravity's `agy.exe --add-dir=<project>`) mention projects without serving them.
-    const lower = (cmd || '').toLowerCase().replace(/"--?[\w-]+=[^"]*"|(^|\s)--?[\w-]+=("[^"]*"|\S*)/g, ' ');
+    // 2. Its executable or a script argument points inside a known project folder (not just a --flag= value).
+    const lower = withoutFlagValues(cmd);
     for (const pr of projectsByLength) {
       if (lower.includes(pr.path.toLowerCase())) return { type: 'project', projectPath: pr.path };
     }
@@ -613,7 +512,6 @@ const WIDE_TAIL_BYTES = 1024 * 1024;
 const HEAD_BYTES = 16 * 1024;
 
 const projectDir = (cwd) => path.join(PROJECTS_DIR, path.resolve(cwd).replace(/[^a-zA-Z0-9]/g, '-'));
-const oneLine = (s) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, 160);
 
 async function readRange(file, start, length) {
   const fh = await fs.promises.open(file, 'r');
@@ -632,48 +530,7 @@ async function readTail(file, size, bytes) {
   return start > 0 ? text.slice(text.indexOf('\n') + 1) : text; // drop the partial first line
 }
 
-function parseTail(text) {
-  const out = { title: null, prompt: null, usage: null, model: null, last: 0 };
-  for (const line of text.split('\n')) {
-    try {
-      const msg = line.includes('"type":"assistant"') ? 'assistant' : line.includes('"type":"user"') ? 'user' : null;
-      if (msg) {
-        // Last real conversation entry. The file's mtime also moves on a mere resume and on exit (Claude touches the
-        // transcript and appends a cost-state line), so the sidebar sorts by this instead.
-        const j = JSON.parse(line);
-        if (j.type !== msg) continue;
-        if (!j.isMeta && j.timestamp) out.last = Date.parse(j.timestamp) || out.last;
-        const m = j.message;
-        if (msg === 'assistant' && m?.usage && m.model !== '<synthetic>') { out.usage = m.usage; out.model = m.model; }
-      } else if (line.includes('"type":"ai-title"')) {
-        const j = JSON.parse(line);
-        if (j.type === 'ai-title' && j.aiTitle) out.title = j.aiTitle;
-      } else if (line.includes('"type":"last-prompt"')) {
-        const j = JSON.parse(line);
-        if (j.type === 'last-prompt' && j.lastPrompt) out.prompt = j.lastPrompt;
-      }
-    } catch { /* partial or foreign line */ }
-  }
-  return out;
-}
-
-function firstPrompt(text) {
-  for (const line of text.split('\n')) {
-    if (!line.includes('"type":"user"')) continue;
-    try {
-      const j = JSON.parse(line);
-      if (j.type !== 'user' || j.isMeta) continue;
-      const c = j.message?.content;
-      const s = typeof c === 'string' ? c : Array.isArray(c) ? c.find((x) => x.type === 'text')?.text : null;
-      if (s && !s.startsWith('<')) return s;
-    } catch { /* truncated line */ }
-  }
-  return null;
-}
-
 const sessionCache = new Map(); // file -> { sig, info }
-
-const usageTokens = (u) => u ? (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.output_tokens || 0) : 0;
 
 async function readSession(file, st) {
   const sig = `${st.mtimeMs}:${st.size}`;
@@ -734,55 +591,10 @@ const AGENT_STALE_MS = 10 * 60 * 1000; // an unfinished agent silent this long w
 
 async function readJson(file) {
   try {
-    return JSON.parse((await fs.promises.readFile(file, 'utf8')).replace(/^﻿/, ''));
+    return JSON.parse((await fs.promises.readFile(file, 'utf8')).replace(/^\uFEFF/, ''));
   } catch {
     return null;
   }
-}
-
-/** Effort for a model from settings: modelSettings by id ("Opus 5.5" -> claude-opus-5-5), else by family, else global. */
-function defaultEffort(settings, model) {
-  const per = settings?.modelSettings || {};
-  const m = String(model || '').toLowerCase().replace(/\[1m\]$/, '');
-  const id = m.startsWith('claude-') ? m : `claude-${m.replace(/[\s.]+/g, '-')}`;
-  if (per[id]?.effortLevel) return per[id].effortLevel;
-  const fam = /opus|sonnet|haiku|fable/.exec(m)?.[0];
-  const keys = fam ? Object.keys(per).filter((k) => k.includes(fam) && per[k]?.effortLevel) : [];
-  return keys.length === 1 ? per[keys[0]].effortLevel : settings?.effortLevel || null;
-}
-
-const modelFamily = (m) => /\b(opus|sonnet|haiku|fable|mythos)\b/i.exec(String(m || ''))?.[1].toLowerCase() || null;
-/**
- * Transcripts record the bare API id ("claude-sonnet-5-5"), never the "[1m]" a model was chosen with. Re-attach it when
- * the model that was configured ("sonnet[1m]", "claude-sonnet-5-5[1m]") is of the same family, so the renderer can tell
- * a 1M session from a 200k one.
- */
-function withLongContext(model, configured) {
-  if (!model || /\[1m\]$/i.test(model) || !/\[1m\]$/i.test(String(configured || ''))) return model;
-  const fam = modelFamily(model);
-  return fam && fam === modelFamily(configured) ? `${model}[1m]` : model;
-}
-
-/** Latest model (from replies or /model) and effort (from /effort or /model) in a transcript tail. */
-function parseModelEffort(text) {
-  const out = { model: null, effort: null };
-  for (const line of text.split('\n')) {
-    try {
-      if (line.includes('"type":"assistant"') && line.includes('"model"')) {
-        const m = JSON.parse(line).message?.model;
-        if (m && m !== '<synthetic>') out.model = withLongContext(m, out.model); // keep a "[1m]" set by /model
-      } else if (line.includes('local-command-stdout')) {
-        const c = JSON.parse(line).message?.content;
-        if (typeof c !== 'string') continue;
-        const model = /Set model to `([^`]+)`/.exec(c)?.[1] || /Set model to ([^\s(<]+(?: [\d.]+)?)/.exec(c)?.[1];
-        // "Set model to Opus 4.6 (1M context)" names the window only in the trailing note
-        if (model) out.model = /\[1m\]$/i.test(model) || !/\b1M context\b/i.test(c) ? model : `${model}[1m]`;
-        const effort = /Set effort level to (\w+)/.exec(c)?.[1] || /with `?(\w+)`? effort/.exec(c)?.[1];
-        if (effort) out.effort = effort;
-      }
-    } catch { /* partial or foreign line */ }
-  }
-  return out;
 }
 
 const modelCache = new Map(); // file -> { sig, value }
@@ -805,26 +617,12 @@ async function readAgent(dir, name) {
   if (hit?.sig === sig) return hit.agent;
   const meta = (await readJson(file.replace(/\.jsonl$/, '.meta.json'))) || {};
   const tail = await readTail(file, st.size, TAIL_BYTES);
-  const lines = tail.split('\n').filter(Boolean);
-  // Finished = it handed its report back, its last line is a reply with text and no further tool call, or it was
-  // stopped (TaskStop / Esc leave a "[Request interrupted by user]" user line and nothing after it).
-  let done = tail.includes('"name":"SubagentHandback"');
-  if (!done) try {
-    const j = JSON.parse(lines[lines.length - 1]);
-    const c = j.type === 'assistant' ? j.message?.content : null;
-    done = Array.isArray(c) && c.some((x) => x.type === 'text') && !c.some((x) => x.type === 'tool_use');
-    if (!done && j.type === 'user') {
-      const u = j.message?.content;
-      done = (typeof u === 'string' ? u : Array.isArray(u) ? u.map((x) => x.text || '').join('') : '').startsWith('[Request interrupted by user');
-    }
-  } catch { /* last line longer than the tail, or still being written: working */ }
-  const models = tail.match(/"model":"([^"]+)"/g);
   const agent = {
     id: name.slice(6, -6),
     type: oneLine(meta.agentType) || 'agent',
-    model: models ? models[models.length - 1].slice(9, -1) : null,
+    model: lastModel(tail),
     description: oneLine(meta.description),
-    done,
+    done: agentDone(tail),
     start: Math.round(st.birthtimeMs),
     mtime: Math.round(st.mtimeMs),
   };
@@ -868,25 +666,6 @@ async function sessionInfo(cwd, sessionId) {
 const MCP_TTL_MS = 5 * 60 * 1000;
 const mcpCache = new Map(); // cwd -> { at, value } | { pending }
 
-/** "name: target - ✔ Connected" -> { name, status, label }. Names can contain ":" (plugin:design:slack), target is after ": ". */
-function parseMcpList(out) {
-  const servers = [];
-  for (const line of out.split(/\r?\n/)) {
-    const cut = line.lastIndexOf(' - ');
-    const sep = line.indexOf(': ');
-    if (cut < 0 || sep < 0 || sep > cut) continue;
-    const label = line.slice(cut + 3).replace(/^[^\w]+/, '').trim().toLowerCase();
-    const status = /needs? client registration/.test(label) ? 'needs_client_registration'
-      : /needs? auth/.test(label) ? 'needs_auth'
-      : /fail|error/.test(label) ? 'failed'
-      : /disabled/.test(label) ? 'disabled'
-      : /^connected/.test(label) ? 'connected'
-      : 'unknown';
-    servers.push({ name: line.slice(0, sep).trim(), status, label });
-  }
-  return servers;
-}
-
 function mcpList(cwd) {
   if (typeof cwd !== 'string' || !fs.existsSync(cwd)) return Promise.resolve({ ok: false, servers: [] });
   const hit = mcpCache.get(cwd);
@@ -913,11 +692,11 @@ async function definedAgents(cwd) {
   if (typeof cwd === 'string') dirs.push(path.join(cwd, '.claude', 'agents'));
   const out = new Map();
   for (const dir of dirs) {
-    let names = [];
+    let names;
     try { names = (await fs.promises.readdir(dir)).filter((n) => n.endsWith('.md')); } catch { continue; }
     for (const n of names) {
       try {
-        const head = (await fs.promises.readFile(path.join(dir, n), 'utf8')).replace(/^﻿/, '').split(/\r?\n---/)[0];
+        const head = (await fs.promises.readFile(path.join(dir, n), 'utf8')).replace(/^\uFEFF/, '').split(/\r?\n---/)[0];
         const field = (k) => new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(head)?.[1].trim().replace(/^["']|["']$/g, '');
         const name = oneLine(field('name') || n.slice(0, -3));
         out.set(name, { name, model: oneLine(field('model')) || 'inherit' }); // project agents override user ones
@@ -938,11 +717,11 @@ async function agentPrompts(cwd, sessionId, name) {
   let defModel = null; // the definition's `model:`; a run gets 1M only from a "[1m]" there or, for inherit, the parent's
   const dirs = [path.join(cwd, '.claude', 'agents'), path.join(os.homedir(), '.claude', 'agents')]; // project wins
   for (const dir of dirs) {
-    let names = [];
+    let names;
     try { names = (await fs.promises.readdir(dir)).filter((n) => n.endsWith('.md')); } catch { continue; }
     for (const n of names) {
       try {
-        const text = (await fs.promises.readFile(path.join(dir, n), 'utf8')).replace(/^﻿/, '');
+        const text = (await fs.promises.readFile(path.join(dir, n), 'utf8')).replace(/^\uFEFF/, '');
         const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text);
         const fm = m ? m[1] : '';
         const own = /^name:\s*(.+)$/m.exec(fm)?.[1].trim().replace(/^["']|["']$/g, '') || n.slice(0, -3);
@@ -983,110 +762,14 @@ async function agentPrompts(cwd, sessionId, name) {
   return out;
 }
 
-// Images in a session (right sidebar): pasted images and images Claude got from the Read tool. An image makes a line of
-// hundreds of KB, so the transcript is scanned incrementally by byte offset and only an index is kept (where each image's
-// line sits); thumbnails and full images are decoded from that byte range on demand. Subagent transcripts are not read.
-const IMAGE_KEEP = 20; // newest images indexed per session
-const PENDING_KEEP = 50; // Read calls waiting for their result (a failed Read never gets an image result)
+// Images in a session (right sidebar): lib/images.js keeps an index of where each image's line sits in the transcript;
+// thumbnails and full images are decoded from that byte range on demand.
 const THUMB_KEEP = 100; // thumbnails cached across all sessions (LRU)
-const SESSIONS_KEEP = 20; // transcripts whose image index is kept (LRU)
 const THUMB_W = 320;
-const SCAN_CHUNK = 1024 * 1024;
-const imageCache = new Map(); // transcript file -> { offset, sig, pending: Map(tool_use_id -> path), items, scan }
 const thumbCache = new Map(); // `${file}|${id}` -> data URL or null, oldest first
 
 const sessionFile = (cwd, sessionId) => (typeof cwd === 'string' && typeof sessionId === 'string' && UUID_RE.test(sessionId)
   ? path.join(projectDir(cwd), `${sessionId}.jsonl`) : null);
-const isB64Image = (b) => b?.type === 'image' && b.source?.type === 'base64' && typeof b.source.data === 'string';
-
-function imagesFromLine(j, off, len, st) {
-  const c = j.message?.content;
-  if (!Array.isArray(c)) return;
-  if (j.type === 'assistant') {
-    for (const b of c) {
-      if (b?.type !== 'tool_use' || b.name !== 'Read' || typeof b.input?.file_path !== 'string') continue;
-      st.pending.set(b.id, b.input.file_path);
-      if (st.pending.size > PENDING_KEEP) st.pending.delete(st.pending.keys().next().value);
-    }
-    return;
-  }
-  if (j.type !== 'user') return;
-  // Pastes: "#n" from imagePasteIds (not always present: then block order 1..n). Some clients name the saved file in the text.
-  const ids = Array.isArray(j.imagePasteIds) ? j.imagePasteIds : [];
-  const text = c.filter((b) => b?.type === 'text' && typeof b.text === 'string').map((b) => b.text).join('\n');
-  const saved = [...text.matchAll(/\[Attached image "[^"\r\n]*" is saved at: ([^\]\r\n]+)\]/g)].map((m) => m[1].trim());
-  let n = 0;
-  c.forEach((b, block) => {
-    if (isB64Image(b)) {
-      const k = n++;
-      const label = `#${Number.isInteger(ids[k]) ? ids[k] : k + 1}`;
-      st.items.push({ id: `${off}:${block}`, kind: 'paste', label, file: saved[k] || null, off, len, block, sub: -1 });
-    } else if (b?.type === 'tool_result' && st.pending.has(b.tool_use_id)) {
-      const file = st.pending.get(b.tool_use_id);
-      st.pending.delete(b.tool_use_id);
-      if (!Array.isArray(b.content)) return;
-      b.content.forEach((x, sub) => {
-        if (isB64Image(x)) st.items.push({ id: `${off}:${block}:${sub}`, kind: 'file', label: path.basename(file), file, off, len, block, sub });
-      });
-    }
-  });
-}
-
-/** Reads what was appended since the last scan. Offsets are bytes; a line still being written is left for the next scan. */
-async function scanImages(file) {
-  let stat;
-  try { stat = await fs.promises.stat(file); } catch { imageCache.delete(file); return null; }
-  const sig = `${stat.mtimeMs}:${stat.size}`;
-  let st = imageCache.get(file);
-  if (st) { imageCache.delete(file); imageCache.set(file, st); } // most recently used last
-  if (st?.sig === sig) return st;
-  if (st?.scan) return st.scan;
-  if (!st || stat.size < st.offset) { // new, or the file was replaced
-    st = { offset: 0, sig: '', pending: new Map(), items: [], scan: null };
-    imageCache.set(file, st);
-    if (imageCache.size > SESSIONS_KEEP) imageCache.delete(imageCache.keys().next().value);
-  }
-  const cur = st;
-  cur.scan = (async () => {
-    const fh = await fs.promises.open(file, 'r');
-    try {
-      let pos = cur.offset;
-      // A pasted line can span many chunks: its pieces are collected and joined once, and only each new chunk is searched.
-      let parts = [];
-      let partStart = pos; // file offset of the collected line
-      while (pos < stat.size) {
-        const chunk = Buffer.alloc(Math.min(SCAN_CHUNK, stat.size - pos));
-        const { bytesRead } = await fh.read(chunk, 0, chunk.length, pos);
-        if (!bytesRead) break;
-        const buf = chunk.subarray(0, bytesRead);
-        const base = pos; // file offset of buf[0]
-        pos += bytesRead;
-        let a = 0;
-        for (let nl; (nl = buf.indexOf(0x0a, a)) !== -1; a = nl + 1) {
-          const piece = buf.subarray(a, nl);
-          const line = parts.length ? Buffer.concat([...parts, piece]) : piece;
-          const off = parts.length ? partStart : base + a;
-          parts = [];
-          cur.offset = base + nl + 1;
-          if (!line.includes('"type":"base64"') && !line.includes('"name":"Read"')) continue; // big text results stay unparsed
-          try { imagesFromLine(JSON.parse(line.toString('utf8')), off, line.length, cur); } catch { /* foreign line */ }
-        }
-        if (a < buf.length) {
-          if (!parts.length) partStart = base + a;
-          parts.push(buf.subarray(a));
-        }
-        if (cur.items.length > IMAGE_KEEP * 4) cur.items.splice(0, cur.items.length - IMAGE_KEEP);
-      }
-    } finally {
-      await fh.close();
-    }
-    if (cur.items.length > IMAGE_KEEP) cur.items.splice(0, cur.items.length - IMAGE_KEEP);
-    cur.sig = sig;
-    return cur;
-  })().finally(() => { cur.scan = null; });
-  return cur.scan;
-}
-
 async function imagesList(cwd, sessionId) {
   const file = sessionFile(cwd, sessionId);
   try {
@@ -1185,7 +868,7 @@ function keychainOauth() {
 async function fetchLimits() {
   let oauth;
   try {
-    oauth = JSON.parse((await fs.promises.readFile(CREDENTIALS_FILE, 'utf8')).replace(/^﻿/, '')).claudeAiOauth;
+    oauth = JSON.parse((await fs.promises.readFile(CREDENTIALS_FILE, 'utf8')).replace(/^\uFEFF/, '')).claudeAiOauth;
   } catch { /* handled below */ }
   // macOS: the Keychain is the live copy; a leftover file may hold a token that is no longer refreshed.
   if (IS_MAC && (!oauth?.accessToken || (oauth.expiresAt && oauth.expiresAt < Date.now()))) {
@@ -1517,7 +1200,7 @@ function isBinaryFile(file) {
   } catch {
     return false;
   } finally {
-    if (fd !== undefined) try { fs.closeSync(fd); } catch {}
+    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* already closed */ }
   }
 }
 

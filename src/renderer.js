@@ -1,6 +1,7 @@
 'use strict';
 
 /* global Terminal, FitAddon, WebLinksAddon, WebglAddon, api */
+/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches -- lib/ui.js */
 
 // ------------------------------------------------------------- helpers ----
 
@@ -91,8 +92,6 @@ const VSCODE_SVG = `<svg viewBox="0 0 100 100" aria-hidden="true"><g stroke="non
 <path fill="url(#vsc-sheen)" opacity="0.25" style="mix-blend-mode:overlay" fill-rule="evenodd" clip-rule="evenodd" d="M70.8511 99.3171C72.4261 99.9306 74.2221 99.8913 75.8117 99.1264L96.4 89.2197C98.5634 88.1787 99.9392 85.9892 99.9392 83.5871V16.4133C99.9392 14.0112 98.5635 11.8217 96.4001 10.7807L75.8117 0.873695C73.7255 -0.13019 71.2838 0.115699 69.4527 1.44688C69.1912 1.63705 68.942 1.84937 68.7082 2.08335L29.2943 38.0414L12.1264 25.0096C10.5283 23.7964 8.29285 23.8959 6.80855 25.246L1.30225 30.2548C-0.513334 31.9064 -0.515415 34.7627 1.29775 36.4169L16.1863 50L1.29775 63.5832C-0.515415 65.2374 -0.513334 68.0937 1.30225 69.7452L6.80855 74.754C8.29285 76.1042 10.5283 76.2036 12.1264 74.9905L29.2943 61.9586L68.7082 97.9167C69.3317 98.5405 70.0638 99.0104 70.8511 99.3171ZM74.9544 27.2989L45.0483 50L74.9544 72.7012V27.2989Z"/>
 </g></g></svg>`;
 
-const baseName = (p) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
-
 // macOS: app shortcuts use Cmd so Ctrl stays Claude's (Ctrl+Tab stays, Cmd+Tab is the OS switcher; Alt+1..9 is Cmd+1..9).
 const IS_MAC = api.platform === 'darwin';
 const mod = (e) => (IS_MAC ? e.metaKey : e.ctrlKey);
@@ -136,10 +135,6 @@ const SHORTCUTS = [
   { id: 'zoomReset', group: 'Terminal', label: 'Default text size', keys: [`${M}+Digit0`, `${M}+Numpad0`], run: () => setFontSize(FONT_SIZE.default) },
 ];
 
-const MODS = ['Ctrl', 'Alt', 'Shift', 'Cmd']; // canonical order (macOS shows ⌃⌥⇧⌘)
-const normCombo = (c) => { const p = c.split('+'); const key = p.pop(); return [...MODS.filter((m) => p.includes(m)), key].join('+'); };
-const comboOf = (e, key = e.code) =>
-  [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Cmd', key].filter(Boolean).join('+');
 const defaultKeys = (s) => s.keys.map(normCombo);
 
 let keymap = {}; // action id -> [combo], the effective bindings
@@ -162,15 +157,8 @@ function saveKeys() {
 
 /** Run the action bound to this key event. Exact combos win over Digits / Arrows patterns. Returns whether it was handled. */
 function runShortcut(e) {
-  const patterns = [];
-  if (/^Digit[1-9]$/.test(e.code)) patterns.push(comboOf(e, 'Digits'));
-  if (e.code.startsWith('Arrow')) patterns.push(comboOf(e, 'Arrows'));
-  const exact = comboOf(e);
-  const s = SHORTCUTS.find((x) => keymap[x.id].includes(exact))
-    || SHORTCUTS.find((x) => x.pattern && keymap[x.id].some((c) => patterns.includes(c)));
-  if (!s) return false;
-  const arg = s.pattern === 'Digits' ? Number(e.code.slice(5)) : s.pattern === 'Arrows' ? e.code.slice(5).toLowerCase() : undefined;
-  return s.run(arg) !== false;
+  const hit = matchShortcut(SHORTCUTS, keymap, e);
+  return !!hit && hit.s.run(hit.arg) !== false;
 }
 
 const KEY_TEXT = {
@@ -226,21 +214,7 @@ const definedBy = new Map(); // project path -> [{ name, model }] subagents defi
 
 const SESSIONS_SHOWN = 6; // rows per project (open tabs included) before "Show N more"
 const CHATS_SHOWN = 4; // the same for the Chats group
-// The window size is not stored in transcripts, so it is derived from the model. 1M is opt-in in Claude Code (a
-// "[1m]" model, which main.js re-attaches from settings or /model since transcripts drop it), except for the models
-// that get it by default: Opus 4.6+, Fable, Mythos. Everything else (Sonnet, Haiku, Claude 2/3, unknown) is 200k
-// until a session has gone past it.
-const CONTEXT_WINDOW = 200000;
-const CONTEXT_WINDOW_LARGE = 1000000;
-function contextWindow(model, used) {
-  const m = String(model || '').toLowerCase();
-  if (used > CONTEXT_WINDOW || m.includes('[1m]')) return CONTEXT_WINDOW_LARGE;
-  if (/\b(fable|mythos)\b/.test(m)) return CONTEXT_WINDOW_LARGE;
-  // "claude-opus-4-6-20260101", "Opus 4.6", "claude-opus-5-5"; the (?!\d) keeps a date out of the minor version
-  const v = /opus[- ]?(\d+)(?:[-.](\d)(?!\d))?/.exec(m);
-  if (v && Number(v[1]) + Number(v[2] || 0) / 10 >= 4.6) return CONTEXT_WINDOW_LARGE;
-  return CONTEXT_WINDOW;
-}
+// contextWindow(model, used) is in lib/ui.js.
 const WINDOW_NOTE = 'Approximate: the window size is assumed from the model (1M for Opus 4.6+, Fable, or a model chosen with [1m]; 200k otherwise). Type /context in the tab for exact numbers.';
 
 // Terminal typography. A light body weight with a clearly heavier bold, and generous line spacing, so
@@ -436,18 +410,7 @@ const tabsOf = (projectPath) => [...tabs.values()].filter((t) => t.project.path 
 const realProjects = () => projects.filter((p) => !p.chat);
 
 /** The parent folders that tell a project apart from others of the same folder name ("clients" for C:\code\clients\app), else ''. */
-function projParent(p) {
-  if (p.chat) return '';
-  const same = realProjects().filter((x) => x.path !== p.path && x.name.toLowerCase() === p.name.toLowerCase());
-  if (!same.length) return '';
-  const up = (q) => q.path.replace(/[\\/]+$/, '').split(/[\\/]/).slice(0, -1).reverse(); // nearest parent first
-  const mine = up(p);
-  for (let k = 1; k <= mine.length; k++) {
-    const tail = mine.slice(0, k).join('/').toLowerCase();
-    if (same.every((x) => up(x).slice(0, k).join('/').toLowerCase() !== tail)) return mine.slice(0, k).reverse().join('/');
-  }
-  return p.path;
-}
+const projParent = (p) => (p.chat ? '' : distinctParent(p, realProjects()));
 /** A project's name for labels and notifications: "app (clients)" when another project is also called "app". */
 const projName = (p) => { const up = projParent(p); return up ? `${p.name} (${up})` : p.name; };
 
@@ -473,16 +436,7 @@ const DONE_MIN_RUN = 10000; // a run shorter than this is not worth a "Done"
 const DONE_IDLE = 4000; // idle this long before a run counts as finished, so a flicker between steps is one run
 
 /** Is one of Claude's input dialogs open at the bottom of this tab's screen? */
-function awaitingInput(tab) {
-  const b = tab.term.buffer.active;
-  for (let i = b.length - 1, seen = 0; i >= 0 && seen < 3; i--) {
-    const s = b.getLine(i)?.translateToString(true).trim();
-    if (!s) continue;
-    seen++;
-    if (s.includes('Esc to cancel')) return true;
-  }
-  return false;
-}
+const awaitingInput = (tab) => dialogOpen(tab.term.buffer.active);
 
 function notifyTab(tab, what) {
   tab.notified = true;
@@ -731,39 +685,17 @@ function wireTerminal(tab) {
 }
 
 // File links: paths Claude prints (src/main.js:123, C:\x\y.ts:4:2, ./README.md) open in VS Code at that line. A match
-// becomes a link only if main finds that file (relative to the tab's project); answers are cached briefly per folder.
-// One buffer line at a time, so a path wrapped over two rows is not a link. URLs are left to the web-links addon.
-const FILE_RE = /(?:[A-Za-z]:[\\/]|\.{1,2}[\\/]|[\\/])?(?:[\w.@+-]+[\\/])*[\w@+-][\w.@+-]*\.[A-Za-z][A-Za-z0-9]{0,11}(?::(\d+)(?::(\d+))?)?/g;
-const URL_RE = /[a-z][a-z0-9+.-]*:\/\/\S+/gi;
+// (lib/ui.js: lineCells, fileMatches) becomes a link only if main finds that file (relative to the tab's project);
+// answers are cached briefly per folder.
 const FILE_TTL = 10000;
 const fileCache = new Map(); // `${cwd}\n${path}` -> { abs | null, at }
-
-/** The line's text plus the cell column of each character (wide characters take two cells). */
-function lineCells(term, y) {
-  const line = term.buffer.active.getLine(y);
-  if (!line) return null;
-  let text = '';
-  const col = [];
-  for (let x = 0; x < line.length; x++) {
-    const cell = line.getCell(x);
-    if (!cell || cell.getWidth() === 0) continue; // second half of a wide character
-    const ch = cell.getChars() || ' ';
-    for (let i = 0; i < ch.length; i++) col.push(x);
-    text += ch;
-  }
-  return { text, col };
-}
 
 function fileLinks(tab) {
   return {
     async provideLinks(y, callback) {
       const cells = lineCells(tab.term, y - 1);
       if (!cells || !/[\w]\.[A-Za-z]/.test(cells.text)) return callback(undefined);
-      const urls = [...cells.text.matchAll(URL_RE)].map((m) => [m.index, m.index + m[0].length]);
-      const found = [...cells.text.matchAll(FILE_RE)]
-        .filter((m) => !urls.some(([a, b]) => m.index < b && m.index + m[0].length > a))
-        .slice(0, 20)
-        .map((m) => ({ m, file: m[0].replace(/(?::\d+){1,2}$/, '') }));
+      const found = fileMatches(cells.text);
       if (!found.length) return callback(undefined);
       const cwd = tab.project.path;
       const now = Date.now();
