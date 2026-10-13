@@ -29,6 +29,8 @@ The logo master is `assets/icon-source.png` (1024 px, transparent outside the ro
 
 `npm run lint` (ESLint, bug rules only, no style) and `npm test` (`node:test`, no framework) must pass. Tests cover the
 pure code in `src/lib/`; anything touching the UI, ptys or processes still needs a run of the real app (see "Testing").
+CI (`.github/workflows/check.yml`) runs `npm run check` on Windows and macOS for every push (`npm ci --ignore-scripts`:
+no Electron, no node-pty), so keep `src/lib/` and the tests free of both. Test paths must suit both platforms.
 
 ## Principles: minimal and fast
 
