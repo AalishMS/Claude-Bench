@@ -164,7 +164,7 @@ button { font: inherit; color: inherit; }
 body.mac #topbar { padding-right: 8px; }
 body.mac #brand, body.mac #topbar #brand { padding-left: 72px; }
 body.sidebar-collapsed .brand-name { display: none; }
-/* The update button (footer, between usage and sessions): refresh = check now, spins while the git fetch runs;
+/* The update button (footer, right of the settings gear): refresh = check now, spins while the git fetch runs;
    download = update available, tinted with the accent (the only colored icon there), pulses while pulling */
 #update-slot { display: flex; }
 #update-slot .update .ico { color: color-mix(in srgb, var(--primary) 60%, var(--foreground)); }
@@ -299,11 +299,18 @@ body.resizing .rz { pointer-events: auto; }
 .dot.working { background: var(--warning); animation: pulse 1s ease-in-out infinite; }
 .dot.attention { background: var(--primary); animation: pulse 0.9s ease-in-out infinite; }
 
-/* footer: one slim row, settings left, then usage, the update button and running sessions (the stats open #detail) */
+/* footer: one slim row, settings + update + usage grouped left, running sessions right (the stats open #detail) */
 /* every stat is icon (14px slot) + value, same height and padding, 2px apart; the row aligns with the list's 8px inset */
 #side-foot { display: flex; align-items: center; gap: 2px; height: 44px; flex: none; padding: 0 8px 0 4px; border-top: 1px solid var(--border); }
-.fstats { display: flex; align-items: center; justify-content: space-between; flex: 1; min-width: 0; }
+.fstats { display: flex; align-items: center; justify-content: flex-end; gap: 2px; flex: 1; min-width: 0; }
 .fstat { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--foreground); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; transition: background-color 0.15s, color 0.15s; }
+/* a narrow sidebar drops the word "running" (count + dot stay, the tooltip has it) instead of the row overflowing
+   onto the left group; 192 = left group (110) + full running stat (87) - padding, rounded down */
+#side-foot { container-type: inline-size; }
+@container (max-width: 192px) { .f-word { display: none; } }
+.fstat { min-width: 0; }
+.fstat > * { flex: none; }
+.fstat > .f-txt { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .fstat:hover { background: var(--sidebar-hover); }
 .fstat.on { background: var(--sidebar-accent); }
 .fstat > .ico { width: 14px; height: 14px; color: var(--faint); }

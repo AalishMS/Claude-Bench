@@ -1848,8 +1848,8 @@ function closeMenu() {
 }
 
 // ---------------------------------------------------------------- footer ----
-// One slim row under the project list: compact plan usage, the update button and what is running
-// on the right. Each stat opens a details popover (`#detail`) above it.
+// One slim row under the project list: settings, the update button and compact plan usage grouped on the
+// left, what is running on the right. Each stat opens a details popover (`#detail`) above it.
 
 const fmtTok = (n) => (n < 1000 ? String(n)
   : n < 1e4 ? `${(n / 1e3).toFixed(1)}k`
@@ -1917,12 +1917,12 @@ function renderFoot(force = false) {
     h('button', {
       class: `btn ghost icon sm${settingsOpen ? ' on' : ''}`, title: tip('Settings', 'settings'), onclick: () => toggleSettings(),
     }, ico('settings')),
+    h('span', { id: 'update-slot' }, updateBtn()),
+    fstat('usage', usageTip, gauge(sessPct), sess ? pctText(sessPct) : '—'),
     h('div', { class: 'fstats' },
-      fstat('usage', usageTip, gauge(sessPct), sess ? pctText(sessPct) : '—'),
-      h('span', { id: 'update-slot' }, updateBtn()),
-      fstat('state', 'Open sessions',
+      fstat('state', working ? `Open sessions: ${working} working` : `Open sessions: ${live.length} running`,
         h('i', { class: `dot${working ? ' working' : live.length ? ' running' : ''}` }),
-        working ? `${working} working` : `${live.length} running`)));
+        h('span', { class: 'f-txt' }, String(working || live.length), h('span', { class: 'f-word' }, working ? ' working' : ' running')))));
   if (detailKind) renderDetail();
 }
 
