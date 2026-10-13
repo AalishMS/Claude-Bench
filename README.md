@@ -51,8 +51,8 @@ split panes, git status and a list of the dev servers your sessions started.
 - **Git at a glance.** Branch, changed files and ahead/behind for every project.
 - **Session details.** Context usage, connected MCP servers, subagents and their prompts, and the images pasted into
   or read by the session.
-- **Running servers.** Dev servers started from a session show up with their port. Click to copy the URL,
-  Shift+click to open it.
+- **Running servers.** Dev servers started from the current session show up with their port (on the home screen,
+  those of every session). Click to copy the URL, Shift+click to open it.
 - **Clickable file paths.** Ctrl+click `src/main.js:123` in Claude's output to open it in VS Code at that line.
   Images, videos, PDFs and other binary files open in their default app.
 - **Notifications.** A background session tells you when it needs input or has finished a longer task.

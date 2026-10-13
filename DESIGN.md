@@ -210,14 +210,15 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - The right sidebar (`#rside`, 300 px by default) uses the `--background` surface (same as the terminal) with a 1 px `--sidebar-border` on its terminal side.
   Top: **Context** header (12 px muted title + `150k / 200k`, the % at 20 px/600 colored only at warn/crit, a `.meter.big`).
   Then collapsible sections (32 px muted 12 px/500 header with a chevron and a faint count; open by default): **MCPs**,
-  **Subagents**, **Running**. Rows are the same flat 30 px inset rows: 8 px circular status dot (or a 14 px check for finished
+  **Subagents**, **Running**, **Images**. Rows are the same flat 30 px inset rows: 8 px circular status dot (or a 14 px check for finished
   subagents), name, and a 12 px meta on the right (status word, model in `--mono`, `:port`).
   Only connected MCPs are listed; the rest sit behind a muted `Show N more` row (same pattern as the session list), and the count reads `connected/total`.
   MCP status colors: connected `--success`, failed / needs_client_registration `--destructive`, needs_auth `--warning`,
   disabled / unknown `--muted-foreground`. Subagents: working = pulsing `--warning` dot, finished = `--success` check,
   idle = `--faint` dot. Running rows with a port copy `http://localhost:<port>` on click (meta flips to "Copied"),
-  Shift+click opens it in the browser.
-  **Images** (between Subagents and Running): a grid of tiles (`.img-grid`, auto-fill, min 84 px, gap 8, 16 px inset). Tile =
+  Shift+click opens it in the browser; on the home screen the name gets a muted ` · <tab label>` suffix.
+  Subagents and Running show 5 rows, then the same muted `Show N more` / `Show less` row; collapsing the section folds it again.
+  **Images** (last, never folded: the panel scrolls): a grid of tiles (`.img-grid`, auto-fill, min 84 px, gap 8, 16 px inset). Tile =
   4:3 thumbnail, `object-fit: cover`, 1 px `--border`, `rounded-sm`, `--muted` while loading or undecodable; hover border `--ring`;
   under it an 11 px `--mono` `--faint` label (`#n` or file name, ellipsis). Click opens the lightbox: the wide dialog (same head as the
   subagent popup: title, faint one-line path, `btn outline sm` "Show in Explorer/Finder" for files, ×), the image centered, contained.

@@ -2304,6 +2304,17 @@ const mcpName = (n) => (n.startsWith('plugin:') ? n.split(':').pop() : n);
 const statusDot = (cls) => h('i', { class: `dot s ${cls}` });
 let mcpMore = false; // MCPs that are not connected stay folded behind a "Show N more" row
 let copiedPort = null; // port whose address was just copied (its row says "Copied" for a moment)
+const RSIDE_SHOWN = 5; // Subagents / Running rows before "Show N more"
+const rsideMore = new Set(); // sections ('agents', 'running') unfolded past RSIDE_SHOWN
+
+/** The first RSIDE_SHOWN rows, then a "Show N more" / "Show less" row (rsideMore, cleared when the section is collapsed). */
+function foldRows(id, rows) {
+  if (rows.length <= RSIDE_SHOWN) return rows;
+  const all = rsideMore.has(id);
+  const toggle = () => { if (!rsideMore.delete(id)) rsideMore.add(id); renderRside(true); };
+  return [...(all ? rows : rows.slice(0, RSIDE_SHOWN)),
+    h('div', { class: 'rrow rmore', onclick: toggle }, all ? 'Show less' : `Show ${rows.length - RSIDE_SHOWN} more`)];
+}
 
 function rsection(id, title, count, ...body) {
   const open = !ui.collapsed.includes(id);
@@ -2315,7 +2326,7 @@ function rsection(id, title, count, ...body) {
 
 function toggleRsection(id) {
   const set = new Set(ui.collapsed);
-  if (!set.delete(id)) set.add(id);
+  if (!set.delete(id)) { set.add(id); rsideMore.delete(id); } // collapsing folds the list again: reopening shows the first few
   ui.collapsed = [...set];
   api.setUi({ collapsed: ui.collapsed });
   renderRside(true);
@@ -2376,12 +2387,14 @@ function renderRside(force = false) {
   const proj = currentProject();
   const ctx = contextInfo();
   const mcp = proj && mcpBy.get(proj.path);
-  const agents = agentRows(proj, activeTab());
-  const servers = ports.ok ? ports.servers.filter((s) => s.dev) : [];
   const tab = activeTab();
+  const agents = agentRows(proj, tab);
+  // Only listeners started from our sessions: the active tab's, or every tab's on the home screen.
+  const mine = (s) => s.owner?.type === 'session' && (!tab || s.owner.sessionId === tab.id);
+  const servers = ports.ok ? ports.servers.filter(mine) : [];
   const imgs = tab?.kind === 'claude' && tab.sessionId && imagesBy.get(tab.id)?.session === tab.sessionId ? imagesBy.get(tab.id).items : null;
 
-  const key = JSON.stringify([ctx && [ctx.session?.ctx, ctx.pct, ctx.win], proj?.path, mcp, agents, ports.ok && servers, ports.error, ui.collapsed, copiedPort, mcpMore, tab?.id, imgs]);
+  const key = JSON.stringify([ctx && [ctx.session?.ctx, ctx.pct, ctx.win], proj?.path, mcp, agents, ports.ok && servers, ports.error, ui.collapsed, copiedPort, mcpMore, [...rsideMore], tab?.id, imgs]);
   if (!force && key === lastRsideKey) return;
   lastRsideKey = key;
 
@@ -2417,26 +2430,27 @@ function renderRside(force = false) {
         ];
       })();
 
-  const agentBody = agents.length ? agents.map((a) => {
+  const agentBody = agents.length ? foldRows('agents', agents.map((a) => {
     const st = a.running ? 'working' : a.done ? 'done' : 'idle';
     const tip = `${a.name}: ${st}${a.desc ? `\n${a.desc}` : ''}${a.done ? `, ${a.done} finished this session` : ''}`;
     return h('div', { class: 'rrow copy', title: `${tip}\nClick to see its prompt`, onclick: () => agentDialog(a, activeTab()) },
       st === 'working' ? h('i', { class: 'dot s working' }) : st === 'done' ? h('span', { class: 't-ok' }, ico('check')) : statusDot('mute'),
       h('span', { class: 'name' }, a.name, a.desc ? h('span', { class: 'ag-desc' }, ` · ${a.desc}`) : null),
       h('span', { class: 'meta mono' }, a.model ? prettyModel(a.model) : '—'));
-  }) : h('div', { class: 'rnote' }, 'No subagents defined.');
+  })) : h('div', { class: 'rnote' }, 'No subagents defined.');
 
   const runBody = !ports.ok ? h('div', { class: 'rnote t-err' }, ports.error || 'Port scan failed')
-    : !servers.length ? h('div', { class: 'rnote' }, 'Nothing running.')
-    : servers.map((s) => {
+    : !servers.length ? h('div', { class: 'rnote' }, tab ? 'Nothing running in this session.' : 'Open a session to see its running servers.')
+    : foldRows('running', servers.map((s) => {
         const copyable = !!s.port && !/emulator|qemu|adb/i.test(`${s.name} ${s.cmd || ''}`);
+        const owner = !tab && tabs.get(s.owner.sessionId); // home screen: say which session started it
         return h('div', {
           class: `rrow${copyable ? ' copy' : ''}${copiedPort === s.port ? ' copied' : ''}`,
           title: copyable ? `Copy http://localhost:${s.port}\n${kbd('Shift+click')} to open it in the browser` : (s.cmd || s.name),
           onclick: copyable ? (e) => (e.shiftKey ? api.openExternal(`http://localhost:${s.port}`) : copyServer(s)) : null,
-        }, statusDot('ok'), h('span', { class: 'name' }, itemName(s)),
+        }, statusDot('ok'), h('span', { class: 'name' }, itemName(s), owner ? h('span', { class: 'ag-desc' }, ` · ${tabLabel(owner)}`) : null),
           h('span', { class: 'meta mono' }, copiedPort === s.port ? 'Copied' : s.port ? `:${s.port}` : ''));
-      });
+      }));
 
   const imgBody = tab?.kind !== 'claude' ? h('div', { class: 'rnote' }, 'Open a Claude tab to see its images.')
     : !imgs ? h('div', { class: 'rnote' }, tab.sessionId ? 'Loading…' : 'No images yet.')
@@ -2447,8 +2461,8 @@ function renderRside(force = false) {
   $('#rside').replaceChildren(head,
     rsection('mcp', 'MCPs', mcp?.ok ? `${mcp.servers.filter((m) => m.status === 'connected').length}/${mcp.servers.length}` : null, mcpBody),
     rsection('agents', 'Subagents', working ? `${working} working` : agents.length || null, agentBody),
-    rsection('images', 'Images', imgs?.length || null, imgBody),
-    rsection('running', 'Running', servers.length || null, runBody));
+    rsection('running', 'Running', servers.length || null, runBody),
+    rsection('images', 'Images', imgs?.length || null, imgBody));
 }
 
 /** Both are slow-ish and rarely change: fetched per project, only while the panel is open and the window visible. */

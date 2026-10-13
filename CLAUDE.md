@@ -235,7 +235,9 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   Windows caches the name at an ID's first toast: if one fired before the key existed, delete
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\com.local.claudebench` to reset it.
 - **Right sidebar** (`#rside`, toggled by the top-bar button or `Ctrl+Shift+S`, saved as `ui.servers`; `renderRside`): the active tab's
-  **Context** (`x / yk` + %, same numbers as the footer tile), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Images**, **Running**.
+  **Context** (`x / yk` + %, same numbers as the footer tile), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**, **Images**.
+  Subagents and Running show `RSIDE_SHOWN` (5) rows, then "Show N more" / "Show less" (`foldRows`, `rsideMore`, runtime only;
+  collapsing the section clears it, so reopening shows 5 again). Images is last and never folded.
   - MCPs: only connected ones are listed; the rest are behind a "Show N more" row (`mcpMore`, not persisted). `claude mcp list` run in the project folder (main `mcpList`, `cmd.exe /c claude mcp list`, cached 5 min (activating a tab of another project polls it), never overlapping;
     it health-checks every server, so it takes seconds). Output lines `name: target - ✔ Connected | ! Needs authentication | ...` map to
     connected (success) / failed + needs_client_registration (destructive) / needs_auth (warning) / disabled + unknown (muted).
@@ -258,7 +260,9 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     line for the lightbox (`imageDialog` via `openModal`, shared with `agentDialog`); `images:reveal` = Show in Explorer/Finder.
     All take (project, session UUID, id), never a path. `pollImages` runs after `pollInfo`, only while the panel is shown and the
     section is open; thumbnails are fetched only for new ids. Every Read of a file is its own tile (no de-duplication).
-  - Running: dev listeners only, every 6 s (30 s while the window is unfocused), only while the right sidebar is shown (`closeTab` / `onCloseRequest` rescan when the last scan is over 10 s old).
+  - Running: only listeners owned by a session (`owner.type === 'session'`): the active tab's, or on the home screen (no
+    active tab) every session's, each row then suffixed with its tab label. Project-path matches and bare `DEV_PROCESSES`
+    names are not listed (still used by the quit/close prompts' scan shape). Scanned every 6 s (30 s while the window is unfocused), only while the right sidebar is shown (`closeTab` / `onCloseRequest` rescan when the last scan is over 10 s old).
     Windows (`winScan`): listeners from `netstat -ano` (~30 ms; rows with foreign `0.0.0.0:0` / `[::]:0`, since the state text is localized,
     `parseNetstat`); the process table from PowerShell `Get-CimInstance Win32_Process` (about a second of CPU) only when a `pid:port`
     listener appears that hasn't been listening without a gap since the last PowerShell scan (so a recycled pid gets a fresh scan), or that
