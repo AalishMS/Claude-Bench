@@ -47,7 +47,7 @@ split panes, git status and a list of the dev servers your sessions started.
   Chats) with your home folder added, and are listed under "Chats" at the top.
 - **Tabs that come back.** Open sessions reopen on the next launch, resumed where they left off.
 - **Split view.** Up to four sessions on screen at once. Drag a session from the sidebar onto the terminal, or press
-  `Ctrl+\`. You can keep several splits around; each gets its own box in the sidebar.
+  `Ctrl+Shift+→`. You can keep several splits around; each gets its own box in the sidebar.
 - **Git at a glance.** Branch, changed files and ahead/behind for every project.
 - **Session details.** Context usage, connected MCP servers, subagents and their prompts, and the images pasted into
   or read by the session.
@@ -167,7 +167,7 @@ updates.
 | `Ctrl+T` / `Ctrl+W` | New session / close session |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous session |
 | `Alt+1`..`9` | Jump to a session |
-| `Ctrl+\` / `Ctrl+Alt+\` | New session beside / below |
+| `Ctrl+Shift+→` / `Ctrl+Shift+↓` or `↑` | New session beside / below |
 | `Ctrl+Shift+\` | Back to one terminal |
 | `Alt+arrows` / `Ctrl+Alt+arrows` | Move focus / resize panes (while split) |
 | `Ctrl+S` / `Ctrl+Shift+S` | Toggle left / right sidebar |

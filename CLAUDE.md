@@ -42,7 +42,7 @@ no Electron, no node-pty), so keep `src/lib/` and the tests free of both. Test p
   when data actually changed (`lastSidebarKey`, `JSON.stringify` diffs).
 - **Terminal first.** The terminal gets the space and the focus. Chrome around it stays quiet.
 - **Don't fight Claude Code.** Our shortcuts mostly avoid keys it uses (`Ctrl+B/W/J`...); `Ctrl+T` (new session), `Ctrl+S` (sidebar) and `Ctrl+W` (close session; costs Claude's delete-word) are deliberate exceptions. The defaults are `Ctrl+T`, `Ctrl+S`, `Ctrl+W` (also `Ctrl+Shift+W`), `Ctrl+Shift+S` (servers),
-  `Ctrl+Tab`, `Alt+1..9`, `Ctrl+,` (settings), and for split view `Ctrl+\` (new session beside), `Ctrl+Alt+\` (new session below), `Ctrl+Shift+\` (unsplit),
+  `Ctrl+Tab`, `Alt+1..9`, `Ctrl+,` (settings), and for split view `Ctrl+Shift+→` (new session beside), `Ctrl+Shift+↓` / `Ctrl+Shift+↑` (new session below), `Ctrl+Shift+\` (unsplit),
   `Alt+arrows` (move pane focus) and `Ctrl+Alt+arrows` (move the divider). The two arrow shortcuts only act while split; otherwise the keys reach the terminal.
   On macOS the same shortcuts use Cmd (`⌘1..9` / `⌘arrows` for `Alt+1..9` / `Alt+arrows`), so Ctrl stays entirely Claude's; `Ctrl+Tab` stays.
   All of them are editable on the settings page (see "Shortcuts"); never add a hard-coded app shortcut, add a `SHORTCUTS` entry.
@@ -202,7 +202,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   `--group-1..4`, the lowest free index at creation); a lone group is always `.g0`. Its header shows it, its × `unsplit(g)`. `activeId` is the focused pane, so status bar, right sidebar and
   polling keep following one tab. `visibleIds()` = the active tab's group, else just the active tab (focusing a member of another group
   switches the terminal area to that group). `addToSplit` adds to the visible group or starts a new one with the active tab;
-  a tab moving in leaves its old group, and a group of one is dropped. Entry: top-bar button / `Ctrl+\` (`splitHere`, new session beside),
+  a tab moving in leaves its old group, and a group of one is dropped. Entry: top-bar button / `Ctrl+Shift+→` (`splitHere`, new session beside),
   Shift+click a sidebar row (`besideRow`), or drag a sidebar row onto the terminal area or the home screen: `#dropzone` (shown only while
   dragging, `rowDrag` / `wireDropZone`) previews the pane in the resulting layout (`cellRect`; the slot whose pane centre is nearest
   the pointer wins) and the drop places it (`addToSplit(id, at)`). A session already on screen is opened again beside itself (`cloneBeside`: a fork of the

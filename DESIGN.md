@@ -111,7 +111,7 @@ row, a "New session" placeholder until the first reply, or a "PowerShell" row). 
 `Ctrl+W` still work on tab order. The top bar has a ghost `×` that closes the active session (hidden on the home screen).
 
 ### Split panes
-Up to 4 tabs side by side (top-bar columns button, `Ctrl+\`, Shift+click a sidebar row, or dragging a row onto the
+Up to 4 tabs side by side (top-bar columns button, `Ctrl+Shift+→`, Shift+click a sidebar row, or dragging a row onto the
 terminal or home screen (a session already on screen is opened a second time beside itself); while dragging, a `--primary` 18% fill with a 70% 1 px outline previews the pane it would become). The terminal area becomes
 a grid with 1 px `--border` gaps, no boxes or gutters. Each pane has a 26 px header strip on the terminal background:
 status dot, title (12 px, `--faint`), and a hover-only ghost `×` that closes that pane's session. The focused pane is marked only by its title going `--foreground` and the other panes' terminal text (and scrollbar) dimmed to 40 % opacity:
