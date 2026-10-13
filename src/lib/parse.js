@@ -164,6 +164,18 @@ function firstPrompt(text) {
   return null;
 }
 
+/** The folder a session ran in: the first `cwd` field in the transcript head (folder names in ~/.claude/projects are lossy). */
+function transcriptCwd(text) {
+  for (const line of text.split('\n')) {
+    if (!line.includes('"cwd"')) continue;
+    try {
+      const cwd = JSON.parse(line).cwd;
+      if (typeof cwd === 'string' && cwd) return cwd;
+    } catch { /* truncated line */ }
+  }
+  return null;
+}
+
 /** Effort for a model from settings: modelSettings by id ("Opus 5.5" -> claude-opus-5-5), else by family, else global. */
 function defaultEffort(settings, model) {
   const per = settings?.modelSettings || {};
@@ -296,7 +308,7 @@ function remapSplits(splits, at) {
 module.exports = {
   parseGitStatus,
   parentPid, parseNetstat, etimeSeconds, parseLsof, parsePs, macDevName, withoutFlagValues,
-  oneLine, usageTokens, parseTail, firstPrompt, defaultEffort, modelFamily, withLongContext, parseModelEffort,
+  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, defaultEffort, modelFamily, withLongContext, parseModelEffort,
   agentDone, lastModel, parseAgentFile,
   parseMcpList,
   remapSplits,

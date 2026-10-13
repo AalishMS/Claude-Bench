@@ -23,7 +23,8 @@ split panes, git status and a list of the dev servers your sessions started.
 ## What it does
 
 - **Projects and sessions.** Add a folder once, then start a session in it with one click. Past sessions are listed
-  under each project by their title; click one to resume it, or right-click to fork it.
+  under each project by their title; click one to resume it, or right-click to fork it. On first launch the three
+  folders you used Claude Code in most recently are already there.
 - **Chats without a project.** The `+` next to "add project" also offers "No project": a session for questions or
   small chores like tidying the Desktop. Chats run in `Claude Chats` in your home folder (change it in Settings >
   Chats) with your home folder added, and are listed under "Chats" at the top.

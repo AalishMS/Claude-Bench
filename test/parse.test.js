@@ -167,6 +167,18 @@ test('firstPrompt skips meta lines and command output', () => {
   assert.equal(p.firstPrompt('{"type":"user","mess'), null);
 });
 
+test('transcriptCwd: first cwd field, skipping text that only mentions cwd and a cut-off line', () => {
+  const text = jl(
+    { type: 'summary', summary: 'Shell cwd was reset to /tmp' },
+    { type: 'user', message: { content: 'the "cwd" key' } },
+    { type: 'user', cwd: 'E:\\pet_project\\Claude Terminal', message: { content: 'hi' } },
+    { type: 'assistant', cwd: '/Users/me/other' },
+  );
+  assert.equal(p.transcriptCwd(text), 'E:\\pet_project\\Claude Terminal');
+  assert.equal(p.transcriptCwd('{"type":"user","cwd":"/Users/me/ap'), null);
+  assert.equal(p.transcriptCwd(''), null);
+});
+
 test('defaultEffort: by model id, then by unique family, then global', () => {
   const settings = {
     effortLevel: 'medium',

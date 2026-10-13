@@ -117,6 +117,7 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
     A minimal app menu (appMenu + editMenu) replaces Electron's default, whose Cmd+W/R/= would clash; the Edit roles
     give Cmd+C/V/A to xterm and inputs. VS Code opens via `open -a "Visual Studio Code"`.
   - File links: `openFileAt` tries `code -g` (after `shellEnvReady`), then `open -a "Visual Studio Code" <file>`, then `shell.openPath`.
+  - First-run projects (`recentProjects`): no Mac branch (same `~/.claude/projects` layout and `cwd` field).
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
   - Images (right sidebar): no Mac branch. `nativeImage` decodes the thumbnails, `shell.showItemInFolder` backs "Show in Finder"
@@ -289,6 +290,10 @@ scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged
   meant (`currentProject`, `projectAction`, `pollGit`, `projParent`, welcome/empty states). Chats' row isn't draggable and
   has no "Move to top"; the port scan's path match ignores it (every command line would match home). `Ctrl+T` with no tab and
   several projects opens the same menu, focused (arrows + Enter, `menuArrow`). macOS: the same, `~/Claude Chats` + `--add-dir ~`.
+- **First run** (no state file, legacy one included: `firstRun` in `loadState`): before the window opens, `recentProjects()`
+  adds the 3 most recently used Claude Code projects (folders of `~/.claude/projects` by mtime; the path is the newest
+  transcript's `cwd`, `transcriptCwd`, since folder names are lossy; home, the chat folder and temp folders are skipped)
+  and expands the newest. Never runs again, so a removed project stays removed. No Mac branch.
 - **Projects**: order = `state.projects`, changed by dragging project rows (`projDragProps`, `projDrag` pauses `renderSidebar`
   like a session drag) or "Move to top" in the `…` menu; both call `moveProject` -> `projects:reorder`. Same-name folders:
   `projParent(p)` = the fewest parent folders that tell it apart, `projName(p)` = `app (clients)` for tab labels,

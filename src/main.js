@@ -8,7 +8,7 @@ const { execFile, spawn } = require('child_process');
 const pty = require('@lydell/node-pty');
 const {
   parseGitStatus, parentPid, parseNetstat, parseLsof, parsePs, macDevName, withoutFlagValues,
-  oneLine, usageTokens, parseTail, firstPrompt, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel,
+  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel,
   parseAgentFile, parseMcpList, remapSplits,
 } = require('./lib/parse');
 const { scanImages } = require('./lib/images');
@@ -86,6 +86,7 @@ let state = structuredClone(defaults);
 const stateFile = () => path.join(app.getPath('userData'), 'state.json');
 // The app was called "Claude Terminal" (userData = %APPDATA%\claude-terminal); read that once if nothing is saved yet.
 const legacyStateFile = () => path.join(app.getPath('appData'), 'claude-terminal', 'state.json');
+let firstRun = false; // no state file at all: the sidebar is seeded with recent Claude Code projects (recentProjects)
 
 function loadState() {
   try {
@@ -102,6 +103,7 @@ function loadState() {
     }
   } catch {
     /* first run or unreadable file: keep defaults */
+    firstRun = !fs.existsSync(stateFile()) && !fs.existsSync(legacyStateFile());
   }
 }
 
@@ -581,6 +583,41 @@ async function listSessions(cwd) {
       try { return await readSession(file, await fs.promises.stat(file)); } catch { return null; }
     }));
   return rows.filter(Boolean).sort((a, b) => b.last - a.last).slice(0, 200);
+}
+
+/**
+ * First run: the folders of the most recently used Claude Code projects, newest first. Folder names in ~/.claude/projects
+ * are lossy, so the path comes from the newest transcript's `cwd`. Home and the chat folder are chats, not projects; temp
+ * folders are scratch.
+ */
+async function recentProjects(n = 3) {
+  let dirs;
+  try {
+    dirs = (await fs.promises.readdir(PROJECTS_DIR, { withFileTypes: true })).filter((d) => d.isDirectory());
+  } catch {
+    return [];
+  }
+  const dated = await Promise.all(dirs.map(async (d) => {
+    const dir = path.join(PROJECTS_DIR, d.name);
+    try { return { dir, at: (await fs.promises.stat(dir)).mtimeMs }; } catch { return null; } // a new session bumps it
+  }));
+  const skip = [os.homedir(), chatDir(), defaultChatDir()];
+  const out = [];
+  for (const { dir } of dated.filter(Boolean).sort((a, b) => b.at - a.at).slice(0, 30)) {
+    if (out.length >= n) break;
+    try {
+      const files = await Promise.all((await fs.promises.readdir(dir))
+        .filter((f) => f.endsWith('.jsonl') && UUID_RE.test(f.slice(0, -6)))
+        .map(async (f) => ({ file: path.join(dir, f), st: await fs.promises.stat(path.join(dir, f)) })));
+      const newest = files.sort((a, b) => b.st.mtimeMs - a.st.mtimeMs)[0];
+      if (!newest) continue;
+      const cwd = transcriptCwd(await readRange(newest.file, 0, Math.min(newest.st.size, HEAD_BYTES)));
+      if (!cwd || !isDir(cwd) || [...skip, ...out].some((x) => samePath(x, cwd))) continue;
+      if (path.resolve(cwd).toLowerCase().startsWith(path.join(os.tmpdir(), path.sep).toLowerCase())) continue; // scratch folders
+      out.push(path.resolve(cwd));
+    } catch { /* skip this folder */ }
+  }
+  return out;
 }
 
 // Model, effort and subagents of one session, for the bar under the terminal. Effort is only in the transcript as
@@ -1258,8 +1295,13 @@ if (!app.requestSingleInstanceLock()) {
     if (p) send('open-path', addProject(p));
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     loadState();
+    if (firstRun) { // a new user starts with their recent Claude Code projects (and so their sessions), the newest open
+      const recent = await recentProjects().catch(() => []);
+      recent.forEach(addProject);
+      if (recent.length) { state.ui.expanded = [recent[0]]; saveState(); }
+    }
     registerIpc();
     if (!IS_MAC) registerToastIdentity();
     // macOS: Electron's default menu binds Cmd+W, Cmd+R and Cmd+=/- (our shortcuts). Keep Quit/Hide and the Edit roles,
