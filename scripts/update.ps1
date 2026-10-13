@@ -46,20 +46,20 @@ Write-Host 'Waiting for Claude Bench to close...'
 if (-not (EndLeftover)) { Finish 'Claude Bench is still running. Close it, then run "git pull" and "npm run package" in the repo folder.' }
 
 Set-Location -LiteralPath $Repo
-$before = git rev-parse HEAD
 
-# npm install rewrites the lockfile, and a dirty one makes the pull abort. It is generated, so drop local changes.
-git checkout -- package-lock.json 2>$null
+# npm install rewrites the lockfile, and a dirty one makes the pull abort. It is generated, so drop local changes
+# (from HEAD, so a staged copy goes too).
+git checkout HEAD -- package-lock.json 2>$null
 
 Write-Host "`n> git pull --ff-only" -ForegroundColor Cyan
 git pull --ff-only
 if ($LASTEXITCODE) { Finish 'git pull failed (see above). Nothing was changed; reopening the app.' }
 
-if (git diff --name-only $before HEAD | Where-Object { $_ -match '^package(-lock)?\.json$' }) {
-    Write-Host "`n> npm install" -ForegroundColor Cyan
-    npm install
-    if ($LASTEXITCODE) { Finish 'npm install failed (see above). Run it in the repo folder, then "npm run package".' }
-}
+# Always, not only when package(-lock).json changed: an npm install that failed in an earlier update would never be
+# retried (HEAD has moved on), and the build would pack stale node_modules. It takes seconds when nothing changed.
+Write-Host "`n> npm install" -ForegroundColor Cyan
+npm install
+if ($LASTEXITCODE) { Finish 'npm install failed (see above). Run it in the repo folder, then "npm run package".' }
 
 Write-Host "`n> npm run package" -ForegroundColor Cyan
 npm run package

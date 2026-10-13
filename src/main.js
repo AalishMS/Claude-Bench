@@ -1012,19 +1012,18 @@ async function applyUpdate() {
   if (app.isPackaged) return startExternalUpdate(dir);
   await shellEnvReady; // macOS: npm on the login shell's PATH
   const env = gitEnv();
-  const before = (await runFull('git', ['-C', dir, 'rev-parse', 'HEAD'], { env })).out;
-  // npm install rewrites the lockfile; a dirty one would make the pull abort. It is generated, so drop local changes.
-  await runFull('git', ['-C', dir, 'checkout', '--', 'package-lock.json'], { env });
+  // npm install rewrites the lockfile; a dirty one would make the pull abort. It is generated, so drop local changes
+  // (from HEAD, so a staged copy goes too).
+  await runFull('git', ['-C', dir, 'checkout', 'HEAD', '--', 'package-lock.json'], { env });
   const pull = await runFull('git', ['-C', dir, 'pull', '--ff-only'], { env, timeout: 60000 });
   if (!pull.ok) return { ok: false, error: pull.err || 'git pull failed.' };
-  const changed = (await runFull('git', ['-C', dir, 'diff', '--name-only', before, 'HEAD'], { env })).out;
-  if (/^package(-lock)?\.json$/m.test(changed)) {
-    const [file, args] = IS_MAC ? ['npm', ['install']] : ['cmd.exe', ['/d', '/c', 'npm', 'install']];
-    const npm = await runFull(file, args, { cwd: dir, timeout: 600000 });
-    if (!npm.ok) {
-      const tail = npm.err.split('\n').slice(-4).join('\n');
-      return { ok: false, error: `Pulled the update, but npm install failed. Close the app and run npm install in ${dir}.\n${tail}` };
-    }
+  // Always, not only when package(-lock).json changed: an npm install that failed in an earlier update would never be
+  // retried (HEAD has moved on). With nothing to change it touches no files, so the running Electron is no obstacle.
+  const [file, args] = IS_MAC ? ['npm', ['install']] : ['cmd.exe', ['/d', '/c', 'npm', 'install']];
+  const npm = await runFull(file, args, { cwd: dir, timeout: 600000 });
+  if (!npm.ok) {
+    const tail = npm.err.split('\n').slice(-4).join('\n');
+    return { ok: false, error: `Pulled the update, but npm install failed. Close the app and run npm install in ${dir}.\n${tail}` };
   }
   forceClose = true;
   app.relaunch();

@@ -25,18 +25,18 @@ fi
 kill -0 "$APP_PID" 2>/dev/null && finish "Claude Bench is still running. Close it, then run git pull and npm run package:mac in the repo folder."
 
 cd "$REPO" || finish "Repo folder not found: $REPO"
-before=$(git rev-parse HEAD)
 
-# npm install rewrites the lockfile, and a dirty one makes the pull abort. It is generated, so drop local changes.
-git checkout -- package-lock.json 2>/dev/null
+# npm install rewrites the lockfile, and a dirty one makes the pull abort. It is generated, so drop local changes
+# (from HEAD, so a staged copy goes too).
+git checkout HEAD -- package-lock.json 2>/dev/null
 
 echo "> git pull --ff-only"
 git pull --ff-only || finish "git pull failed (see above). Nothing was changed; reopening the app."
 
-if git diff --name-only "$before" HEAD | grep -qE '^package(-lock)?\.json$'; then
-  echo "> npm install"
-  npm install || finish "npm install failed (see above). Run it in the repo folder, then npm run package:mac."
-fi
+# Always, not only when package(-lock).json changed: an npm install that failed in an earlier update would never be
+# retried (HEAD has moved on), and the build would pack stale node_modules. It takes seconds when nothing changed.
+echo "> npm install"
+npm install || finish "npm install failed (see above). Run it in the repo folder, then npm run package:mac."
 
 echo "> npm run package:mac"
 npm run package:mac || finish "The build failed (see above). Run npm run package:mac in the repo folder to retry."

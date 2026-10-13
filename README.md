@@ -103,12 +103,24 @@ If something goes wrong:
 When the repo has new commits, a download icon appears next to the app name with a list of what changed. Click
 Update.
 
-- From `npm start`, the app pulls, runs `npm install` if needed, and restarts.
-- From a built `.exe` or `.app`, it closes, pulls, rebuilds, and reopens with your tabs. On Windows you'll see a console
-  window while it works.
+- From `npm start`, the app pulls, runs `npm install`, and restarts.
+- From a built `.exe` or `.app`, it closes, pulls, runs `npm install`, rebuilds, and reopens with your tabs. On Windows
+  you'll see a console window while it works.
 
-If your local edits clash with the update, it stops and shows git's message. To do it by hand: close the app,
-`git pull`, `npm run package`. Projects and settings live outside the repo, so they survive updates.
+If your local edits clash with the update, it stops and shows git's message. To do it by hand, close the app and run
+this in the repo folder:
+
+```
+git checkout HEAD -- package-lock.json
+git pull --ff-only
+npm install
+npm run package          # macOS: npm run package:mac
+```
+
+The first line drops npm's local changes to the lockfile, which would otherwise block the pull. If the Update button
+fails with "Your local changes to the following files would be overwritten by merge: package-lock.json", run these
+steps once by hand; later updates handle it themselves. Projects and settings live outside the repo, so they survive
+updates.
 
 ## Shortcuts
 
