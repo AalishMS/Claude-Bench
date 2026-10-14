@@ -131,11 +131,11 @@
         </div>
         <div class="demo__ctl">
           <div class="switch" id="hero-tabs" role="group" aria-label="Screen of the app"></div>
-          <p class="hero__hint">Click around, open the split, type a prompt.</p>
+          <p class="hero__hint">Click around, drag the split, answer a prompt.</p>
         </div>
       </div>
       <div class="demo__frame">
-        <div class="window window--hero" id="hero-window" data-crop="0,0,1280,700" role="group"
+        <div class="window window--hero" id="hero-window" data-crop="0,0,1280,700" role="group" tabindex="-1"
              aria-label="Live preview of the Stanza app. It is clickable.">
           <div class="window__canvas" id="hero-canvas"></div>
         </div>
@@ -198,7 +198,7 @@
                 </p>
               </div>
               <div class="window tour__inline" data-screen="split-working" data-crop="228,34,1052,641" role="img"
-                   aria-label="Split view: two Claude sessions working and a shell"></div>
+                   aria-label="Split view: two Claude sessions from different projects, both working"></div>
             </article>
 
             <article class="tour__step" data-step="3">
@@ -213,7 +213,7 @@
                   (click to copy the URL), and the images it was given.
                 </p>
               </div>
-              <div class="window window--fade tour__inline" data-screen="main" data-crop="720,0,560,420" role="img"
+              <div class="window window--fade tour__inline" data-screen="panel" data-crop="720,0,560,420" role="img"
                    aria-label="The session panel: context usage, MCP servers, subagents, running servers and images"></div>
             </article>
 
@@ -240,7 +240,7 @@
             <div class="tour__view">
               <div class="window tour__frame" data-step="1" data-screen="new-menu" data-focus="4,38,362,633" aria-hidden="true"></div>
               <div class="window tour__frame" data-step="2" data-screen="split-working" data-focus="232,38,1044,633" aria-hidden="true"></div>
-              <div class="window tour__frame" data-step="3" data-screen="main" data-focus="1046,38,230,633" aria-hidden="true"></div>
+              <div class="window tour__frame" data-step="3" data-screen="panel" data-focus="1046,38,230,633" aria-hidden="true"></div>
               <div class="window tour__frame" data-step="4" data-screen="settings-appearance" data-focus="285,41,700,543" data-editable
                    role="group" aria-label="Settings preview with theme, accent and text size. Its controls work."></div>
               <div class="tour__spot" aria-hidden="true"></div>
@@ -395,6 +395,7 @@ npm start</code></pre>
 <script src="js/util.js"></script>
 <script src="js/model.js"></script>
 <script src="js/mock/icons.js"></script>
+<script src="js/mock/overlays.js"></script>
 <script src="js/mock/sidebar-left.js"></script>
 <script src="js/mock/sidebar-right.js"></script>
 <script src="js/mock/screens/home.js"></script>
@@ -404,6 +405,9 @@ npm start</code></pre>
 <script src="js/mock/screens/settings-shortcuts.js"></script>
 <script src="js/mock/screens/split.js"></script>
 <script src="js/mock/screens/split-working.js"></script>
+<script src="js/mock/screens/terminal.js"></script>
+<script src="js/mock/screens/needs-input.js"></script>
+<script src="js/mock/screens/panel.js"></script>
 <script src="js/mock/build.js"></script>
 <script src="js/page/look.js"></script>
 <script src="js/page/install.js"></script>

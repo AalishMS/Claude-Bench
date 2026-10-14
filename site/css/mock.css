@@ -47,6 +47,9 @@
   --text-amber: #b45309;
   --text-auto-mode: #925415;
   --text-computing: #b91c1c;
+  --text-permission: #4f46e5;
+  --diff-add: rgba(22, 163, 74, 0.16);
+  --diff-del: rgba(220, 38, 38, 0.14);
   --accent-violet: var(--stanza-accent);
   --track-bg: #e4e4e7;
   --menu-bg: #ffffff;
@@ -86,6 +89,9 @@
   --text-amber: #d6b25e;
   --text-auto-mode: #d9822b;
   --text-computing: #ef4444;
+  --text-permission: #b1b9f9;
+  --diff-add: rgba(34, 197, 94, 0.2);
+  --diff-del: rgba(239, 68, 68, 0.2);
   --accent-violet: var(--stanza-accent);
   --track-bg: #262626;
   --menu-bg: #171717;
@@ -142,17 +148,48 @@
 }
 .stanza-root .ascii-table td { padding: 5px 9px; border: 1px solid var(--border-term-rule); vertical-align: top; }
 
+/* The split's divider: a wide invisible grab strip over the panes' border that lights up in the accent. */
+.stanza-root .split-drag {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 9px;
+  margin-left: -5px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.stanza-root .split-drag::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent-violet);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.stanza-root .split-drag:hover::after,
+.stanza-root .split-drag.is-dragging::after { opacity: 1; }
+
 /* Animations: working dots, terminal cursor, the new-session menu, screen changes, the Claude mascot */
 .stanza-root .dot-working-pulse { animation: mock-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 .stanza-root .term-cursor { animation: mock-blink 1.05s steps(1) infinite; }
 .stanza-root .menu-pop { animation: mock-pop 0.14s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 .stanza-root .view-fade { animation: mock-fade 0.18s ease-out; }
 .stanza-root .crab-idle:hover { animation: mock-bob 0.5s ease-in-out infinite; }
+.stanza-root .toast-in { animation: mock-toast 0.32s cubic-bezier(0.16, 1, 0.3, 1) 0.5s backwards; }
+.stanza-root .dialog-fade { animation: mock-fade 0.14s ease-out; }
+.stanza-root .dialog-pop { animation: mock-dialog 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
 
 @keyframes mock-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.92); } }
 @keyframes mock-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
 @keyframes mock-pop { from { opacity: 0; transform: translateY(-4px) scale(0.97); } to { opacity: 1; transform: none; } }
 @keyframes mock-fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@keyframes mock-toast { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes mock-dialog { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
 @keyframes mock-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
 
 @media (prefers-reduced-motion: reduce) {
@@ -160,5 +197,8 @@
   .stanza-root .term-cursor,
   .stanza-root .menu-pop,
   .stanza-root .view-fade,
-  .stanza-root .crab-idle:hover { animation: none; }
+  .stanza-root .crab-idle:hover,
+  .stanza-root .toast-in,
+  .stanza-root .dialog-fade,
+  .stanza-root .dialog-pop { animation: none; }
 }

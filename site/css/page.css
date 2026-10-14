@@ -219,6 +219,7 @@
 .demo__head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 32px; margin-bottom: 20px; }
 .demo__head .eyebrow { margin-bottom: 8px; }
 .demo__ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
+#hero-tabs { flex-wrap: wrap; } /* seven screens: wrap on phones instead of widening the page */
 .demo__frame { width: min(100%, calc((100svh - 240px) * 1280 / 700)); margin-inline: auto; }
 
 /* A window shows the 1280x700 mock scaled to its width. --w/--h (set by js/page/windows.js) give the crop's aspect. */
@@ -241,6 +242,9 @@
     0 40px 120px -40px color-mix(in srgb, var(--stanza-accent) 45%, transparent),
     0 30px 80px -30px rgb(0 0 0 / 80%);
 }
+/* Clicking into the live window focuses it (for the permission prompt's keys); only keyboard focus gets a ring. */
+#hero-window:focus { outline: none; }
+#hero-window:focus-visible { outline: 2px solid var(--accent-mark); outline-offset: 3px; }
 
 /* Sections */
 .section { padding: 140px 0 0; }

@@ -6,6 +6,12 @@
   const state = S.model.state;
   const esc = S.esc;
 
+  /* The split's members, in pane order. They come from two projects, so each row names its project. */
+  const SPLIT_ROWS = [
+    { title: 'File summar...', project: 'Claude Termi...' },
+    { title: 'Project layou...', project: 'gymapp-offli...' },
+  ];
+
   function leftSidebar(screen, ctx) {
     if (ctx.live && !state.leftSidebarOpen) return '';
 
@@ -15,6 +21,9 @@
     const isMainWorking = screen === 'main-working';
     const isSettings = screen.startsWith('settings-');
     const isNewMenu = screen === 'new-menu';
+    const isTerminal = screen === 'terminal';
+    const isInput = screen === 'needs-input';
+    const isPanel = screen === 'panel';
 
     const splitBoxHtml = isSplit ? `
       <div class="mx-2 mb-2 p-1.5 rounded-lg border transition-colors" style="background: var(--bg-split-box); border-color: var(--border-split-box);">
@@ -23,36 +32,27 @@
             ${ICONS.splitCols}
             <span>Split view</span>
           </span>
-          <span class="px-1.5 rounded-full text-[10px] font-semibold" style="background: var(--bg-Split-badge); color: var(--text-secondary);">3</span>
+          <span class="px-1.5 rounded-full text-[10px] font-semibold" style="background: var(--bg-Split-badge); color: var(--text-secondary);">2</span>
         </div>
         <div class="mt-0.5 space-y-0.5">
-          <div data-act="setSplitFocus" data-arg="0" class="flex items-center justify-between px-2 py-1 rounded-md cursor-pointer transition-colors" style="${(!ctx.live || state.focusedSplitPane === 0) ? 'background: var(--bg-active-row);' : ''}">
-            <span class="flex items-center gap-2 min-w-0">
-              <span class="w-1.5 h-1.5 rounded-full shrink-0 ${isSplitWorking ? 'dot-working-pulse' : ''}" style="background: ${isSplitWorking ? 'var(--dot-amber)' : 'var(--dot-green)'};"></span>
-              <span class="font-semibold text-[11.5px] truncate" style="color: var(--text-primary);">File summar...</span>
-            </span>
-            <span class="text-[10.5px] truncate ml-1" style="color: var(--text-muted);">Claude Termi...</span>
-          </div>
-          <div data-act="setSplitFocus" data-arg="1" class="flex items-center justify-between px-2 py-1 rounded-md cursor-pointer stanza-row-hover transition-colors" style="${(ctx.live && state.focusedSplitPane === 1) ? 'background: var(--bg-active-row);' : ''}">
-            <span class="flex items-center gap-2 min-w-0">
-              <span class="w-1.5 h-1.5 rounded-full shrink-0 ${isSplitWorking ? 'dot-working-pulse' : ''}" style="background: ${isSplitWorking ? 'var(--dot-amber)' : 'var(--dot-green)'};"></span>
-              <span class="text-[11.5px] truncate" style="color: var(--text-secondary);">Project layou...</span>
-            </span>
-            <span class="text-[10.5px] truncate ml-1" style="color: var(--text-muted);">gymapp-offli...</span>
-          </div>
-          <div data-act="setSplitFocus" data-arg="2" class="flex items-center justify-between px-2 py-1 rounded-md cursor-pointer stanza-row-hover transition-colors" style="${(ctx.live && state.focusedSplitPane === 2) ? 'background: var(--bg-active-row);' : ''}">
-            <span class="flex items-center gap-2 min-w-0">
-              <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background: var(--dot-green);"></span>
-              <span class="text-[11.5px] truncate" style="color: var(--text-secondary);">PowerShell</span>
-            </span>
-            <span class="text-[10.5px] truncate ml-1" style="color: var(--text-muted);">Claude Termi...</span>
-          </div>
+          ${SPLIT_ROWS.map((row, i) => {
+            const focused = (ctx.live ? state.focusedSplitPane : 0) === i;
+            return `
+              <div data-act="setSplitFocus" data-arg="${i}" class="flex items-center justify-between px-2 py-1 rounded-md cursor-pointer transition-colors ${focused ? '' : 'stanza-row-hover'}" style="${focused ? 'background: var(--bg-active-row);' : ''}">
+                <span class="flex items-center gap-2 min-w-0">
+                  <span class="w-1.5 h-1.5 rounded-full shrink-0 ${isSplitWorking ? 'dot-working-pulse' : ''}" style="background: ${isSplitWorking ? 'var(--dot-amber)' : 'var(--dot-green)'};"></span>
+                  <span class="text-[11.5px] truncate ${focused ? 'font-semibold' : ''}" style="color: ${focused ? 'var(--text-primary)' : 'var(--text-secondary)'};">${row.title}</span>
+                </span>
+                <span class="text-[10.5px] truncate ml-1" style="color: var(--text-muted);">${row.project}</span>
+              </div>
+            `;
+          }).join('')}
         </div>
       </div>
     ` : '';
 
     let claudeItems = [];
-    if (screen === 'home' || screen === 'new-menu') {
+    if (screen === 'home' || isNewMenu || isTerminal || isInput) {
       claudeItems = [
         { title: 'Promo screenshots', time: 'now', target: 'main' },
         { title: 'Logo redesign', time: '4m', target: 'main' },
@@ -82,6 +82,15 @@
         { title: 'merge-footer-update-...', time: '1h', target: 'main' },
         { more: 'Show 92 more' }
       ];
+    } else if (isPanel) {
+      claudeItems = [
+        { title: 'Zoom overlap and upd...', time: 'now', active: true, dot: 'amber', target: 'panel' },
+        { title: 'Promo screenshots', time: '2m', target: 'main' },
+        { title: 'Logo redesign', time: '9m', target: 'main' },
+        { title: 'App name and icon re...', time: '41m', target: 'main' },
+        { title: 'merge-footer-update-...', time: '1h', target: 'main' },
+        { more: 'Show 91 more' }
+      ];
     } else if (isSettings) {
       claudeItems = [
         { title: 'Promo screenshots', time: 'now', target: 'main' },
@@ -103,7 +112,16 @@
     }
 
     let gymItems;
-    if (isMainWorking) {
+    if (isInput) {
+      gymItems = [
+        { title: 'Coach tests after the f...', time: 'now', active: true, dot: 'green', target: 'needs-input' },
+        { title: 'Project structure overv...', time: '11h', target: 'split' },
+        { title: 'Small issues', time: '3d', target: 'main' },
+        { title: 'Settings page accent c...', time: '3d', target: 'settings-appearance' },
+        { title: 'Settings Artificial Intelli...', time: '3d', target: 'main' },
+        { more: 'Show 53 more' }
+      ];
+    } else if (isMainWorking) {
       gymItems = [
         { title: 'Project layout and sou...', time: 'now', dot: 'amber', target: 'split-working' },
         { title: 'Project structure overv...', time: '11h', target: 'split' },
@@ -125,15 +143,25 @@
       ];
     }
 
+    let hotItems = [
+      { title: 'Capabilities and recom...', time: (screen === 'home' || isNewMenu) ? '1d' : '2d', target: 'main' },
+      { title: 'Vibe-coded cat website', time: '2d', target: 'main' }
+    ];
+    if (isTerminal) hotItems.unshift({ title: 'PowerShell', time: '', active: true, dot: 'green', target: 'terminal' });
+
     const query = ctx.live ? state.searchQuery.trim().toLowerCase() : '';
     if (query) {
-      claudeItems = claudeItems.filter(i => i.title && i.title.toLowerCase().includes(query));
-      gymItems = gymItems.filter(i => i.title && i.title.toLowerCase().includes(query));
+      const match = i => i.title && i.title.toLowerCase().includes(query);
+      claudeItems = claudeItems.filter(match);
+      gymItems = gymItems.filter(match);
+      hotItems = hotItems.filter(match);
     }
 
-    const showGitSub = isMain || isMainWorking || isSplit;
-    const claudeFolderDot = isMain ? 'green' : (isMainWorking || isSplitWorking ? 'amber' : (screen === 'split' ? 'green' : null));
-    const gymFolderDot = isMainWorking ? 'amber' : null;
+    const showGitSub = isMain || isMainWorking || isSplit || isPanel;
+    const claudeFolderDot = isMain ? 'green' : (isMainWorking || isSplitWorking || isPanel ? 'amber' : (screen === 'split' ? 'green' : null));
+    const gymFolderDot = isMainWorking || isSplitWorking ? 'amber' : (isInput || screen === 'split' ? 'green' : null);
+    const hotFolderDot = isTerminal ? 'green' : null;
+    const folderDot = dot => dot ? `<span class="w-1.5 h-1.5 rounded-full mr-1 ${dot === 'amber' ? 'dot-working-pulse' : ''}" style="background: ${dot === 'green' ? 'var(--dot-green)' : 'var(--dot-amber)'};"></span>` : '';
 
     const renderItemRow = (item) => {
       if (item.more) {
@@ -224,7 +252,7 @@
                 <span style="color: var(--text-muted);">${ICONS.folder}</span>
                 <span class="font-semibold text-[11.5px]" style="color: var(--text-primary);">Claude Terminal</span>
               </span>
-              ${claudeFolderDot ? `<span class="w-1.5 h-1.5 rounded-full mr-1 ${claudeFolderDot === 'amber' ? 'dot-working-pulse' : ''}" style="background: ${claudeFolderDot === 'green' ? 'var(--dot-green)' : 'var(--dot-amber)'};"></span>` : ''}
+              ${folderDot(claudeFolderDot)}
             </div>
             ${!claudeCollapsed ? `
               ${showGitSub ? `<div class="pl-7 pr-2 pb-0.5 text-[10.5px]" style="color: var(--text-muted);">main · 6 changed</div>` : ''}
@@ -241,9 +269,10 @@
                 <span style="color: var(--text-muted);">${ICONS.folder}</span>
                 <span class="font-semibold text-[11.5px]" style="color: var(--text-primary);">gymapp-offline</span>
               </span>
-              ${gymFolderDot ? `<span class="w-1.5 h-1.5 rounded-full mr-1 dot-working-pulse" style="background: var(--dot-amber);"></span>` : ''}
+              ${folderDot(gymFolderDot)}
             </div>
             ${!gymCollapsed ? `
+              ${isInput ? `<div class="pl-7 pr-2 pb-0.5 text-[10.5px]" style="color: var(--text-muted);">feat/ai-coach · 2 changed</div>` : ''}
               <div class="space-y-[1px] mt-0.5">
                 ${gymItems.map(renderItemRow).join('')}
               </div>
@@ -251,15 +280,17 @@
           </div>
 
           <div class="pt-2">
-            <div data-act="toggleFolder" data-arg="hot" class="px-2 py-1 flex items-center gap-1.5 cursor-pointer stanza-row-hover">
-              <span style="color: var(--text-muted);">${hotCollapsed ? ICONS.chevronRight : ICONS.chevronDown}</span>
-              <span style="color: var(--text-muted);">${ICONS.folder}</span>
-              <span class="font-semibold text-[11.5px]" style="color: var(--text-primary);">Hot garbage</span>
+            <div data-act="toggleFolder" data-arg="hot" class="px-2 py-1 flex items-center justify-between cursor-pointer stanza-row-hover">
+              <span class="flex items-center gap-1.5">
+                <span style="color: var(--text-muted);">${hotCollapsed ? ICONS.chevronRight : ICONS.chevronDown}</span>
+                <span style="color: var(--text-muted);">${ICONS.folder}</span>
+                <span class="font-semibold text-[11.5px]" style="color: var(--text-primary);">Hot garbage</span>
+              </span>
+              ${folderDot(hotFolderDot)}
             </div>
             ${!hotCollapsed ? `
               <div class="space-y-[1px] mt-0.5">
-                ${renderItemRow({ title: 'Capabilities and recom...', time: (screen === 'home' || screen === 'new-menu') ? '1d' : '2d', target: 'main' })}
-                ${renderItemRow({ title: 'Vibe-coded cat website', time: '2d', target: 'main' })}
+                ${hotItems.map(renderItemRow).join('')}
               </div>
             ` : ''}
           </div>

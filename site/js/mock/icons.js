@@ -3,24 +3,9 @@
   'use strict';
 
   S.icons = {
-    stanzaSmall: `
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" class="shrink-0">
-        <rect width="24" height="24" rx="5" fill="#0d0d11" stroke="#27272a" stroke-width="0.6"/>
-        <rect x="5" y="6.5" width="9" height="2" rx="1" fill="#ffffff"/>
-        <rect x="8" y="10" width="11" height="2" rx="1" fill="#ffffff"/>
-        <rect x="5" y="13.5" width="11" height="2" rx="1" fill="#ffffff"/>
-        <rect x="5" y="17" width="6.5" height="2" rx="1" fill="#ffffff"/>
-        <rect x="13.5" y="16.5" width="3" height="3" rx="0.8" fill="#4f6ef7"/>
-      </svg>`,
-    stanzaHero: `
-      <svg width="44" height="44" viewBox="0 0 44 44" fill="none" class="mx-auto mb-3.5 shadow-md rounded-[11px] transition-transform duration-200 hover:scale-105">
-        <rect width="44" height="44" rx="11" fill="#0d0d11"/>
-        <rect x="10" y="12" width="16" height="3.2" rx="1.6" fill="#ffffff"/>
-        <rect x="15" y="18.2" width="19" height="3.2" rx="1.6" fill="#ffffff"/>
-        <rect x="10" y="24.4" width="19" height="3.2" rx="1.6" fill="#ffffff"/>
-        <rect x="10" y="30.6" width="11.5" height="3.2" rx="1.6" fill="#ffffff"/>
-        <rect x="24.5" y="29.8" width="4.8" height="4.8" rx="1.3" fill="#4f6ef7"/>
-      </svg>`,
+    /* The real assets/icon.png, framed like the app does it (src/styles.css: 22% radius, 1px border ring). */
+    stanzaSmall: `<img src="assets/icon.png" width="16" height="16" alt="" draggable="false" class="shrink-0 block" style="border-radius: 22%; box-shadow: 0 0 0 1px var(--border-color);">`,
+    stanzaHero: `<img src="assets/icon.png" width="44" height="44" alt="" draggable="false" class="block mx-auto mb-3.5 transition-transform duration-200 hover:scale-105" style="border-radius: 22%; box-shadow: 0 0 0 1px var(--border-color), 0 4px 10px -2px rgba(0, 0, 0, 0.25);">`,
     sidebarLeft: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>`,
     sidebarRight: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg>`,
     splitCols: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 3v18"/></svg>`,
@@ -42,6 +27,8 @@
     ringMeter: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity="0.22" stroke-width="2.5"/><path d="M12 3 A9 9 0 0 1 17.5 4.8" stroke="var(--accent-violet)" stroke-width="2.5" stroke-linecap="round"/></svg>`,
     palette: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>`,
     keyboard: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>`,
+    check: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+    copy: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`,
     bolt: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
     claudeCrab: `
       <svg width="46" height="36" viewBox="0 0 46 36" fill="none" class="shrink-0 crab-idle">

@@ -15,7 +15,9 @@ css/
 js/                 plain scripts sharing one namespace, window.Stanza (load order is in index.html)
   boot.js           in <head>: picks the visitor's OS
   util.js, model.js namespace, helpers; hero screens, accents and the mock's state
-  mock/             the app's UI as markup (the accent list reads model.js)
+  mock/             the app's UI as markup (the accent list reads model.js): build.js (frame), sidebars,
+                    overlays.js (subagent dialog, image lightbox, "Needs input" toast, and their data), screens/
+                    (one file per screen: session, split, terminal, needs-input, panel, home, settings)
   page/             look (mock theme, accent, text size), install (OS switch, copy), windows (scale/crop),
                     hero (live window), tour (pinned stage), actions (clicks in the mock), ticker,
                     fx (hero mark parallax, nav backdrop, fade-ins)
@@ -30,6 +32,14 @@ tailwind/           config used to generate css/tailwind.css
 geometry; its cursor uses `--accent-mark`). The live window (`#hero-window`) is the `#demo` section after it, sized so
 it fits the viewport whole: clicks inside it carry `data-act` / `data-arg` and `page/actions.js` maps them to state
 changes. Other windows (`data-screen`) are frozen pictures, except the settings controls of `data-editable` ones.
+
+`model.js` lists the screen switch's tabs (`TABS`) and what each screen is (`SCREENS`: kind, status bar, git line,
+model), which `build.js` reads. The live window also takes input: the split's divider drags (`data-drag="split"`,
+saved as `state.splitRatio` on release), the Terminal tab's prompt runs Vite's keys and a few canned PowerShell
+commands (`S.mock.shell` in `screens/terminal.js`), and the permission prompt on Needs input answers to clicks or to
+↑/↓/Enter/Esc while the window has focus (`#hero-window` has `tabindex="-1"`). Picking a tab in the switch replays its
+screen (prompt, toast, dialog reset). All screen images are inline SVG or `assets/icon.png`, so there are still no
+requests.
 
 The tour has two copies of each picture. On wide, tall screens (`min-width: 901px and min-height: 640px`, with JS) the
 section pins a stage: `page/tour.js` turns the scroll position inside `.tour` into the active step (caption, pill with

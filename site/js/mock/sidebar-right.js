@@ -5,15 +5,49 @@
   const ICONS = S.icons;
   const state = S.model.state;
 
+  /* The context tile of each Claude tab (1M window: every model in the mock is a 1M one). */
+  const CONTEXT = {
+    main: ['6%', '62k / 1M'],
+    'main-working': ['14%', '144k / 1M'],
+    'needs-input': ['22%', '221k / 1M'],
+    panel: ['31%', '312k / 1M'],
+  };
+
+  const MCPS = ['claude.ai Claude Docs', 'claude.ai Gmail', 'playwright', 'chrome-devtools', 'supabase'];
+
+  const STATUS_ICON = {
+    running: '<span class="w-1.5 h-1.5 rounded-full shrink-0 dot-working-pulse" style="background: var(--dot-amber);"></span>',
+    done: `<span class="shrink-0 -ml-[2px]" style="color: var(--dot-green);">${ICONS.check}</span>`,
+    idle: '<span class="w-1.5 h-1.5 rounded-full shrink-0" style="background: var(--text-muted);"></span>',
+  };
+
+  /* A collapsible section; key is its state.collapsedRight entry. */
+  function section(ctx, key, title, count, body) {
+    const collapsed = ctx.live && state.collapsedRight[key];
+    return `
+      <div class="px-3.5 py-2.5">
+        <div data-act="toggleRightSection" data-arg="${key}" class="flex items-center justify-between text-[11px] mb-1.5 cursor-pointer">
+          <span class="flex items-center gap-1 font-medium" style="color: var(--text-secondary);">
+            ${collapsed ? ICONS.chevronRight : ICONS.chevronDown}
+            <span>${title}</span>
+          </span>
+          <span class="text-[10.5px]" style="color: var(--text-muted);">${count}</span>
+        </div>
+        ${collapsed ? '' : body}
+      </div>
+    `;
+  }
+
   function rightSidebar(screen, ctx) {
-    if (screen === 'split' || screen === 'split-working') return '';
+    const meta = S.model.screenOf(screen);
+    if (meta.kind === 'split') return ''; // the app hides it while a split pane is narrow (autoRside)
     if (ctx.live && !state.rightSidebarOpen) return '';
 
-    const hasSession = screen === 'main' || screen === 'main-working';
-    const contextPct = screen === 'main-working' ? '14%' : '6%';
-    const contextTokens = screen === 'main-working' ? '144k / 1M' : '62k / 1M';
+    const isClaude = meta.kind === 'claude';
+    const noProject = meta.kind === 'home' || meta.kind === 'settings';
+    const [contextPct, contextTokens] = CONTEXT[screen] || [];
 
-    const contextSection = hasSession ? `
+    const contextSection = isClaude ? `
       <div class="px-3.5 pt-2.5 pb-3 border-b" style="border-color: var(--border-color);">
         <div class="flex items-center justify-between text-[11px]">
           <span class="font-medium" style="color: var(--text-secondary);">Context</span>
@@ -26,98 +60,75 @@
       </div>
     ` : '';
 
-    const mcpSubtext = !hasSession ? `
-      <div class="text-[11px] mb-2" style="color: var(--text-muted);">User-level servers, no project selected.</div>
-    ` : '';
+    const mcpSection = section(ctx, screen === 'panel' ? 'mcpsPanel' : 'mcps', 'MCPs', '5/13', `
+      ${noProject ? `<div class="text-[11px] mb-2" style="color: var(--text-muted);">User-level servers, no project selected.</div>` : ''}
+      <div class="space-y-1.5 mt-1">
+        ${MCPS.map(name => `
+          <div class="flex items-center justify-between text-[11.5px]">
+            <span class="flex items-center gap-2 truncate" style="color: var(--text-primary);">
+              <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background: var(--dot-green);"></span>
+              <span class="truncate">${name}</span>
+            </span>
+            <span class="text-[10.5px] shrink-0 ml-2" style="color: var(--text-connected);">connected</span>
+          </div>
+        `).join('')}
+        <div class="pl-3.5 pt-0.5 text-[11px] cursor-pointer hover:underline" style="color: var(--text-muted);">Show 8 more</div>
+      </div>
+    `);
 
-    const mcps = [
-      'claude.ai Claude Docs',
-      'claude.ai Gmail',
-      'playwright',
-      'chrome-devtools',
-      'supabase'
-    ];
+    const agents = S.mock.subagentRows(screen);
+    const runningCount = agents.filter(agent => agent.status === 'running').length;
+    const subagentSection = section(ctx, 'subagents', 'Subagents', runningCount || agents.length, `
+      <div class="space-y-0.5 -mx-1.5">
+        ${agents.map(agent => `
+          <div data-act="openAgent" data-arg="${agent.id}" class="flex items-center justify-between gap-2 px-1.5 py-[3px] rounded-md text-[11.5px] cursor-pointer stanza-row-hover" title="Show its prompt">
+            <span class="flex items-center gap-2 min-w-0" style="color: var(--text-primary);">
+              ${STATUS_ICON[agent.status]}
+              <span class="truncate">${agent.type}${agent.desc ? `<span style="color: var(--text-muted);"> · ${agent.desc}</span>` : ''}</span>
+            </span>
+            <span class="mono text-[10.5px] shrink-0" style="color: var(--text-muted);">${agent.model.split(' ')[0]}</span>
+          </div>
+        `).join('')}
+      </div>
+    `);
 
-    const subagents = [
-      { name: 'code-reviewer', model: 'Sonnet' },
-      { name: 'code-scout', model: 'Haiku' },
-      { name: 'deep-debugger', model: 'Opus' }
-    ];
+    // The Terminal tab's Vite server, owned by that tab. Click copies its URL, like the app.
+    const viteUp = screen === 'terminal' && (!ctx.live || state.viteRunning);
+    const runningSection = section(ctx, 'running', 'Running', viteUp ? 1 : '', viteUp ? `
+      <div data-act="copyPort" class="-mx-1.5 px-1.5 py-[3px] flex items-center justify-between rounded-md text-[11.5px] cursor-pointer stanza-row-hover" title="Click to copy http://localhost:5173">
+        <span class="flex items-center gap-2" style="color: var(--text-primary);">
+          <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background: var(--dot-green);"></span>
+          <span>vite</span>
+        </span>
+        ${ctx.live && state.copiedPort
+          ? `<span class="flex items-center gap-1 text-[10.5px]" style="color: var(--text-connected);">${ICONS.check} Copied</span>`
+          : `<span class="mono text-[10.5px]" style="color: var(--text-muted);">5173</span>`}
+      </div>
+    ` : `
+      <div class="text-[11px]" style="color: var(--text-muted);">${noProject ? 'Nothing running.' : 'Nothing running in this session.'}</div>
+    `);
 
-    const mcpCollapsed = ctx.live && state.collapsedRight.mcps;
-    const subCollapsed = ctx.live && state.collapsedRight.subagents;
+    const images = screen === 'panel' ? S.mock.images : [];
+    const imageSection = isClaude ? section(ctx, 'images', 'Images', images.length || '', images.length ? `
+      <div class="grid grid-cols-2 gap-1.5">
+        ${images.map(image => `
+          <div data-act="openImage" data-arg="${image.id}" class="relative aspect-[16/10] rounded-md overflow-hidden border cursor-pointer transition-opacity hover:opacity-85" style="border-color: var(--border-card);" title="${image.source}">
+            ${image.html}
+            <span class="absolute left-1 bottom-1 px-1 rounded text-[9.5px] font-semibold" style="background: rgba(0, 0, 0, 0.65); color: #fafafa;">${image.label}</span>
+          </div>
+        `).join('')}
+      </div>
+    ` : `
+      <div class="text-[11px]" style="color: var(--text-muted);">No images in this session.</div>
+    `) : '';
 
     return `
       <aside class="w-[238px] shrink-0 border-l flex flex-col select-none overflow-y-auto" style="background: var(--bg-right); border-color: var(--border-color);">
         ${contextSection}
-
-        <div class="px-3.5 py-2.5">
-          <div data-act="toggleRightSection" data-arg="mcps" class="flex items-center justify-between text-[11px] mb-1.5 cursor-pointer">
-            <span class="flex items-center gap-1 font-medium" style="color: var(--text-secondary);">
-              ${mcpCollapsed ? ICONS.chevronRight : ICONS.chevronDown}
-              <span>MCPs</span>
-            </span>
-            <span class="text-[10.5px]" style="color: var(--text-muted);">5/13</span>
-          </div>
-          ${!mcpCollapsed ? `
-            ${mcpSubtext}
-            <div class="space-y-1.5 mt-1">
-              ${mcps.map(m => `
-                <div class="flex items-center justify-between text-[11.5px]">
-                  <span class="flex items-center gap-2 truncate" style="color: var(--text-primary);">
-                    <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background: var(--dot-green);"></span>
-                    <span class="truncate">${m}</span>
-                  </span>
-                  <span class="text-[10.5px] shrink-0 ml-2" style="color: var(--text-connected);">connected</span>
-                </div>
-              `).join('')}
-              <div class="pl-3.5 pt-0.5 text-[11px] cursor-pointer hover:underline" style="color: var(--text-muted);">Show 8 more</div>
-            </div>
-          ` : ''}
-        </div>
-
-        <div class="px-3.5 py-2.5">
-          <div data-act="toggleRightSection" data-arg="subagents" class="flex items-center justify-between text-[11px] mb-1.5 cursor-pointer">
-            <span class="flex items-center gap-1 font-medium" style="color: var(--text-secondary);">
-              ${subCollapsed ? ICONS.chevronRight : ICONS.chevronDown}
-              <span>Subagents</span>
-            </span>
-            <span class="text-[10.5px]" style="color: var(--text-muted);">3</span>
-          </div>
-          ${!subCollapsed ? `
-            <div class="space-y-1.5">
-              ${subagents.map(s => `
-                <div class="flex items-center justify-between text-[11.5px]">
-                  <span class="flex items-center gap-2 truncate" style="color: var(--text-primary);">
-                    <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background: var(--text-muted);"></span>
-                    <span class="truncate">${s.name}</span>
-                  </span>
-                  <span class="mono text-[10.5px]" style="color: var(--text-muted);">${s.model}</span>
-                </div>
-              `).join('')}
-            </div>
-          ` : ''}
-        </div>
-
-        <div class="px-3.5 py-2.5">
-          <div class="flex items-center gap-1 text-[11px] font-medium mb-1" style="color: var(--text-secondary);">
-            ${ICONS.chevronDown}
-            <span>Running</span>
-          </div>
-          <div class="text-[11px]" style="color: var(--text-muted);">
-            ${hasSession ? 'Nothing running in this session.' : 'Nothing running.'}
-          </div>
-        </div>
-
-        ${hasSession ? `
-          <div class="px-3.5 py-2.5">
-            <div class="flex items-center gap-1 text-[11px] font-medium mb-1" style="color: var(--text-secondary);">
-              ${ICONS.chevronDown}
-              <span>Images</span>
-            </div>
-            <div class="text-[11px]" style="color: var(--text-muted);">No images in this session.</div>
-          </div>
-        ` : ''}
+        ${mcpSection}
+        ${subagentSection}
+        ${runningSection}
+        ${imageSection}
       </aside>
     `;
   }

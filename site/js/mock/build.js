@@ -7,32 +7,34 @@
 
   const center = (screen, theme, ctx) => (S.mock.screens[screen] || (() => ''))(ctx, theme);
 
+  const DOTS = { muted: 'var(--text-muted)', green: 'var(--dot-green)', amber: 'var(--dot-amber)' };
+
+  /* The split button's target: the same screen with or without the split, keeping working/idle. */
+  const SPLIT_TOGGLE = { main: 'split', 'main-working': 'split-working', split: 'main', 'split-working': 'main-working' };
+
+  function gitLine(git) {
+    if (!git) return '';
+    return `
+      <div class="flex items-center gap-2 text-[10.5px]">
+        ${git.none ? `<span style="color: var(--text-faint);">${git.none}</span>` : `
+          <span class="flex items-center gap-1" style="color: var(--text-secondary);">${ICONS.gitBranch} ${git.branch}</span>
+          <span class="flex items-center gap-1" style="color: var(--text-amber);">
+            <span class="w-1.5 h-1.5 rounded-full" style="background: var(--text-amber);"></span>
+            <span>${git.changed}</span>
+          </span>
+        `}
+        <span style="color: var(--text-muted);">${git.path}</span>
+      </div>
+    `;
+  }
+
   function build(screen, theme, ctx) {
-    const hasSession = screen === 'main' || screen === 'main-working' || screen === 'split' || screen === 'split-working';
-    const isSplit = screen === 'split' || screen === 'split-working';
-    const isSettings = screen.startsWith('settings-');
-
-    let footerPct = isSettings ? '9%' : '8%';
-    let footerStatusDot = 'var(--text-muted)';
-    let footerStatusText = '0 running';
-    let isWorkingFooter = false;
-
-    if (screen === 'main') {
-      footerStatusDot = 'var(--dot-green)';
-      footerStatusText = '1 running';
-    } else if (screen === 'main-working' || screen === 'split-working') {
-      footerStatusDot = 'var(--dot-amber)';
-      footerStatusText = '2 working';
-      isWorkingFooter = true;
-    } else if (screen === 'split') {
-      footerStatusDot = 'var(--dot-green)';
-      footerStatusText = '4 running';
-    }
-
-    let sessionsRunningText = '0 sessions running';
-    if (screen === 'main') sessionsRunningText = '1 session running';
-    else if (screen === 'main-working') sessionsRunningText = '3 sessions running';
-    else if (isSplit) sessionsRunningText = '4 sessions running';
+    const meta = S.model.screenOf(screen);
+    const hasSession = meta.kind === 'claude' || meta.kind === 'shell' || meta.kind === 'split';
+    const isSplit = meta.kind === 'split';
+    const isWorking = meta.status[0] === 'amber';
+    // In a split the status bar follows the focused pane's project
+    const git = isSplit && ctx.live && state.focusedSplitPane === 1 ? meta.gitAlt : meta.git;
 
     const showLeft = !ctx.live || state.leftSidebarOpen;
     const showRight = (!ctx.live || state.rightSidebarOpen) && !isSplit;
@@ -51,10 +53,10 @@
           <div class="flex-1 h-full px-2.5 flex items-center justify-end gap-1.5" style="color: var(--text-muted);">
             ${hasSession ? `
               <button data-act="selectView" data-arg="home" class="p-1 rounded hover:opacity-80" title="Close session (Ctrl+W)">${ICONS.close}</button>
-              <button data-act="selectView" data-arg="${isSplit ? (screen === 'split-working' ? 'main-working' : 'main') : (screen === 'main-working' ? 'split-working' : 'split')}" class="p-1 rounded transition" style="${isSplit ? 'background: var(--icon-active-bg); color: var(--text-primary);' : ''}" title="Toggle Split View">${ICONS.splitCols}</button>
+              <button data-act="selectView" data-arg="${SPLIT_TOGGLE[screen] || 'split'}" class="p-1 rounded transition" style="${isSplit ? 'background: var(--icon-active-bg); color: var(--text-primary);' : ''}" title="${isSplit ? 'Unsplit (Ctrl+Shift+\\)' : 'New session beside (Ctrl+Shift+→)'}">${ICONS.splitCols}</button>
             ` : ''}
             <button data-act="selectView" data-arg="main" class="p-1 rounded hover:opacity-80" title="Open in VS Code">${ICONS.vscode}</button>
-            <button data-act="selectView" data-arg="split" class="p-1 rounded hover:opacity-80" title="Open PowerShell">${ICONS.terminal}</button>
+            <button data-act="selectView" data-arg="terminal" class="p-1 rounded transition hover:opacity-80" style="${screen === 'terminal' ? 'background: var(--icon-active-bg); color: var(--text-primary);' : ''}" title="Open PowerShell">${ICONS.terminal}</button>
             <button data-act="selectView" data-arg="home" class="p-1 rounded hover:opacity-80" title="Open project folder">${ICONS.folder}</button>
             <button data-act="toggleRightSidebar" class="p-1 rounded transition" style="${showRight ? 'background: var(--icon-active-bg); color: var(--text-primary);' : ''}" title="Toggle side panel (Ctrl+Shift+S)">${ICONS.sidebarRight}</button>
           </div>
@@ -73,37 +75,28 @@
               <button class="hover:opacity-80" title="Check updates">${ICONS.refresh}</button>
               <span class="flex items-center gap-1" title="Plan usage">
                 ${ICONS.ringMeter}
-                <span class="text-[10.5px]">${footerPct}</span>
+                <span class="text-[10.5px]">${meta.usage || '8%'}</span>
               </span>
             </div>
             <div data-act="toggleWorkingVariant" class="flex items-center gap-1.5 cursor-pointer hover:opacity-80" title="Click to toggle working/idle">
-              <span class="w-1.5 h-1.5 rounded-full ${isWorkingFooter ? 'dot-working-pulse' : ''}" style="background: ${footerStatusDot};"></span>
-              <span class="text-[10.5px]">${footerStatusText}</span>
+              <span class="w-1.5 h-1.5 rounded-full ${isWorking ? 'dot-working-pulse' : ''}" style="background: ${DOTS[meta.status[0]]};"></span>
+              <span class="text-[10.5px]">${meta.status[1]}</span>
             </div>
           </div>
 
           <div class="flex-1 h-full px-3 flex items-center justify-between" style="background: var(--bg-footer-main); color: var(--text-muted);">
-            <div>
-              ${hasSession ? `
-                <div class="flex items-center gap-2 text-[10.5px]">
-                  <span class="flex items-center gap-1" style="color: var(--text-secondary);">${ICONS.gitBranch} main</span>
-                  <span class="flex items-center gap-1" style="color: var(--text-amber);">
-                    <span class="w-1.5 h-1.5 rounded-full" style="background: var(--text-amber);"></span>
-                    <span>6 changed</span>
-                  </span>
-                  <span style="color: var(--text-muted);">E:\\pet_project\\Claude Terminal</span>
-                </div>
-              ` : ''}
-            </div>
+            <div>${gitLine(git)}</div>
             <div class="flex items-center gap-3 text-[10.5px]">
-              ${hasSession ? `
-                <span class="flex items-center gap-1">${ICONS.gear} Haiku 5.5</span>
+              ${meta.model ? `
+                <span class="flex items-center gap-1">${ICONS.gear} ${meta.model}</span>
                 <span class="flex items-center gap-1">${ICONS.bolt} high effort</span>
               ` : ''}
-              <span>${sessionsRunningText}</span>
+              <span>${meta.sessions}</span>
             </div>
           </div>
         </footer>
+
+        ${S.mock.overlays(screen, ctx)}
       </div>
     `;
   }

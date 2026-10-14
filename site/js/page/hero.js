@@ -26,13 +26,23 @@
       input.focus();
       input.setSelectionRange(caret, caret);
     }
+    // Terminals that grew past the window keep their newest line in view
+    S.$$('[data-autoscroll]', canvas).forEach(el => { el.scrollTop = el.scrollHeight; });
     syncTabs();
   }
 
-  function show(screen) {
+  /* replay: start the screen's little story over (the permission prompt, its toast) even if it is already shown. */
+  function show(screen, { replay = false } = {}) {
     const changed = screen !== state.activeView;
     state.activeView = screen;
     state.recordingShortcutId = null;
+    if (changed || replay) {
+      state.dialog = null;
+      state.promptCursor = 0;
+      state.promptAnswer = null;
+      state.toastDismissed = false;
+      state.toastSeen = false;
+    }
     draw({ fade: changed });
   }
 
@@ -46,7 +56,7 @@
 
     tabsEl.addEventListener('click', event => {
       const button = event.target.closest('[data-tab]');
-      if (button) show(TABS[button.dataset.tab].screens[0]);
+      if (button) show(TABS[button.dataset.tab].screens[0], { replay: true });
     });
     tabsEl.addEventListener('keydown', event => {
       const delta = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
