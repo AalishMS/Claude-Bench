@@ -1,0 +1,164 @@
+/* The mock app's own look: its theme tokens, a small reset scoped to it, and its animations.
+   Utility classes inside the mock come from tailwind.css (generated); nothing here touches the page around it. */
+
+/* Scoped reset: what Tailwind's preflight would give the mock, without restyling the page. */
+.stanza-root, .stanza-root *, .stanza-root *::before, .stanza-root *::after {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+  border-color: currentColor;
+}
+.stanza-root h1, .stanza-root h2, .stanza-root p { margin: 0; font-size: inherit; font-weight: inherit; }
+.stanza-root button { margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: inherit; cursor: pointer; }
+.stanza-root input { margin: 0; padding: 0; font: inherit; color: inherit; user-select: text; -webkit-user-select: text; }
+.stanza-root svg { display: block; vertical-align: middle; }
+.stanza-root kbd { font-family: inherit; }
+.stanza-root table { border-collapse: collapse; }
+
+/* Light and dark tokens. The accent follows the page's accent picker. */
+.stanza-root.theme-light {
+  --bg-main: #ffffff;
+  --bg-sidebar: #f8f8f9;
+  --bg-right: #ffffff;
+  --bg-header: #ffffff;
+  --bg-header-sidebar: #f8f8f9;
+  --bg-footer-main: #ffffff;
+  --bg-footer-sidebar: #f8f8f9;
+  --bg-active-row: #e6e6e9;
+  --bg-hover-row: #f1f1f4;
+  --bg-card-active: #f3f3f5;
+  --bg-split-box: color-mix(in srgb, var(--stanza-accent) 7%, #ffffff);
+  --border-split-box: color-mix(in srgb, var(--stanza-accent) 22%, #e4e4e7);
+  --bg-Split-badge: color-mix(in srgb, var(--stanza-accent) 14%, #f4f4f5);
+  --bg-prompt-bar: #f0f0f2;
+  --bg-kbd: #f3f3f5;
+  --border-kbd: #e4e4e7;
+  --border-color: #e6e6e9;
+  --border-card: #e4e4e7;
+  --border-term-rule: #9ca3af;
+  --text-primary: #111827;
+  --text-secondary: #3f3f46;
+  --text-muted: #71717a;
+  --text-faint: #9ca3af;
+  --text-code: #1d4ed8;
+  --text-connected: #16a34a;
+  --dot-green: #16a34a;
+  --dot-amber: #d69e5c;
+  --text-amber: #b45309;
+  --text-auto-mode: #925415;
+  --text-computing: #b91c1c;
+  --accent-violet: var(--stanza-accent);
+  --track-bg: #e4e4e7;
+  --menu-bg: #ffffff;
+  --menu-shadow: 0 12px 28px -5px rgba(0, 0, 0, 0.14), 0 4px 10px -3px rgba(0, 0, 0, 0.07);
+  --icon-active-bg: #e4e4e7;
+  --scrollbar-thumb: #d4d4d8;
+}
+
+.stanza-root.theme-dark {
+  --bg-main: #0a0a0a;
+  --bg-sidebar: #030303;
+  --bg-right: #0a0a0a;
+  --bg-header: #0a0a0a;
+  --bg-header-sidebar: #030303;
+  --bg-footer-main: #0a0a0a;
+  --bg-footer-sidebar: #030303;
+  --bg-active-row: #262626;
+  --bg-hover-row: #141414;
+  --bg-card-active: #171717;
+  --bg-split-box: color-mix(in srgb, var(--stanza-accent) 11%, #030303);
+  --border-split-box: color-mix(in srgb, var(--stanza-accent) 40%, #1d1d1d);
+  --bg-Split-badge: color-mix(in srgb, var(--stanza-accent) 30%, #171717);
+  --bg-prompt-bar: #1c1c1c;
+  --bg-kbd: #171717;
+  --border-kbd: #2a2a2a;
+  --border-color: #1d1d1d;
+  --border-card: #262626;
+  --border-term-rule: #52525b;
+  --text-primary: #fafafa;
+  --text-secondary: #d4d4d8;
+  --text-muted: #a1a1a1;
+  --text-faint: #737373;
+  --text-code: #60a5fa;
+  --text-connected: #7fb77e;
+  --dot-green: #7fb77e;
+  --dot-amber: #d6b25e;
+  --text-amber: #d6b25e;
+  --text-auto-mode: #d9822b;
+  --text-computing: #ef4444;
+  --accent-violet: var(--stanza-accent);
+  --track-bg: #262626;
+  --menu-bg: #171717;
+  --menu-shadow: 0 14px 32px -4px rgba(0, 0, 0, 0.7);
+  --icon-active-bg: #262626;
+  --scrollbar-thumb: #2a2a2a;
+}
+
+.stanza-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-main);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  user-select: none;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+.stanza-root .mono { font-family: var(--font-mono); font-feature-settings: "liga" 0; }
+.stanza-root ::-webkit-scrollbar { width: 6px; height: 6px; }
+.stanza-root ::-webkit-scrollbar-track { background: transparent; }
+.stanza-root ::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--scrollbar-thumb); }
+
+.stanza-root .stanza-row-hover:hover { background: var(--bg-hover-row); }
+
+.stanza-root .kbd-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5px 6px;
+  border: 1px solid var(--border-kbd);
+  border-radius: 4px;
+  background: var(--bg-kbd);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.stanza-root .ascii-table {
+  width: 108%;
+  border-collapse: collapse;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.42;
+}
+.stanza-root .ascii-table td { padding: 5px 9px; border: 1px solid var(--border-term-rule); vertical-align: top; }
+
+/* Animations: working dots, terminal cursor, the new-session menu, screen changes, the Claude mascot */
+.stanza-root .dot-working-pulse { animation: mock-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+.stanza-root .term-cursor { animation: mock-blink 1.05s steps(1) infinite; }
+.stanza-root .menu-pop { animation: mock-pop 0.14s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.stanza-root .view-fade { animation: mock-fade 0.18s ease-out; }
+.stanza-root .crab-idle:hover { animation: mock-bob 0.5s ease-in-out infinite; }
+
+@keyframes mock-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.92); } }
+@keyframes mock-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes mock-pop { from { opacity: 0; transform: translateY(-4px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes mock-fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@keyframes mock-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .stanza-root .dot-working-pulse,
+  .stanza-root .term-cursor,
+  .stanza-root .menu-pop,
+  .stanza-root .view-fade,
+  .stanza-root .crab-idle:hover { animation: none; }
+}
