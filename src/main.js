@@ -247,7 +247,6 @@ const STRIP_ENV = [
   'CLAUDE_CODE_SESSION_ATTENDED', 'CLAUDE_CODE_SSE_PORT',
   'CLAUDE_CODE_MESSAGING_SOCKET', 'CLAUDE_CODE_MESSAGING_TOKEN',
 ];
-const ALLOWED_CLAUDE_ARGS = new Set(['--continue', '--resume']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function send(channel, ...args) {
@@ -284,7 +283,7 @@ function endSession(s) {
   }), 5000).unref();
 }
 
-function createSession({ id, cwd, kind, args, resumeId, fork, cols, rows }) {
+function createSession({ id, cwd, kind, resumeId, fork, cols, rows }) {
   if (sessions.has(id)) return { ok: false, error: 'Session already exists' };
   if (!isDir(cwd)) return { ok: false, error: `Folder not found: ${cwd}` };
   // Only a bare UUID may reach the command line as a session id.
@@ -300,8 +299,9 @@ function createSession({ id, cwd, kind, args, resumeId, fork, cols, rows }) {
   let file;
   let argv;
   if (kind === 'claude') {
-    const extra = resumeId ? ['--resume', resumeId, ...(fork === true ? ['--fork-session'] : [])]
-      : (args || []).filter((a) => ALLOWED_CLAUDE_ARGS.has(a));
+    // No bare --continue: Claude would pick the newest transcript itself, even one already open in another tab, and the
+    // tab couldn't know which (the renderer resolves "Continue last conversation" to a resumeId instead).
+    const extra = resumeId ? ['--resume', resumeId, ...(fork === true ? ['--fork-session'] : [])] : [];
     if (isChatDir(cwd)) extra.push('--add-dir', os.homedir()); // chats may tidy the Desktop, Downloads...
     if (IS_MAC) {
       // Found on the login shell's PATH (shellEnvReady); the tab ends when claude exits, like cmd /c.

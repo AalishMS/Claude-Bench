@@ -495,8 +495,8 @@ function tabLabel(tab) {
   return same.length > 1 ? `${projName(tab.project)} ${n}` : projName(tab.project);
 }
 
-async function openSession(project, { kind = 'claude', args = [], resumeId = null, fork = false, beside = false, below = false, at } = {}) {
-  const tab = createTab(project, { kind, args, resumeId, fork });
+async function openSession(project, { kind = 'claude', resumeId = null, fork = false, beside = false, below = false, at } = {}) {
+  const tab = createTab(project, { kind, resumeId, fork });
   if (beside) addToSplit(tab.id, at, below);
   activate(tab.id);
   fitTab(tab);
@@ -505,8 +505,7 @@ async function openSession(project, { kind = 'claude', args = [], resumeId = nul
 }
 
 /** A tab with its terminal, not started and not shown yet. New tabs go first (newest on top); `append` keeps a restored order. */
-function createTab(project, { kind = 'claude', args = [], resumeId = null, fork = false, append = false } = {}) {
-  if (resumeId) args = ['--resume']; // main builds the real argv from resumeId; this only labels the tab
+function createTab(project, { kind = 'claude', resumeId = null, fork = false, append = false } = {}) {
   fork = !!(fork && resumeId); // --fork-session: resumes a copy under a new session id, matched later like a fresh tab
   const id = crypto.randomUUID();
   const head = h('div', { class: 'pane-head' });
@@ -535,7 +534,7 @@ function createTab(project, { kind = 'claude', args = [], resumeId = null, fork 
   term.open(host);
 
   const tab = {
-    id, project, kind, args, term, fit, host, head, seq: ++tabSeq,
+    id, project, kind, term, fit, host, head, seq: ++tabSeq,
     resumeId, fork, sessionId: fork ? null : resumeId, startedAt: Date.now(), // sessionId of fresh/forked tabs is matched later (assignSessions)
     status: 'starting', exitCode: null, title: '',
     parked: !!resumeId && !fork && !append, // a reopened past session keeps its place until the first prompt (trackTab)
@@ -615,7 +614,7 @@ function saveTabs() {
 async function startPty(tab) {
   if (!tabs.has(tab.id)) return;
   const res = await api.ptyCreate({
-    id: tab.id, cwd: tab.project.path, kind: tab.kind, args: tab.args, resumeId: tab.resumeId, fork: tab.fork,
+    id: tab.id, cwd: tab.project.path, kind: tab.kind, resumeId: tab.resumeId, fork: tab.fork,
     cols: tab.term.cols, rows: tab.term.rows,
   });
   if (!tabs.has(tab.id)) { if (res.ok) api.ptyKill(tab.id); return; } // closed while starting
@@ -871,8 +870,8 @@ function showOverlay(tab, message, isError = false) {
 async function restartTab(tab, mode) {
   tab.host.querySelector('.overlay')?.remove();
   unpark(tab, false);
-  if (mode === 'resume') { tab.resumeId = tab.sessionId; tab.args = ['--resume']; tab.fork = false; }
-  if (mode === 'fresh') { tab.resumeId = null; tab.args = []; tab.fork = false; }
+  if (mode === 'resume') { tab.resumeId = tab.sessionId; tab.fork = false; }
+  if (mode === 'fresh') { tab.resumeId = null; tab.fork = false; }
   tab.term.write(`\r\n\x1b[2m— ${mode === 'resume' ? 'resuming' : 'restarting'} —\x1b[0m\r\n`);
   tab.status = 'starting';
   tab.sessionId = tab.fork ? null : tab.resumeId; // a restarted fresh (or forked) tab is a new Claude session
@@ -1333,7 +1332,7 @@ function paneTitle(t) {
     const shells = tabsOf(t.project.path).filter((x) => x.kind === 'shell').sort((a, b) => a.seq - b.seq);
     return `${SHELL_LABEL}${shells.length > 1 ? ' ' + (shells.indexOf(t) + 1) : ''}`;
   }
-  return t.fork ? 'Forked session' : t.resumeId ? 'Resumed session' : t.args[0] === '--continue' ? 'Continued session' : 'New session';
+  return t.fork ? 'Forked session' : t.resumeId ? 'Resumed session' : 'New session';
 }
 
 /**
@@ -1474,9 +1473,9 @@ const tabOfSession = (id) => [...tabs.values()].find((t) => t.sessionId === id);
 
 
 /**
- * Tabs we started fresh (or with --continue) don't know their transcript yet. Match each to a session of its
- * project: a new session file is created after the tab started, a continued one is the newest touched since.
- * Best effort: a Claude run in an outside terminal in the same folder could be mistaken for ours.
+ * Tabs we started fresh (or forked) don't know their transcript yet. Match each to a session of its project whose
+ * file was created after the tab started. Best effort: a Claude run in an outside terminal in the same folder could be
+ * mistaken for ours.
  */
 function assignSessions() {
   const claimed = new Set([...tabs.values()].map((t) => t.sessionId).filter(Boolean));
@@ -1484,10 +1483,9 @@ function assignSessions() {
     .filter((t) => t.kind === 'claude' && !t.sessionId && t.status === 'running')
     .sort((a, b) => a.startedAt - b.startedAt);
   for (const t of pending) {
-    const free = (sessionsBy[t.project.path] || []).filter((s) => !claimed.has(s.id)); // newest first
-    const pick = t.args[0] === '--continue'
-      ? free.find((s) => s.mtime >= t.startedAt)
-      : free.filter((s) => s.birth >= t.startedAt - 1000).sort((a, b) => a.birth - b.birth)[0];
+    const pick = (sessionsBy[t.project.path] || [])
+      .filter((s) => !claimed.has(s.id) && s.birth >= t.startedAt - 1000)
+      .sort((a, b) => a.birth - b.birth)[0];
     if (pick) { t.sessionId = pick.id; claimed.add(pick.id); }
   }
   // /clear (and /resume inside a tab) switches to a new transcript: follow it, or the right sidebar keeps reading the old
@@ -1509,6 +1507,21 @@ function openSessionRow(project, s) {
   const open = tabOfSession(s.id);
   if (open) activate(open.id);
   else openSession(project, { resumeId: s.id });
+}
+
+/**
+ * "Continue last conversation" = the project's newest transcript (by last message, the sidebar's order), resumed by id
+ * or focused when a tab already shows it. Never `claude --continue`: that picks a transcript on its own, even one
+ * running in another tab (two processes appending to one file), and the tab could only guess which one it got.
+ */
+async function continueLast(project) {
+  const res = await api.listSessions([project.path]); // fresh, not the last poll
+  const next = { ...sessionsBy, ...res };
+  if (JSON.stringify(next) !== JSON.stringify(sessionsBy)) { sessionsBy = next; sessionsVer++; }
+  assignSessions(); // a tab started moments ago may own the newest transcript: focus it, never resume it twice
+  const list = sessionsBy[project.path] || [];
+  if (list[0]) openSessionRow(project, list[0]);
+  else openSession(project);
 }
 
 /** The dot slot of a session row (under the project's badge): empty unless the row's tab is live. */
@@ -1741,7 +1754,7 @@ function toggleMenu(p, anchor) {
   const r = anchor.getBoundingClientRect();
   const top = realProjects()[0]; // Chats is pinned above it
   openMenu(p.path, [
-    menuItem('redo', 'Continue last conversation', () => openSession(p, { args: ['--continue'] })),
+    menuItem('redo', 'Continue last conversation', () => continueLast(p)),
     menuItem('terminal', `Open ${SHELL_LABEL} here`, () => openSession(p, { kind: 'shell' })),
     menuItem('folder', `Show in ${FILES_APP}`, () => api.openFolder(p.path)),
     !p.chat && top && top.path !== p.path ? menuItem('arrowUp', 'Move to top', () => moveProject(p.path, top.path, false)) : null,

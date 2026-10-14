@@ -108,9 +108,12 @@ site/            the product page (static, open index.html or serve the folder; 
   Split groups are saved with them: `state.splits` = `[{ tabs: [index into state.tabs], cx, ry, v }]` (sent in the same
   `saveTabs` payload; also saved at the end of a divider drag, `nudgeSplit`, `unsplit`). `restorableTabs` remaps the indices
   past dropped tabs and keeps groups that still have two members; colors are reassigned.
-- **Sessions**: `cmd.exe /d /c claude [--continue|--resume]` for Claude tabs (resolves `claude.cmd` and
+- **Sessions**: `cmd.exe /d /c claude [--resume <uuid>]` for Claude tabs (resolves `claude.cmd` and
   `claude.exe`), `powershell.exe -NoLogo` for shell tabs.
-  Claude args are allow-listed in main.js. `fork: true` with a `resumeId` adds `--fork-session` (Fork session in a session
+  main builds the Claude argv itself from `resumeId` / `fork` (no args from the renderer). Never a bare `--continue`:
+  Claude picks the newest transcript itself, even one running in another tab (two processes appending to one file), and
+  the tab could only guess which it got (it once took a newer unrelated session's title). "Continue last conversation"
+  (`continueLast`) resumes the project's newest transcript by id, or focuses the tab already showing it. `fork: true` with a `resumeId` adds `--fork-session` (Fork session in a session
   row's right-click menu, `sessionMenu`, and `cloneBeside`): the tab keeps `resumeId` but starts with `sessionId` null and is
   matched to its new transcript by `assignSessions` like a fresh tab; its placeholder says "Forked session".
   Exit shows Restart / Close; a Claude tab with a transcript gets Resume (`--resume <sessionId>`, follows `/clear`) and
@@ -305,7 +308,7 @@ site/            the product page (static, open index.html or serve the folder; 
   using the token in `~/.claude/.credentials.json`, cached 2 min in main, never written; the token lasts hours and only Claude
   Code refreshes it, so with no session running it expires: `refreshLogin` then runs `claude mcp list` in the home folder
   (it refreshes the token; `claude auth status` does not, tested on v2.1.296), at most once per 10 min, also on a 401; a failure blocks requests for its `Retry-After` (429 default 5 min, max 15) and the last good numbers are served as `stale`, because retrying a 429 keeps the limit from clearing), the update button
-  (see "Update"), and tab state. Fresh and `--continue` tabs are matched to their transcript heuristically (`assignSessions`).
+  (see "Update"), and tab state. Fresh and forked tabs are matched to their transcript heuristically (`assignSessions`: the oldest unclaimed file born after the tab started).
   Until a tab's transcript is listed (after the first reply) it shows as an italic "New session" placeholder row;
   PowerShell tabs get a "PowerShell" row. Every open tab has a row (there is no tab strip).
 - **Session info** (right side of the status bar for Claude tabs, `session:info`): model = last reply's model or `/model` output in the transcript tail,
