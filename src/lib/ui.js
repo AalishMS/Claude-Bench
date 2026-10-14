@@ -111,7 +111,87 @@
       .map((m) => ({ m, file: m[0].replace(/(?::\d+){1,2}$/, '') }));
   }
 
-  const helpers = { contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches };
+  // Claude's fullscreen view shows this pill above the prompt only while it is scrolled up: "Jump to bottom" or
+  // "3 new messages", then " (ctrl+End) ↓", " (click) ↓" or ": fn+↓ to scroll" (Claude Code v2.1.299).
+  const PILL_RE = /(?:Jump to bottom|\d+ new messages?)(?: \(|: )/;
+
+  /**
+   * True if Claude's "scrolled up" pill is in these bottom screen lines: in the 2 rows above the prompt box (its
+   * upper `───` border, the second border from the bottom), so a reply or the typed prompt quoting it doesn't count.
+   */
+  function jumpPill(lines) {
+    const top = promptBox(lines);
+    return top > 0 && lines.slice(Math.max(0, top - 2), top).some((l) => PILL_RE.test(l));
+  }
+
+  /** Row of the upper `───` border of Claude's prompt box (the second border from the bottom), or -1. */
+  function promptBox(lines) {
+    let found = 0;
+    for (let i = lines.length - 1; i >= 0; i--) if (lines[i].startsWith('───') && ++found === 2) return i;
+    return -1;
+  }
+
+  /**
+   * How many rows the text moved down from `prev` to `cur` (two snapshots of the same screen area): > 0 = the view
+   * scrolled up. Only non-blank rows count; the shift needs 3+ of them to match and 4x more matches than
+   * mismatches, the smallest such shift wins a tie. null = no match (moved more than a screen, or redrawn).
+   */
+  function lineShift(prev, cur) {
+    const n = Math.min(prev.length, cur.length);
+    let best = null;
+    let bestSame = 0;
+    for (let k = -(n - 3); k <= n - 3; k++) {
+      let same = 0;
+      let diff = 0;
+      for (let i = Math.max(0, -k); i < n && i + k < n; i++) {
+        if (!prev[i].trim()) continue;
+        if (prev[i] === cur[i + k]) same++;
+        else diff++;
+      }
+      if (same < 3 || same < 4 * diff) continue;
+      if (same > bestSame || (same === bestSame && Math.abs(k) < Math.abs(best))) {
+        best = k;
+        bestSame = same;
+      }
+    }
+    return best;
+  }
+
+  /** True if Claude's start banner (logo + "Claude Code v2.1.299") is in these lines: its fullscreen view is at the top. */
+  function claudeBanner(lines) {
+    return lines.some((l) => /[▐▛▜▌▝▘].*Claude Code v\d/.test(l));
+  }
+
+  /**
+   * The wheel report xterm 6 sends for a wheel event in mouse-tracking mode: -1 up, 1 down, 0 none (a small
+   * touchpad delta still adding up). Mirrors CoreMouseService.consumeWheelEvent; `acc.partial` carries the remainder.
+   */
+  function wheelNotch(acc, e, cellH) {
+    if (!e.deltaY || e.shiftKey) return 0;
+    if (e.deltaMode !== 0) return Math.sign(e.deltaY); // lines or pages
+    if (!cellH) return 0;
+    let r = e.deltaY / cellH;
+    if (e.altKey || e.ctrlKey) r *= 5; // xterm's default fastScrollSensitivity
+    if (Math.abs(e.deltaY) < 50) r *= 0.3;
+    acc.partial += r;
+    const n = Math.trunc(acc.partial);
+    acc.partial %= 1;
+    return Math.sign(n);
+  }
+
+  /**
+   * Thumb offset on the alternate screen: `off` wheel notches above the bottom, the top `max` notches up
+   * (0 = not reached yet, then `guess`), `room` = track height minus thumb height. Bottom = `room`.
+   */
+  function altThumbTop(off, max, room, guess) {
+    if (off <= 0) return room;
+    return room * (1 - off / Math.max(off, max || guess));
+  }
+
+  const helpers = {
+    contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches,
+    jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop,
+  };
   if (typeof module === 'object' && module.exports) module.exports = helpers;
   else Object.assign(globalThis, helpers);
 })();

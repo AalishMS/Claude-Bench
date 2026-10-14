@@ -1,7 +1,7 @@
 'use strict';
 
 /* global Terminal, FitAddon, WebLinksAddon, WebglAddon, api */
-/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches -- lib/ui.js */
+/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop -- lib/ui.js */
 
 // ------------------------------------------------------------- helpers ----
 
@@ -743,10 +743,16 @@ function fileLinks(tab) {
 }
 
 // A thin scrollbar of our own (xterm's is hidden). On the normal buffer (shells) it shows the real position.
-// Claude Code's fullscreen UI runs on the alternate screen, which has no scrollback: Claude scrolls its own view,
-// so there the strip forwards wheel input to it and the thumb rests in the middle (it can't know the position).
-const ALT_THUMB = 40;
-const DRAG_STEP = 14; // px of thumb drag per forwarded wheel notch on the alternate screen
+// Claude Code's fullscreen UI runs on the alternate screen, which has no scrollback: Claude scrolls its own view and
+// never reports where it is, so there the strip forwards wheel input to it and measures the position itself.
+// `alt.off` = lines above the bottom, moved by how far the transcript rows shifted between two repaints (`lineShift`;
+// counting wheel steps doesn't work, Claude merges steps that arrive together); 0 once Claude's "Jump to bottom" pill
+// is gone; its start banner on screen = the top, which gives the extent (`alt.max`). Dragging and track clicks set a
+// goal line and steer to it with wheel steps, measuring as Claude moves.
+const ALT_THUMB = 40; // thumb height on the alternate screen until the top has been seen
+const STEER_GAP = 40; // ms between steering steps
+const STEER_RUNS = 4; // steering runs per goal (the first one and corrections)
+const STEER_WAIT = 150; // ms without a wheel step before Claude counts as done moving
 
 /** Forward wheel notches to xterm, which turns them into mouse reports (Claude) or viewport scrolling (shells). */
 function wheelInto(tab, notches) {
@@ -766,13 +772,110 @@ function wireScrollbar(tab) {
   const thumb = h('div', { class: 'vthumb' });
   const bar = h('div', { class: 'vbar' }, thumb);
   host.append(bar);
-  let drag = null; // { y, top, sent }
+  let drag = null; // { y, top, dy }
   let queued = false;
+  // Alternate screen. off/max in lines; snap = transcript rows at the last measure; sent = wheel steps since (the
+  // estimate when a move can't be measured), lpn = lines per step (learned), exact = no estimate since the last end;
+  // seen = the pill has shown in this tab, top = the banner is on screen; wheelAt = time of the last step; goal = line
+  // to steer to, dir = direction of the current steering run (0 = none), runs = runs for this goal.
+  const alt = {
+    off: 0, max: 0, snap: null, sent: 0, lpn: 3, partial: 0, seen: false, top: false, exact: true, wheelAt: 0,
+    goal: null, dir: 0, runs: 0, timer: 0,
+  };
 
+  const screenRows = () => {
+    const buf = term.buffer.active;
+    const out = [];
+    // trimEnd: Claude's redraws leave written spaces at some line ends, which translateToString keeps.
+    for (let i = 0; i < term.rows; i++) out.push(buf.getLine(buf.viewportY + i)?.translateToString(true).trimEnd() ?? '');
+    return out;
+  };
+  // The transcript part: above the prompt box, minus the 2 rows Claude's pill may cover.
+  const transcript = (rows) => {
+    const box = promptBox(rows);
+    return rows.slice(0, Math.max(1, (box > 0 ? box : rows.length - 8) - 2));
+  };
+  const later = (ms) => { clearTimeout(alt.timer); alt.timer = setTimeout(queue, ms); };
+
+  // Every wheel report Claude gets (from the strip or straight on the terminal). The snapshot is taken before
+  // Claude moves, so the first measure after it sees the whole move.
+  host.addEventListener('wheel', (e) => {
+    if (!term.element?.contains(e.target) || term.buffer.active.type !== 'alternate') return;
+    if (term.modes.mouseTrackingMode === 'none') return;
+    const dir = wheelNotch(alt, e, term._core?._renderService?.dimensions?.css?.cell?.height);
+    if (!dir) return;
+    if (e.isTrusted) alt.goal = null; // the user's own wheel wins over steering
+    if (!alt.snap) alt.snap = transcript(screenRows());
+    alt.sent += dir;
+    alt.wheelAt = performance.now();
+    later(STEER_WAIT + 10);
+  }, { capture: true });
+
+  const measure = () => {
+    const rows = screenRows();
+    const cur = transcript(rows);
+    const pill = jumpPill(rows);
+    const settled = performance.now() - alt.wheelAt > STEER_WAIT;
+    let k = 0;
+    if (alt.snap) {
+      k = cur.join('\n') === alt.snap.join('\n') ? 0 : lineShift(alt.snap, cur);
+      if (k === null) { // moved more than a screen (or redrawn): estimate from the steps
+        // No overlap means at least a screen (less the 3 rows lineShift needs), mostly more when spun fast.
+        alt.off -= Math.sign(alt.sent) * Math.max(Math.abs(alt.sent) * alt.lpn, cur.length - 2);
+        alt.exact = false;
+      }
+      else if (k && alt.sent) alt.lpn = Math.min(term.rows, Math.max(1, alt.lpn * 0.7 + 0.3 * Math.abs(k / alt.sent)));
+      if (k) alt.off += k;
+    }
+    alt.snap = cur;
+    if (k !== 0 || settled) alt.sent = 0; // steps not drawn yet stay counted
+    alt.off = Math.max(0, alt.off);
+    if (pill) alt.seen = true;
+    alt.top = pill && claudeBanner(rows.slice(0, 5));
+    // At the top: a measured `off` is the extent; an estimated one doesn't replace a measured extent.
+    if (alt.top) alt.max = alt.off = Math.max(1, alt.exact ? alt.off : Math.max(alt.off, alt.max));
+    else if (pill && alt.off < 1) alt.off = 1;
+    else if (!pill && alt.seen && settled) alt.off = 0; // mid-scroll a half-drawn frame may lack the pill
+    if (!alt.off || alt.top) alt.exact = true; // a known end: measuring from here is exact again
+    if (alt.max && alt.off > alt.max) alt.max = alt.off; // more content since the top was seen
+  };
+
+  // Steering toward alt.goal (drag, track click): a run of single wheel steps STEER_GAP ms apart (Claude merges steps
+  // sent at once and speeds up for steps in a row), counting the steps not drawn yet; once Claude has settled, check
+  // and start a correcting run if needed (at most STEER_RUNS).
+  const steer = () => {
+    if (alt.goal === null) return;
+    const since = performance.now() - alt.wheelAt;
+    if (since < STEER_GAP) return later(STEER_GAP - since + 5);
+    const err = alt.goal - (alt.off - alt.sent * alt.lpn); // still to go once the steps sent are drawn
+    // Stop a run within half a step: the learned (sped-up) step for the first run, one plain step (~3 lines) for
+    // corrections, and none toward the bottom, which goes on until the pill is gone.
+    const tol = alt.goal === 0 ? 0.5 : alt.runs > 1 ? 1.5 : Math.max(1, alt.lpn / 2);
+    if (alt.dir && Math.sign(err) === alt.dir && Math.abs(err) >= tol) {
+      wheelInto(tab, alt.dir > 0 ? -1 : 1);
+      return later(STEER_GAP + 5);
+    }
+    if (since <= STEER_WAIT) return later(STEER_WAIT - since + 10); // let Claude finish before checking
+    const left = alt.goal - alt.off;
+    // The bottom is only reached when Claude's pill is gone; elsewhere within a step (~3 lines) is close enough.
+    const done = alt.goal === 0 ? !alt.off : Math.abs(left) <= 2 || (left > 0 && alt.top);
+    if (done || alt.runs >= STEER_RUNS) {
+      Object.assign(alt, { goal: null, dir: 0, runs: 0 });
+      return;
+    }
+    alt.dir = Math.sign(left);
+    alt.runs++;
+    steer();
+  };
+
+  const altExtent = () => alt.max || term.rows * 8; // assumed until the top has been seen
   const geometry = () => {
     const buf = term.buffer.active;
     const track = bar.clientHeight;
-    if (buf.type === 'alternate') return { alt: true, track, size: ALT_THUMB, top: (track - ALT_THUMB) / 2 };
+    if (buf.type === 'alternate') {
+      const size = alt.max ? Math.max(24, Math.round((track * term.rows) / (term.rows + alt.max))) : ALT_THUMB;
+      return { alt: true, track, size, top: altThumbTop(alt.off, alt.max, track - size, altExtent()) };
+    }
     const max = buf.baseY;
     if (max <= 0) return null;
     const size = Math.max(24, Math.round((track * term.rows) / buf.length));
@@ -781,24 +884,43 @@ function wireScrollbar(tab) {
 
   const sync = () => {
     queued = false;
+    // Off screen (a hidden tab) the bar has no height: skip, the next sync on screen measures from scratch.
+    if (term.buffer.active.type === 'alternate' && bar.clientHeight) {
+      measure();
+      steer();
+    } else alt.snap = null;
     const g = geometry();
     bar.classList.toggle('alt', !!g?.alt);
     bar.classList.toggle('empty', !g);
     if (!g) return;
-    let top = g.top;
-    if (drag && g.alt) top = Math.min(g.track - g.size, Math.max(0, g.top + drag.dy));
+    // While dragging on the alternate screen the thumb follows the pointer; Claude catches up behind it.
+    const top = drag && g.alt ? Math.min(g.track - g.size, Math.max(0, drag.top + drag.dy)) : g.top;
     thumb.style.height = `${g.size}px`;
     thumb.style.transform = `translateY(${Math.round(top)}px)`;
   };
   const queue = () => { if (!queued) { queued = true; requestAnimationFrame(sync); } };
   tab.syncScrollbar = queue;
   term.onScroll(queue);
-  term.onWriteParsed(queue);
-  term.onResize(queue);
-  term.buffer.onBufferChange(queue);
+  term.onWriteParsed(() => {
+    // While the wheel moves Claude, measure every frame it writes: a fast spin moves more than a screen per animation
+    // frame, which can't be matched.
+    if (term.buffer.active.type === 'alternate' && performance.now() - alt.wheelAt < 500 && bar.clientHeight) measure();
+    queue();
+  });
+  term.onResize(() => {
+    Object.assign(alt, { max: 0, snap: null }); // rows rewrap: the measured extent no longer holds
+    queue();
+  });
+  term.buffer.onBufferChange(() => {
+    Object.assign(alt, {
+      off: 0, max: 0, snap: null, sent: 0, seen: false, top: false, exact: true, goal: null, dir: 0, runs: 0,
+    });
+    queue();
+  });
 
   bar.addEventListener('wheel', (e) => {
     e.preventDefault();
+    alt.goal = null;
     wheelInto(tab, Math.sign(e.deltaY) * Math.max(1, Math.round(Math.abs(e.deltaY) / 100)));
   });
 
@@ -810,11 +932,14 @@ function wireScrollbar(tab) {
     const y = e.clientY - bar.getBoundingClientRect().top;
     if (e.target !== thumb) {
       const dir = y < g.top ? -1 : 1;
-      if (g.alt) wheelInto(tab, dir * Math.max(1, term.rows - 3));
-      else term.scrollPages(dir);
+      if (g.alt) {
+        alt.goal = Math.max(0, (alt.goal ?? alt.off) - dir * Math.max(1, term.rows - 3));
+        alt.runs = 0;
+        queue();
+      } else term.scrollPages(dir);
       return;
     }
-    drag = { y: e.clientY, top: g.top, dy: 0, sent: 0 };
+    drag = { y: e.clientY, top: g.top, dy: 0 };
     bar.setPointerCapture(e.pointerId);
     bar.classList.add('dragging');
   });
@@ -823,19 +948,19 @@ function wireScrollbar(tab) {
     drag.dy = e.clientY - drag.y;
     const g = geometry();
     if (!g) return;
+    const room = g.track - g.size;
+    if (room <= 0) return; // a very short pane: nowhere to drag
+    const ratio = Math.min(1, Math.max(0, (drag.top + drag.dy) / room));
     if (g.alt) {
-      const want = Math.trunc(drag.dy / DRAG_STEP);
-      wheelInto(tab, want - drag.sent);
-      drag.sent = want;
-    } else {
-      const ratio = Math.min(1, Math.max(0, (drag.top + drag.dy) / (g.track - g.size)));
-      term.scrollToLine(Math.round(ratio * g.max));
+      alt.goal = Math.round((1 - ratio) * altExtent());
+      alt.runs = 0;
     }
+    else term.scrollToLine(Math.round(ratio * g.max));
     queue();
   });
   const end = () => {
     if (!drag) return;
-    drag = null;
+    drag = null; // steering goes on until Claude reaches the goal
     bar.classList.remove('dragging');
     queue();
   };

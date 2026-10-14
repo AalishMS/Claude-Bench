@@ -110,3 +110,75 @@ test('fileMatches finds paths with line and column, not inside URLs', () => {
   assert.deepEqual(ui.fileMatches('version 1.2.3, no files'), []);
   assert.equal(ui.fileMatches(Array.from({ length: 30 }, (_, i) => `f${i}.js`).join(' ')).length, 20);
 });
+
+test('jumpPill finds Claude\'s scrolled-up pill in its variants (v2.1.299), not plain text', () => {
+  const row = (s) => ['', s, '─────', '> ', '─────'];
+  assert.ok(ui.jumpPill(row('  every file" prompts. The finished sp Jump to bottom (ctrl+End) ↓ inutes.')));
+  assert.ok(ui.jumpPill(row('3 new messages (ctrl+End) ↓')));
+  assert.ok(ui.jumpPill(row('1 new message (click) ↓')));
+  assert.ok(ui.jumpPill(row('Jump to bottom: fn+↓ to scroll')));
+  assert.ok(!ui.jumpPill(row('✻ Churned for 14s · done Tuesday 10:41 PM')));
+  assert.ok(!ui.jumpPill(row('we discussed the Jump to bottom pill')));
+});
+
+test('wheelNotch: one report per line/page event, touchpad pixels add up like xterm', () => {
+  const acc = { partial: 0 };
+  assert.equal(ui.wheelNotch(acc, { deltaY: -1, deltaMode: 1 }, 17), -1);
+  assert.equal(ui.wheelNotch(acc, { deltaY: 3, deltaMode: 2 }, 17), 1);
+  assert.equal(ui.wheelNotch(acc, { deltaY: 100, deltaMode: 0 }, 17), 1); // a mouse notch
+  assert.equal(ui.wheelNotch(acc, { deltaY: 100, deltaMode: 0, shiftKey: true }, 17), 0);
+  const pad = { partial: 0 };
+  const sent = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(() => ui.wheelNotch(pad, { deltaY: 10, deltaMode: 0 }, 17));
+  assert.equal(sent.filter((n) => n === 1).length, 1); // 10 x (10 / 17 * 0.3) = 1.76 lines
+  assert.ok(sent.every((n) => n === 0 || n === 1));
+});
+
+test('altThumbTop: bottom at 0, top once the known top is reached, guess until then', () => {
+  assert.equal(ui.altThumbTop(0, 0, 100, 60), 100);
+  assert.equal(ui.altThumbTop(30, 0, 100, 60), 50);
+  assert.equal(ui.altThumbTop(90, 0, 100, 60), 0);
+  assert.equal(ui.altThumbTop(55, 220, 100, 60), 75);
+  assert.equal(ui.altThumbTop(220, 220, 100, 60), 0);
+});
+
+test('claudeBanner spots the start banner at the top of Claude\'s view', () => {
+  assert.ok(ui.claudeBanner(['', ' ▐▛███▜▌   Claude Code v2.1.299', '▝▜█████▛▘  Haiku 5.5 with high effort']));
+  assert.ok(!ui.claudeBanner(['● The real Stanza app is already running', 'Claude Code is a CLI']));
+});
+
+test('jumpPill only reads the rows above the prompt box, not the prompt or older lines', () => {
+  assert.ok(!ui.jumpPill(['', '', '─────', '> Jump to bottom (ctrl+End) ↓', '─────'])); // typed in the prompt
+  assert.ok(!ui.jumpPill(['Jump to bottom: fn+↓ to scroll', 'reply', 'text', '', '─────', '> ', '─────']));
+  assert.ok(!ui.jumpPill(['Jump to bottom (ctrl+End) ↓'])); // no prompt box on screen
+});
+
+test('claudeBanner needs the logo, not a version quoted in a reply', () => {
+  assert.ok(!ui.claudeBanner(['  (tested on Claude Code v2.1.296)']));
+});
+
+test('wheelNotch: Alt/Ctrl touchpad deltas add up 5x faster, like xterm', () => {
+  const plain = { partial: 0 }, fast = { partial: 0 };
+  const e = { deltaY: 10, deltaMode: 0 };
+  assert.equal(ui.wheelNotch(plain, e, 17), 0);
+  assert.equal(ui.wheelNotch(fast, { ...e, altKey: true }, 17), 0); // 10 / 17 * 5 * 0.3 = 0.88
+  assert.equal(ui.wheelNotch(fast, { ...e, altKey: true }, 17), 1);
+});
+
+test('promptBox finds the upper border of Claude\'s prompt box', () => {
+  assert.equal(ui.promptBox(['text', '────────', 'more', '', '────────', '> ', '────────', '  ⏵⏵ auto mode on']), 4);
+  assert.equal(ui.promptBox(['text', '> ', '────────']), -1);
+});
+
+test('lineShift measures how far the transcript rows moved between two repaints', () => {
+  const doc = Array.from({ length: 60 }, (_, i) => (i % 4 === 3 ? '' : `line ${i}: some reply text`));
+  const at = (top) => doc.slice(top, top + 20); // a 20-row view starting at row `top`
+  assert.equal(ui.lineShift(at(30), at(30)), 0);
+  assert.equal(ui.lineShift(at(30), at(25)), 5); // scrolled up 5
+  assert.equal(ui.lineShift(at(30), at(36)), -6); // scrolled down 6
+  assert.equal(ui.lineShift(at(30), at(14)), 16); // little overlap is enough
+  assert.equal(ui.lineShift(at(40), at(0)), null); // more than a screen
+  const fresh = at(30).map((l) => l && `${l} (redrawn)`);
+  assert.equal(ui.lineShift(at(30), fresh), null);
+  const streaming = [...at(30).slice(0, 18), 'new line', 'another']; // the bottom rows changed, the rest stayed
+  assert.equal(ui.lineShift(at(30), streaming), 0);
+});

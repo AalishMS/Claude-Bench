@@ -325,7 +325,20 @@ site/            the product page (static, open index.html or serve the folder; 
   `<session>/subagents/agent-*.jsonl` + `.meta.json`; finished = the last message line (`agentDone` skips attachments) is a `SubagentHandback` call or its result, a text reply with `stop_reason` `end_turn`/`stop_sequence` (Explore, Plan and /code-review runs never hand back; mid-run text lines have `stop_reason` null, since text and the next tool call are separate lines), or a `[Request interrupted by user]` line (stopped; otherwise it would stay "working" for `AGENT_STALE_MS`). A finished run is followed by a ~100 KB `prompt_snapshot` attachment whose tool list names SubagentHandback, so never text-search the tail for it; with no message line in 64 KB, `readAgent` reads 1 MB.
 - **Scrollbar**: our own `.vbar` replaces xterm's. Normal buffer = real position. Claude's `"tui": "fullscreen"` uses the
   alternate screen (no scrollback), so there the strip forwards synthetic wheel events to `.xterm-screen` (Claude has mouse
-  tracking on) and the thumb rests in the middle.
+  tracking on). Claude never reports its scroll position, so `wireScrollbar` measures it: `alt.off` (lines above the
+  bottom) moves by how far the transcript rows (above the prompt box, `promptBox`) shifted between two repaints
+  (`lineShift`); bottom = Claude's "Jump to bottom" / "N new messages" pill is gone (`jumpPill`, trusted once seen in the
+  tab), top = its logo + "Claude Code vX" banner in the first rows (`claudeBanner`; sets `alt.max`, which also sizes the
+  thumb; `rows * 8` lines assumed until then). Dragging and track clicks set `alt.goal` and steer to it (`steer`: single
+  wheel steps 40 ms apart, then correcting runs once Claude has settled). Learned the hard way: counting wheel steps is
+  useless (Claude merges steps sent together, 10 at once moved ~12 lines, and speeds up for steps in a row, 3 lines a
+  step slowly vs 5-20 fast); Claude's redraws leave written trailing spaces (rows are `trimEnd`ed before comparing);
+  "the screen didn't change" is no top signal (Claude repaints late under a burst). While the wheel moves Claude, every
+  write is measured (not just every animation frame), and a missing pill only counts once the wheel has stopped (a
+  half-drawn frame may lack it, which used to reset `off` mid-scroll). A jump of more than a screen between two writes
+  (a fast flick, 20+ lines a step) can't be measured and is estimated (exact slowly, ~2 % short at 60 ms between steps,
+  ~20-25 % short at 15-30 ms in testing), so an estimated top never replaces a measured `alt.max`; both ends stay exact. If Claude's pill, banner or prompt box changes (checked on
+  v2.1.299), update `PILL_RE` / `claudeBanner` / `promptBox`.
 - **File links** (`fileLinks(tab)`, an xterm `registerLinkProvider` per terminal): `FILE_RE` matches paths with an extension
   and optional `:line[:col]` on one buffer line (`lineCells` maps characters to cells, so wide characters don't shift the
   range; wrapped paths are not links; URL ranges are skipped). Main's `files:resolve` stats them relative to the project
@@ -417,6 +430,9 @@ site/            the product page (static, open index.html or serve the folder; 
   Plan-limit percentages are not on disk; they come from the undocumented usage endpoint (may change).
 - A hidden window (`document.hidden`) skips all polling, so when driving a test instance over CDP, override `document.hidden`
   and call `pollSessions()` yourself. Start the test instance with PowerShell `Start-Process`; a plain bash `&` dies with the tool call.
+  Add `--disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows`:
+  a covered or minimized test window otherwise runs timers ~7x slow and never fires `requestAnimationFrame`, which
+  skews anything timed (scroll probes). `location.reload()` over CDP may not happen (close prompt); relaunch instead.
 - Windows paths and quoting: PowerShell mangles inline JS with quotes. Put test scripts in files.
 - macOS can't be tested here: keep Mac branches plain and fail-soft, and add sample `lsof`/`ps` output to
   `test/parse.test.js` for any parser change. On Mac, node-pty's `spawn-helper` may lose its execute bit after install (`posix_spawnp failed`).
