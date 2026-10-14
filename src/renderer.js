@@ -550,7 +550,8 @@ function createTab(project, { kind = 'claude', resumeId = null, fork = false, ap
 
 /**
  * Reopen the tabs of the last run (main already dropped entries whose project or transcript is gone), in their saved
- * order. The active one starts first; the others follow one by one so a dozen `claude --resume` don't boot at once.
+ * order. Only the tabs that were on screen are saved (see saveTabs). The active one starts first; the others follow one
+ * by one so several `claude --resume` don't boot at once.
  */
 async function restoreTabs(saved) {
   const bySaved = []; // saved index -> tab (null if it couldn't be made), so split groups can name their members
@@ -586,11 +587,16 @@ async function restoreTabs(saved) {
   }
 }
 
-/** Remember the open tabs for the next launch: shells, and Claude tabs once their transcript is known. Diffed, so cheap to call. */
+/**
+ * Remember the tabs on screen (the active tab, or its split group) for the next launch: shells, and Claude tabs once their
+ * transcript is known. The rest stay one click away in the sidebar's session lists. Diffed, so cheap to call.
+ */
 let savedTabsKey = '';
 function saveTabs() {
   const seen = new Set();
+  const shown = visibleIds();
   const list = [...tabs.values()].filter((t) => {
+    if (!shown.includes(t.id)) return false;
     if (t.kind === 'shell') return true;
     if (!t.sessionId || seen.has(t.sessionId)) return false; // a session shown twice (cloneBeside) is reopened once
     seen.add(t.sessionId);

@@ -100,9 +100,11 @@ site/            the product page (static, open index.html or serve the folder; 
   a Claude Bench build was in `dist/` (a marker file survives a failed build for the retry), deletes it, re-runs
   `create-shortcut.ps1` if a "Claude Bench.lnk" starts this clone's old exe (Mac: swaps the `~/Applications` link if it
   points into this `dist/`) and opens the new build unless a Claude Bench still runs anywhere (`oldRunning`). Remove it once no Claude Bench builds are left.
-- **Restore tabs**: `state.tabs` (`{ project, kind, sessionId }` in tab order) + `state.activeTab`, sent by the renderer's
+- **Restore tabs**: only the tabs on screen (`visibleIds()`: the active tab, or its split group) are saved, so sessions
+  left open in the background don't all relaunch; they stay in the sidebar's session lists. `state.tabs`
+  (`{ project, kind, sessionId }` in tab order) + `state.activeTab`, sent by the renderer's
   `saveTabs` (key-diffed; called from `activate`, `closeTab`, `assignSessions`, `toFront`), never on a timer. Claude tabs
-  without a transcript yet are not saved. At launch `state:get` returns `restore` = `restorableTabs()` (drops entries whose
+  without a transcript yet are not saved; quitting on the home screen restores nothing. At launch `state:get` returns `restore` = `restorableTabs()` (drops entries whose
   project is gone or whose `<uuid>.jsonl` is missing, one try/catch per entry); `restoreTabs` creates all tabs, starts the
   active one first, then the panes on screen with it, then the rest 400 ms apart (Claude tabs via `--resume <uuid>`, shells fresh).
   Split groups are saved with them: `state.splits` = `[{ tabs: [index into state.tabs], cx, ry, v }]` (sent in the same

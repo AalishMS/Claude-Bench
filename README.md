@@ -45,7 +45,7 @@ split panes, git status and a list of the dev servers your sessions started.
 - **Chats without a project.** The `+` next to "add project" also offers "No project": a session for questions or
   small chores like tidying the Desktop. Chats run in `Claude Chats` in your home folder (change it in Settings >
   Chats) with your home folder added, and are listed under "Chats" at the top.
-- **Tabs that come back.** Open sessions reopen on the next launch, resumed where they left off.
+- **Tabs that come back.** The session you were in (or its whole split) reopens on the next launch, resumed where it left off. Other open sessions wait in the sidebar, one click away.
 - **Split view.** Up to four sessions on screen at once. Drag a session from the sidebar onto the terminal, or press
   `Ctrl+Shift+→`. You can keep several splits around; each gets its own box in the sidebar.
 - **Git at a glance.** Branch, changed files and ahead/behind for every project.
