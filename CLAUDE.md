@@ -83,6 +83,10 @@ src/index.html   shell + CSP (script-src 'self'); src/styles.css (tokens on :roo
 DESIGN.md        design system (shadcn/ui + tweaks): tokens, component recipes, terminal palette rules
 scripts/         create-shortcut.ps1, update.ps1 / update.sh (rebuild a packaged copy, see "Update"), rename-handoff.js (see "State"),
                  install.ps1 / install.sh (the README's one-line install, see "Install")
+site/            the product page (static, open index.html or serve the folder; not packaged). css/ + js/ in small files, the UI
+                 mockups are js/mock/ (markup drawn live and scaled); css/tailwind.css is generated from their classes, see
+                 site/README.md. No external requests (system fonts, no CDN). Linted as browser scripts like renderer.js.
+                 Copy claims come from the README / this file, not from memory.
 ```
 
 - **State** lives in `%APPDATA%\stanza\state.json`, on macOS in Electron's userData under `~/Library/Application Support` (projects, ui flags incl. sidebar widths, theme, accent and shortcut overrides, window bounds). Written

@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-os="win">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stanza: all your Claude Code sessions in one window</title>
+  <meta name="description" content="Stanza is a free desktop workspace around the real Claude Code CLI: project sidebar, split panes, live git status, and a side panel for context, MCPs, subagents and running servers.">
+  <meta name="theme-color" content="#09090b">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Stanza: all your Claude Code sessions in one window">
+  <meta property="og:description" content="A free desktop app around the real claude CLI. Project sidebar, split panes, git status, and a panel for context, MCPs, subagents and running servers.">
+  <meta property="og:image" content="assets/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="assets/icon.png">
+
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/install.css">
+  <link rel="stylesheet" href="css/demo.css">
+  <link rel="stylesheet" href="css/mock.css">
+  <link rel="stylesheet" href="css/tailwind.css">
+  <script src="js/boot.js"></script>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+    <symbol id="i-restore" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol>
+    <symbol id="i-branch" viewBox="0 0 24 24"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-keyboard" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M8 12h.001M12 12h.001M16 12h.001M7 16h10"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-feather" viewBox="0 0 24 24"><path d="M12.67 19a2 2 0 0 0 1.416-.588l6.154-6.172a6 6 0 0 0-8.49-8.49L5.586 9.914A2 2 0 0 0 5 11.328V18a1 1 0 0 0 1 1z"/><path d="M16 8 2 22"/><path d="M17.5 15H9"/></symbol>
+    <symbol id="i-moon-quiet" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></symbol>
+    <symbol id="i-github" viewBox="0 0 16 16"><path fill="currentColor" stroke="none" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
+  </defs>
+</svg>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="nav">
+  <div class="wrap nav__in">
+    <a class="brand" href="#top" aria-label="Stanza, back to top">
+      <img src="assets/icon.png" width="26" height="26" alt="">
+      <span>Stanza</span>
+    </a>
+    <nav class="nav__links" aria-label="Sections">
+      <a href="#workspace">Workspace</a>
+      <a href="#features">Features</a>
+      <a href="#split">Split view</a>
+      <a href="#appearance">Appearance</a>
+      <a href="#shortcuts">Shortcuts</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="nav__end">
+      <button class="icon-btn" id="theme-btn" type="button" aria-label="Switch to light theme">
+        <svg class="ico ico--sun" aria-hidden="true"><use href="#i-sun"/></svg>
+        <svg class="ico ico--moon" aria-hidden="true"><use href="#i-moon"/></svg>
+        <span id="theme-label">Dark</span>
+      </button>
+      <a class="btn btn--outline btn--sm" href="https://github.com/AalishMS/Stanza" target="_blank" rel="noopener noreferrer">
+        <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-github"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- Hero -->
+  <section class="hero" id="top">
+    <div class="wrap hero__copy">
+      <p class="pill"><span class="pill__dot"></span>Free and open source &middot; Windows first, macOS best effort</p>
+      <h1 class="hero__title">All your Claude Code sessions in one window.</h1>
+      <p class="lead">
+        Stanza is a quiet desktop workspace around the real <code>claude</code> CLI. It adds what a terminal window
+        doesn't have: a project sidebar, split panes, live git status, and a panel for context, MCPs,
+        subagents and running servers.
+      </p>
+
+      <div class="install-box">
+        <div class="seg" role="group" aria-label="Operating system">
+          <button class="seg__btn" type="button" data-os-tab="win" aria-pressed="false">Windows</button>
+          <button class="seg__btn" type="button" data-os-tab="mac" aria-pressed="false">macOS</button>
+          <button class="seg__btn" type="button" data-os-tab="both" aria-pressed="false">Both</button>
+        </div>
+        <div class="cmd-stack">
+          <div class="cmd os-win-only">
+            <span class="cmd__badge">Windows</span>
+            <code class="cmd__text">irm https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/install.ps1 | iex</code>
+            <button class="cmd__copy" type="button" data-copy aria-label="Copy Windows install command">
+              <svg class="ico" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span>
+            </button>
+          </div>
+          <div class="cmd os-mac-only">
+            <span class="cmd__badge">macOS</span>
+            <code class="cmd__text">curl -fsSL https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/install.sh | bash</code>
+            <button class="cmd__copy" type="button" data-copy aria-label="Copy macOS install command">
+              <svg class="ico" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span>
+            </button>
+          </div>
+        </div>
+        <p class="note">
+          Needs <a href="https://nodejs.org" target="_blank" rel="noopener noreferrer">Node.js</a> 20+, git and the
+          <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">claude CLI</a>, logged in.
+          <a href="#install">More install options &darr;</a>
+        </p>
+      </div>
+    </div>
+
+    <!-- Live demo: drawn by js/page/stage.js -->
+    <div class="wrap wrap--wide demo" id="workspace">
+      <div class="demo__bar">
+        <div class="seg seg--scroll" id="stage-tabs" role="group" aria-label="Screens of the app"></div>
+        <div class="demo__tools">
+          <button class="chip-btn" id="stage-working" type="button" hidden>Simulate working</button>
+          <div class="demo__stepper">
+            <button class="step-btn" type="button" data-step="-1" aria-label="Previous screen">&larr;</button>
+            <span class="demo__count" id="stage-count" aria-live="polite">1 / 6</span>
+            <button class="step-btn" type="button" data-step="1" aria-label="Next screen">&rarr;</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo__frame">
+        <div class="window" id="stage" data-crop="0,0,1280,700" role="group" aria-label="Interactive preview of the Stanza app">
+          <div class="window__canvas" id="stage-canvas"></div>
+        </div>
+        <div class="demo__foot">
+          <span class="demo__caption">
+            <span class="demo__dot"></span>
+            <span id="stage-caption">Interactive preview of the Stanza app.</span>
+          </span>
+          <span class="demo__hint">Try the sidebar, the split button, the accent colors, or type a prompt</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Principles -->
+  <section class="principles">
+    <div class="wrap grid4">
+      <div class="principle">
+        <svg class="ico ico--lg" aria-hidden="true"><use href="#i-terminal"/></svg>
+        <h3>The real claude, in a real terminal</h3>
+        <p>Slash commands, permissions, models and speed are exactly what you get in a shell. Nothing is re-implemented.</p>
+      </div>
+      <div class="principle">
+        <svg class="ico ico--lg" aria-hidden="true"><use href="#i-lock"/></svg>
+        <h3>Free, no telemetry</h3>
+        <p>MIT licensed, no account, no analytics, no silent auto-update. Your projects and settings live in one local file.</p>
+      </div>
+      <div class="principle">
+        <svg class="ico ico--lg" aria-hidden="true"><use href="#i-feather"/></svg>
+        <h3>Small and quick to start</h3>
+        <p>Electron, xterm.js and node-pty. No bundler, no framework. Terminal output is batched before it reaches the UI.</p>
+      </div>
+      <div class="principle">
+        <svg class="ico ico--lg" aria-hidden="true"><use href="#i-moon-quiet"/></svg>
+        <h3>Quiet when you're away</h3>
+        <p>Polling pauses while the window is hidden and slows down when it isn't focused. The terminal gets the space.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section" id="features">
+    <div class="wrap">
+      <header class="section__head">
+        <p class="eyebrow">What it adds</p>
+        <h2 class="title">The things a terminal window doesn't have.</h2>
+      </header>
+
+      <div class="row reveal">
+        <div class="row__text">
+          <p class="eyebrow">Projects and sessions</p>
+          <h3>Add a folder once. Start a session in one click.</h3>
+          <p>
+            Every project gets a list of its past sessions, titled by what you did in them. Click one to resume it,
+            or right-click to fork it. On first launch, the three folders you used Claude Code in most recently are
+            already there.
+          </p>
+          <ul class="ticks">
+            <li>Branch, changed files and ahead/behind for every project, at a glance.</li>
+            <li>Folders with the same name are told apart by their parent folder.</li>
+            <li>Jump straight into a project, or open a chat without a project, from the quick menu.</li>
+          </ul>
+          <div class="row__action">
+            <button class="btn btn--outline btn--sm" type="button" data-open-view="new-menu">Try the quick menu in the demo &rarr;</button>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="window window--crop window--narrow window--link" data-screen="new-menu" data-crop="0,0,370,420" data-open-view="new-menu"
+               role="img" title="Open in the interactive demo"
+               aria-label="Sidebar with projects and their past sessions, and the new-session menu offering No project or any project"></div>
+        </div>
+      </div>
+
+      <div class="row row--flip reveal">
+        <div class="row__text">
+          <p class="eyebrow">Session details</p>
+          <h3>Everything about the session, beside the session.</h3>
+          <p>
+            The right panel follows the tab you're in. See how full the context window is, which MCP servers are
+            connected, which subagents exist and what they were asked, and what your session left running.
+          </p>
+          <ul class="ticks">
+            <li>Context usage as a share of the model's window (for example <code>144k / 1M</code>).</li>
+            <li>Subagents with their model and prompt. Click one to read its full instructions.</li>
+            <li>Dev servers started from the session, with their port. Click to copy the URL.</li>
+            <li>Images pasted into or read by the session.</li>
+          </ul>
+          <div class="row__action">
+            <button class="btn btn--outline btn--sm" type="button" data-open-view="main">Inspect the side panel in the demo &rarr;</button>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="window window--crop window--narrow window--link" data-screen="main-working" data-crop="1042,34,238,420" data-open-view="main"
+               role="img" title="Open in the interactive demo"
+               aria-label="The side panel: context usage, connected MCP servers, subagents with their models, running servers and images"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Split view -->
+  <section class="section section--tint" id="split">
+    <div class="wrap wrap--wide">
+      <header class="section__head section__head--center">
+        <p class="eyebrow">Split view</p>
+        <h2 class="title">Up to four sessions on screen at once.</h2>
+        <p class="lead lead--center">
+          Drag a session from the sidebar onto the terminal, or press
+          <kbd data-win="Ctrl+Shift+→" data-mac="⌘⇧→">Ctrl+Shift+→</kbd>
+          for a new one beside the current. Keep several splits around: each gets its own box in the sidebar.
+        </p>
+      </header>
+
+      <div class="window window--link reveal" data-screen="split-working" data-open-view="split-working"
+           role="button" tabindex="0" title="Open in the interactive demo"
+           aria-label="Split view with two Claude sessions working and a PowerShell shell. Open it in the interactive demo."></div>
+
+      <ul class="chips">
+        <li>Mix projects, or a shell, in one split</li>
+        <li>Sizes and layout come back with your tabs</li>
+        <li>Move focus and resize panes from the keyboard</li>
+        <li>Opening a session twice forks it, so two processes never write one transcript</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Smaller features -->
+  <section class="section">
+    <div class="wrap">
+      <header class="section__head">
+        <p class="eyebrow">And the details</p>
+        <h2 class="title">Small things that add up.</h2>
+      </header>
+
+      <div class="grid4 cards">
+        <article class="card reveal">
+          <svg class="ico ico--lg" aria-hidden="true"><use href="#i-restore"/></svg>
+          <h3>Tabs that come back</h3>
+          <p>Close the app and reopen it: your sessions are resumed in the same order and the same splits.</p>
+        </article>
+        <article class="card reveal">
+          <svg class="ico ico--lg" aria-hidden="true"><use href="#i-link"/></svg>
+          <h3>Clickable file paths</h3>
+          <p><kbd data-win="Ctrl" data-mac="⌘">Ctrl</kbd>+click <code>src/main.js:123</code> in Claude's output to open VS Code at that line. Images, videos and PDFs open in their default app.</p>
+        </article>
+        <article class="card reveal">
+          <svg class="ico ico--lg" aria-hidden="true"><use href="#i-bell"/></svg>
+          <h3>Notifications</h3>
+          <p>A background session tells you when it needs input or has finished a longer task. Click it to jump to the tab.</p>
+        </article>
+        <article class="card reveal">
+          <svg class="ico ico--lg" aria-hidden="true"><use href="#i-gauge"/></svg>
+          <h3>Plan limits</h3>
+          <p>Your session and weekly usage sit in the footer ring meter, so you see the ceiling before you hit it.</p>
+        </article>
+        <article class="card reveal">
+          <svg class="ico ico--lg" aria-hidden="true"><use href="#i-chat"/></svg>
+          <h3>Chats without a project</h3>
+          <p>Pick "No project" for questions and small chores like tidying the Desktop. It runs in <code>Claude Chats</code> with your home folder added.</p>
+        </article>
+        <article class="card reveal">
+          <svg class="ico ico--lg" aria-hidden="true"><use href="#i-branch"/></svg>
+          <h3>Fork a session</h3>
+          <p>Right-click a past session to fork it and try another direction without touching the original transcript.</p>
+        </article>
+        <article class="card reveal">
+          <svg class="ico ico--lg" aria-hidden="true"><use href="#i-server"/></svg>
+          <h3>Running servers</h3>
+          <p>Dev servers your session started are listed with their port. Click to copy the URL, Shift+click to open it.</p>
+        </article>
+        <article class="card reveal">
+          <svg class="ico ico--lg" aria-hidden="true"><use href="#i-keyboard"/></svg>
+          <h3>Every shortcut is yours</h3>
+          <p>Defaults stay clear of the keys Claude Code uses. Click any shortcut in settings to record a new one.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Appearance -->
+  <section class="section section--tint" id="appearance">
+    <div class="wrap">
+      <div class="row reveal">
+        <div class="row__text">
+          <p class="eyebrow">Appearance</p>
+          <h3>Dark, light or follow the system.</h3>
+          <p>
+            Pick an accent (blue, violet, teal or rose), the terminal text size and an interface zoom. Try it here:
+            the theme cards and accent buttons in the preview restyle this whole page.
+          </p>
+          <div class="accents" role="group" aria-label="Accent color">
+            <button class="accent-pill" type="button" data-accent="blue">Blue</button>
+            <button class="accent-pill" type="button" data-accent="violet">Violet</button>
+            <button class="accent-pill" type="button" data-accent="teal">Teal</button>
+            <button class="accent-pill" type="button" data-accent="rose">Rose</button>
+          </div>
+          <p class="note">
+            Claude Code picks some of its colors itself. After switching to light, run <code>/theme</code> in a
+            session and pick a light theme there too.
+          </p>
+        </div>
+        <div class="window window--crop" data-screen="settings-appearance" data-crop="250,34,760,540" data-editable
+             role="group" aria-label="Settings preview with theme cards, accent colors and terminal text size. Its controls work."></div>
+      </div>
+
+      <div class="compare-head reveal">
+        <div>
+          <p class="eyebrow">Dark and light</p>
+          <p>Drag the divider, or focus it and use the arrow keys.</p>
+        </div>
+        <div class="seg" role="group" aria-label="Screen to compare">
+          <button class="seg__btn" type="button" data-compare-view="split-working" aria-pressed="true">Split view</button>
+          <button class="seg__btn" type="button" data-compare-view="main" aria-pressed="false">Session</button>
+          <button class="seg__btn" type="button" data-compare-view="home" aria-pressed="false">Projects</button>
+        </div>
+      </div>
+
+      <div class="window compare reveal" id="compare" data-crop="0,0,1280,700"
+           role="slider" tabindex="0" aria-label="Light theme on the right, dark theme on the left"
+           aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+        <div class="window__canvas" id="compare-light"></div>
+        <div class="compare__layer compare__clip" id="compare-clip">
+          <div class="window__canvas" id="compare-dark"></div>
+        </div>
+        <div class="compare__handle" id="compare-handle"><span class="compare__knob" aria-hidden="true">&harr;</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Shortcuts -->
+  <section class="section" id="shortcuts">
+    <div class="wrap">
+      <div class="row row--flip reveal">
+        <div class="row__text">
+          <p class="eyebrow">Shortcuts</p>
+          <h3>Keys that stay out of Claude's way.</h3>
+          <p>
+            Plain <kbd data-win="Ctrl" data-mac="Ctrl">Ctrl</kbd> keys mostly belong to Claude Code, so the defaults avoid them.
+            The deliberate exceptions are new session, sidebar and close session. On a Mac the app uses
+            <kbd data-win="⌘" data-mac="⌘">⌘</kbd> instead and leaves Ctrl entirely to Claude.
+          </p>
+          <table class="keys">
+            <tbody>
+              <tr><th>New / close session</th><td><kbd data-win="Ctrl+T" data-mac="⌘T">Ctrl+T</kbd> <kbd data-win="Ctrl+W" data-mac="⌘W">Ctrl+W</kbd></td></tr>
+              <tr><th>Next / previous session</th><td><kbd data-win="Ctrl+Tab" data-mac="Ctrl+Tab">Ctrl+Tab</kbd> <kbd data-win="Ctrl+Shift+Tab" data-mac="Ctrl+Shift+Tab">Ctrl+Shift+Tab</kbd></td></tr>
+              <tr><th>Jump to a session</th><td><kbd data-win="Alt+1…9" data-mac="⌘1…9">Alt+1…9</kbd></td></tr>
+              <tr><th>New session beside / below</th><td><kbd data-win="Ctrl+Shift+→" data-mac="⌘⇧→">Ctrl+Shift+→</kbd> <kbd data-win="Ctrl+Shift+↓" data-mac="⌘⇧↓">Ctrl+Shift+↓</kbd></td></tr>
+              <tr><th>Move focus between panes</th><td><kbd data-win="Alt+←↑→↓" data-mac="⌘←↑→↓">Alt+←↑→↓</kbd></td></tr>
+              <tr><th>Resize split panes</th><td><kbd data-win="Ctrl+Alt+←↑→↓" data-mac="⌘⌥←↑→↓">Ctrl+Alt+←↑→↓</kbd></td></tr>
+              <tr><th>Left / right sidebar</th><td><kbd data-win="Ctrl+S" data-mac="⌘S">Ctrl+S</kbd> <kbd data-win="Ctrl+Shift+S" data-mac="⌘⇧S">Ctrl+Shift+S</kbd></td></tr>
+              <tr><th>Search sessions</th><td><kbd data-win="Ctrl+Shift+F" data-mac="⌘⇧F">Ctrl+Shift+F</kbd></td></tr>
+              <tr><th>Settings</th><td><kbd data-win="Ctrl+," data-mac="⌘,">Ctrl+,</kbd></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="window window--crop" data-screen="settings-shortcuts" data-crop="250,34,760,640" data-editable
+             role="group" aria-label="Settings preview listing every shortcut. Click a row to try recording a new one."></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install -->
+  <section class="section section--tint" id="install">
+    <div class="wrap wrap--narrow">
+      <header class="section__head section__head--center">
+        <p class="eyebrow">Install</p>
+        <h2 class="title">One line, then it's an app.</h2>
+        <p class="lead lead--center">
+          It clones the repo, builds the app and opens it. Running the line again updates that copy.
+        </p>
+      </header>
+
+      <div class="install-box install-box--big">
+        <div class="seg" role="group" aria-label="Operating system">
+          <button class="seg__btn" type="button" data-os-tab="win" aria-pressed="false">Windows</button>
+          <button class="seg__btn" type="button" data-os-tab="mac" aria-pressed="false">macOS</button>
+          <button class="seg__btn" type="button" data-os-tab="both" aria-pressed="false">Both</button>
+        </div>
+        <div class="cmd-stack">
+          <div class="cmd os-win-only">
+            <span class="cmd__badge">Windows</span>
+            <code class="cmd__text">irm https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/install.ps1 | iex</code>
+            <button class="cmd__copy" type="button" data-copy aria-label="Copy Windows install command">
+              <svg class="ico" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span>
+            </button>
+          </div>
+          <div class="cmd os-mac-only">
+            <span class="cmd__badge">macOS</span>
+            <code class="cmd__text">curl -fsSL https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/install.sh | bash</code>
+            <button class="cmd__copy" type="button" data-copy aria-label="Copy macOS install command">
+              <svg class="ico" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span>
+            </button>
+          </div>
+        </div>
+        <p class="note os-win-only">Run it in PowerShell. Installs to <code>%LOCALAPPDATA%\Programs\stanza</code> with Desktop and Start menu shortcuts.</p>
+        <p class="note os-mac-only">Run it in Terminal. Installs to <code>~/.stanza</code> with a link in <code>~/Applications</code>. Install git first with <code>xcode-select --install</code>.</p>
+      </div>
+
+      <div class="grid3 steps">
+        <div class="step">
+          <span class="step__n">1</span>
+          <h3>You need</h3>
+          <p><a href="https://nodejs.org" target="_blank" rel="noopener noreferrer">Node.js</a> 20 or newer, git, and the <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">claude CLI</a> installed and logged in.</p>
+        </div>
+        <div class="step">
+          <span class="step__n">2</span>
+          <h3>It does</h3>
+          <p>Clones to a normal git folder, runs <code>npm install</code>, builds the app and starts it. Set <code>STANZA_DIR</code> first to pick another folder.</p>
+        </div>
+        <div class="step">
+          <span class="step__n">3</span>
+          <h3>Updating</h3>
+          <p>When the repo has new commits, a download icon appears in the app with a list of what changed. Click Update; it rebuilds and reopens with your tabs.</p>
+        </div>
+      </div>
+
+      <details class="more">
+        <summary>Prefer to do it by hand?</summary>
+        <div class="more__body">
+          <div class="cmd cmd--block"><pre><code>git clone https://github.com/AalishMS/Stanza.git
+cd Stanza
+npm install
+npm start</code></pre></div>
+          <p>
+            To use it as a normal app, build it and (on Windows) add shortcuts with <code>npm run package</code> and
+            <code>npm run shortcut</code>. On a Mac, <code>npm run package:mac</code> builds an unsigned
+            <code>Stanza.app</code> for your own machine. <code>Stanza.exe C:\some\folder</code> adds that folder as a
+            project and opens a session in it.
+          </p>
+        </div>
+      </details>
+
+      <p class="note note--center os-mac-only">
+        macOS works but isn't tested by the author. If you try it and something breaks, please
+        <a href="https://github.com/AalishMS/Stanza/issues" target="_blank" rel="noopener noreferrer">open an issue</a>.
+      </p>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section" id="faq">
+    <div class="wrap wrap--narrow">
+      <header class="section__head section__head--center">
+        <p class="eyebrow">FAQ</p>
+        <h2 class="title">Questions people ask first.</h2>
+      </header>
+
+      <div class="faq">
+        <details>
+          <summary>Does Stanza replace Claude Code?</summary>
+          <p>No. Every tab runs the actual <code>claude</code> CLI, so slash commands, permissions and model switching behave exactly as in a shell. Stanza only adds a project sidebar, tabs, split panes, git status and a panel of session details around it.</p>
+        </details>
+        <details>
+          <summary>Is it free? What does it send over the network?</summary>
+          <p>It's free, MIT licensed, with no account and no telemetry. The only network calls are a <code>git fetch</code> of your clone to check for updates, and, for the plan-limit meter, a request to Anthropic's usage endpoint using Claude Code's own login token. The token is read, never written.</p>
+        </details>
+        <details>
+          <summary>Will my existing projects and sessions show up?</summary>
+          <p>Yes. Stanza reads Claude Code's own transcripts under <code>~/.claude/projects</code> (read-only) and lists them under each project by title. On first launch it also adds the three folders you used Claude Code in most recently.</p>
+        </details>
+        <details>
+          <summary>Does it work on macOS?</summary>
+          <p>It's built Windows first, and every change is written with a Mac path alongside. It works on a Mac, but the author hasn't been able to test it there, so expect the odd rough edge. Reports are welcome.</p>
+        </details>
+        <details>
+          <summary>How do I uninstall it?</summary>
+          <p>Delete the install folder and the shortcuts (or the <code>~/Applications</code> link on macOS). Your projects and settings live outside the repo, in <code>%APPDATA%\stanza</code> on Windows or <code>~/Library/Application Support</code> on macOS, so remove those too if you want a clean slate.</p>
+        </details>
+        <details>
+          <summary>Why do some colors look off after switching to the light theme?</summary>
+          <p>Claude Code picks some of its own colors. Run <code>/theme</code> in a session and choose a light theme there as well.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final call to action -->
+  <section class="cta section--tint">
+    <div class="wrap">
+      <h2 class="title">Give your sessions a home.</h2>
+      <p class="lead lead--center">Free, open source, and one line to try.</p>
+      <div class="cta__btns">
+        <a class="btn btn--primary" href="#install">
+          <span>Install Stanza</span>
+          <svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg>
+        </a>
+        <a class="btn btn--outline" href="https://github.com/AalishMS/Stanza" target="_blank" rel="noopener noreferrer">
+          <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-github"/></svg>
+          <span>Star on GitHub</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot__in">
+    <a class="brand" href="#top"><img src="assets/icon.png" width="22" height="22" alt=""><span>Stanza</span></a>
+    <p>A desktop wrapper for the real Claude Code CLI. MIT licensed. Not affiliated with Anthropic.</p>
+    <nav aria-label="Links">
+      <a href="https://github.com/AalishMS/Stanza" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://github.com/AalishMS/Stanza/issues" target="_blank" rel="noopener noreferrer">Issues</a>
+      <a href="https://github.com/AalishMS/Stanza/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">License</a>
+    </nav>
+  </div>
+</footer>
+
+<!-- Order matters: each script uses what the ones above it put on window.Stanza. -->
+<script src="js/util.js"></script>
+<script src="js/model.js"></script>
+<script src="js/mock/icons.js"></script>
+<script src="js/mock/sidebar-left.js"></script>
+<script src="js/mock/sidebar-right.js"></script>
+<script src="js/mock/screens/home.js"></script>
+<script src="js/mock/screens/session.js"></script>
+<script src="js/mock/screens/session-working.js"></script>
+<script src="js/mock/screens/settings-appearance.js"></script>
+<script src="js/mock/screens/settings-shortcuts.js"></script>
+<script src="js/mock/screens/split.js"></script>
+<script src="js/mock/screens/split-working.js"></script>
+<script src="js/mock/build.js"></script>
+<script src="js/page/appearance.js"></script>
+<script src="js/page/os.js"></script>
+<script src="js/page/copy.js"></script>
+<script src="js/page/windows.js"></script>
+<script src="js/page/stage.js"></script>
+<script src="js/page/compare.js"></script>
+<script src="js/page/actions.js"></script>
+<script src="js/page/ticker.js"></script>
+<script src="js/page/scroll.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

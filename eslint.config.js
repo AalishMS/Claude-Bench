@@ -15,12 +15,13 @@ module.exports = [
   },
   {
     files: ['**/*.js'],
-    ignores: ['src/renderer.js', 'src/lib/ui.js'], // globals merge across blocks: keep Node's out of the sandboxed renderer
+    ignores: ['src/renderer.js', 'src/lib/ui.js', 'site/js/**/*.js'], // globals merge across blocks: keep Node's out of the sandboxed renderer
     languageOptions: { sourceType: 'commonjs', globals: globals.node },
   },
   {
     // Plain browser scripts loaded with <script> tags; they share one global scope (see index.html).
-    files: ['src/renderer.js', 'src/lib/ui.js'],
+    // site/js is the product page's own set of them (one namespace, window.Stanza).
+    files: ['src/renderer.js', 'src/lib/ui.js', 'site/js/**/*.js'],
     languageOptions: { sourceType: 'script', globals: globals.browser },
   },
   {

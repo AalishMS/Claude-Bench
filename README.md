@@ -201,6 +201,7 @@ Electron, xterm.js and node-pty, with no bundler or framework.
 - `src/renderer.js`, `index.html` and `styles.css` are the UI
 - `src/preload.js` is the bridge between them
 - `scripts/` has the shortcut creator and update helpers
+- `site/` is the product page: plain HTML, CSS and JS, no build step (open `site/index.html`)
 - `assets/` has the logo: `icon-source.png` is the master, the rest are derived from it
 
 State is saved in `%APPDATA%\stanza` on Windows and `~/Library/Application Support` on macOS.

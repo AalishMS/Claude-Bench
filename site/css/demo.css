@@ -1,0 +1,115 @@
+/* Everything that frames the mock: scaled windows, the live demo bar, the "stage" behind a cropped panel,
+   the accent picker and the dark/light comparison. The mock's own look is in mock.css. */
+
+/* A window shows the 1280x700 mock scaled to its width. --w/--h (set by js/page/windows.js) give the crop's aspect. */
+.window {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--w, 1280) / var(--h, 700);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.window__canvas { position: absolute; top: 0; left: 0; width: 1280px; height: 700px; transform-origin: 0 0; }
+.window[data-screen]:not([data-editable]) .window__canvas { pointer-events: none; }
+.window--crop { box-shadow: 0 24px 60px -28px rgba(0, 0, 0, 0.55); }
+[data-theme="light"] .window--crop { box-shadow: 0 24px 60px -28px rgba(24, 24, 40, 0.25); }
+.window--narrow { max-width: 340px; }
+.window--link { cursor: pointer; }
+.window--link:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+
+.stage {
+  display: grid;
+  place-items: center;
+  padding: 36px 24px;
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
+  background: radial-gradient(80% 70% at 50% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 75%), var(--bg-tint);
+}
+
+/* The live demo in the hero */
+.demo { margin-top: 40px; }
+.demo__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.demo__tools { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.demo__stepper { display: flex; align-items: center; gap: 4px; color: var(--faint); font-family: var(--font-mono); font-size: 12px; }
+.demo__count { width: 40px; text-align: center; }
+.demo__frame { overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: var(--shadow), 0 30px 120px -50px color-mix(in srgb, var(--accent) 50%, transparent); }
+.demo__frame .window { border: 0; border-radius: 0; box-shadow: none; }
+.demo__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border); background: var(--bg-tint); color: var(--muted); font-size: 12px; }
+.demo__caption { display: flex; align-items: center; gap: 8px; }
+.demo__dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: demo-pulse 2s ease-in-out infinite; }
+.demo__hint { color: var(--faint); font-family: var(--font-mono); font-size: 11px; }
+
+.chip-btn,
+.step-btn {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--fg-2);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.chip-btn { padding: 4px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 500; }
+.step-btn { padding: 3px 8px; border-radius: 6px; color: var(--muted); font-size: 12px; }
+.chip-btn:hover, .step-btn:hover { border-color: var(--faint); color: var(--fg); }
+
+/* Accent picker beside the Appearance preview */
+.accents { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.accent-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.accent-pill::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--swatch); }
+.accent-pill:hover { border-color: var(--faint); }
+.accent-pill[aria-pressed="true"] {
+  border-color: var(--swatch);
+  background: color-mix(in srgb, var(--swatch) 14%, var(--card));
+}
+
+/* Dark / light comparison */
+.compare-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 80px 0 12px; }
+.compare-head .eyebrow { margin-bottom: 2px; }
+.compare-head p { color: var(--muted); font-size: 14px; }
+.compare { cursor: ew-resize; touch-action: pan-y; user-select: none; }
+.compare__layer { position: absolute; inset: 0; pointer-events: none; }
+.compare .window__canvas { pointer-events: none; }
+.compare__clip { overflow: hidden; clip-path: inset(0 50% 0 0); }
+.compare__handle { position: absolute; top: 0; bottom: 0; left: 50%; z-index: 2; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }
+.compare__knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.compare:focus-visible .compare__knob { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@keyframes demo-pulse { 50% { opacity: 0.4; } }
+
+@media (max-width: 640px) {
+  .demo__hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .demo__dot { animation: none; }
+}
