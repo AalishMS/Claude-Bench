@@ -41,7 +41,7 @@ no Electron, no node-pty), so keep `src/lib/` and the tests free of both. Test p
   Terminal output is coalesced (6 ms) before IPC. Git/port polling skip overlapping runs. Only re-render DOM
   when data actually changed (`lastSidebarKey`, `JSON.stringify` diffs).
 - **Terminal first.** The terminal gets the space and the focus. Chrome around it stays quiet.
-- **Don't fight Claude Code.** Our shortcuts mostly avoid keys it uses (`Ctrl+B/W/J`...); `Ctrl+T` (new session), `Ctrl+S` (sidebar) and `Ctrl+W` (close session; costs Claude's delete-word) are deliberate exceptions. The defaults are `Ctrl+T`, `Ctrl+S`, `Ctrl+W` (also `Ctrl+Shift+W`), `Ctrl+Shift+S` (servers),
+- **Don't fight Claude Code.** Our shortcuts mostly avoid keys it uses (`Ctrl+B/W/J`...); `Ctrl+T` (new session), `Ctrl+S` (sidebar), `Ctrl+W` (close session; costs Claude's delete-word) and `Ctrl+K` (search sessions; costs Claude's kill-to-end-of-line) are deliberate exceptions. The defaults are `Ctrl+T`, `Ctrl+S`, `Ctrl+W` (also `Ctrl+Shift+W`), `Ctrl+K` (also `Ctrl+Shift+F`), `Ctrl+Shift+S` (servers),
   `Ctrl+Tab`, `Alt+1..9`, `Ctrl+,` (settings), and for split view `Ctrl+Shift+→` (new session beside), `Ctrl+Shift+↓` / `Ctrl+Shift+↑` (new session below), `Ctrl+Shift+\` (unsplit),
   `Alt+arrows` (move pane focus) and `Ctrl+Alt+arrows` (move the divider), `Ctrl+=` / `Ctrl+-` / `Ctrl+0` (terminal text size while a terminal has focus, else window zoom). The two arrow shortcuts only act while split; otherwise the keys reach the terminal.
   On macOS the same shortcuts use Cmd (`⌘1..9` / `⌘arrows` for `Alt+1..9` / `Alt+arrows`), so Ctrl stays entirely Claude's; `Ctrl+Tab` stays.

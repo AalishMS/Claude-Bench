@@ -130,7 +130,7 @@ const SHORTCUTS = [
     pattern: 'Arrows', keys: [`${M}+Alt+Arrows`], run: (dir) => nudgeSplit(dir) },
   { id: 'toggleSidebar', group: 'Window', label: 'Toggle sidebar', keys: [`${M}+KeyS`, `${M}+Shift+KeyB`], run: () => setSidebar(!ui.sidebar) },
   { id: 'toggleRside', group: 'Window', label: 'Toggle right sidebar', keys: [`${M}+Shift+KeyS`], run: () => setServers(!rsideShown()) },
-  { id: 'search', group: 'Window', label: 'Search sessions', keys: [`${M}+Shift+KeyF`],
+  { id: 'search', group: 'Window', label: 'Search sessions', keys: [`${M}+KeyK`, `${M}+Shift+KeyF`],
     run: () => { setSidebar(true); $('#session-search').focus(); $('#session-search').select(); } },
   { id: 'settings', group: 'Window', label: 'Settings', keys: [`${M}+Comma`], run: () => toggleSettings() },
   { id: 'zoomIn', group: 'Zoom', label: 'Zoom in', hint: ZOOM_HINT, keys: [`${M}+Equal`, `${M}+NumpadAdd`],
@@ -2250,6 +2250,7 @@ function keysChanged() {
 function applyKeyTitles() {
   $('#toggle-sidebar').title = tip('Toggle sidebar', 'toggleSidebar');
   $('.search').title = tip('Search sessions', 'search');
+  $('#search-key').textContent = keyText('search');
   $('#new-tab').title = tip('New session or chat', 'newSession');
   $('#close-tab').title = tip('Close session', 'closeSession');
   $('#toggle-rside').title = tip('Context, MCPs, subagents and running servers', 'toggleRside');
@@ -3120,18 +3121,26 @@ function wireGlobalEvents() {
 
   const search = $('#session-search');
   let searchTimer = null;
+  const clearSearch = () => {
+    clearTimeout(searchTimer);
+    search.value = '';
+    query = '';
+    $('.search').classList.remove('has-text');
+    renderSidebar(true);
+  };
   search.addEventListener('input', () => {
+    $('.search').classList.toggle('has-text', !!search.value);
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => { query = search.value; renderSidebar(true); }, 80);
   });
   search.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    search.value = '';
-    query = '';
-    renderSidebar(true);
+    clearSearch();
     search.blur();
     activeTab()?.term.focus();
   });
+  $('#search-clear').addEventListener('mousedown', (e) => e.preventDefault()); // keep focus in the input
+  $('#search-clear').addEventListener('click', (e) => { e.preventDefault(); clearSearch(); search.focus(); });
 
   $('#new-tab').addEventListener('click', (e) => newSessionMenu(e.currentTarget));
   $('#open-code').addEventListener('click', () => projectAction((p) => api.openInCode(p.path)));
@@ -3162,6 +3171,7 @@ async function init() {
   $('#open-folder').append(ico('folder'));
   $('#toggle-rside').append(ico('panelRight'));
   $('#search-icon').append(ico('search'));
+  $('#search-clear').append(ico('x'));
   $('#add-project').append(ico('folderPlus'));
   $('#add-project').onclick = addProjects;
   if (IS_MAC) {

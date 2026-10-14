@@ -247,6 +247,12 @@ body.resizing .rz { pointer-events: auto; }
 .search .ico { width: 14px; height: 14px; }
 .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--foreground); font: inherit; user-select: text; }
 .search input::placeholder { color: var(--faint); }
+/* right end: the shortcut hint while empty, a clear button once there is text */
+#search-key { flex: none; height: 18px; padding: 0 5px; background: transparent; border: 1px solid var(--border); color: var(--faint); font-size: 10px; }
+#search-key:empty, .search.has-text #search-key { display: none; }
+#search-clear { display: none; flex: none; width: 20px; height: 20px; margin-right: -4px; color: var(--muted-foreground); }
+#search-clear .ico { width: 12px; height: 12px; }
+.search.has-text #search-clear { display: inline-flex; }
 
 /* sessions (and open PowerShell tabs) under a project: one 32px line each */
 .session { position: relative; display: flex; align-items: center; gap: 6px; height: 32px; flex: none; padding: 0 4px 0 28px; border-radius: var(--radius-md); color: var(--muted-foreground); cursor: pointer; }

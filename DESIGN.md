@@ -175,7 +175,8 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   open-session count, a bordered list of tabs where Claude is working, `Back` outline sm / `Update and restart`
   primary sm, destructive when a tab is working) and then a progress view (spinner + "Updating Stanza…"). There is no
   separate update dialog. It stays until dismissed: no outside-click or Escape close, so it can't vanish unseen while typing in a terminal.
-- Search: a plain 32 px row (search icon + "Search" placeholder), no border; hover/focus = `--sidebar-hover`.
+- Search: a plain 32 px row (search icon + "Search" placeholder), no border; hover/focus = `--sidebar-hover`. Its right end
+  shows the shortcut as a quiet outlined `kbd` (`--faint`) while empty and a 20 px ghost × (clears) once there is text.
   The row ends with "add project" and `+`; `+` opens a DropdownMenu: "No project" (chat icon), a separator, then
   one item per project (folder icon), or "Add project…" when there are none.
 - Rows are flat, 32 px, `rounded-md`, side padding 8. 2 px between rows, 12 px between project groups.
