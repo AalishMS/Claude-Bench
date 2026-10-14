@@ -177,7 +177,9 @@ site/            the product page (static, open index.html or serve the folder; 
   reopens the old build. macOS: output in `<userData>/update.log`, opened in TextEdit on failure. Test it against a scratch
   clone (junction its `node_modules`), never the real `dist\`.
 - **Install** (`scripts/install.ps1` / `install.sh`, piped from raw.githubusercontent.com: `irm ... | iex` / `curl ... | bash`;
-  free, no GitHub Release, needs the repo public). Produces a normal git clone, so the Update button works unchanged:
+  free, no GitHub Release, needs the repo public). The product page shows the shorter
+  `https://aalishms.github.io/Stanza/install.ps1` (`.sh`): copies the Pages workflow (`.github/workflows/pages.yml`)
+  publishes with `site/`; the README keeps the raw URL, which works without Pages. Produces a normal git clone, so the Update button works unchanged:
   `%LOCALAPPDATA%\Programs\stanza` / `~/.stanza` (or `STANZA_DIR`). Checks git, Node 20+ (claude only
   warns), refuses a running build of that install (path match) and a non-empty folder that isn't a clone; an existing
   clone gets the update steps (lockfile reset, `pull --ff-only`). Then `npm install` (+ Electron's `install.js` if its

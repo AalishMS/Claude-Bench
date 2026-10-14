@@ -47,6 +47,14 @@ its progress bar, uncropped `.tour__frame`) and moves the spotlight to that fram
 860 px of height the caption sits beside the window instead of above it. Elsewhere each step shows its own cropped
 `.tour__inline` window (CSS only).
 
+## Deploy
+
+`.github/workflows/pages.yml` publishes this folder to GitHub Pages (https://aalishms.github.io/Stanza/) on every
+push to `main` that touches `site/` or the install scripts (or by hand from the Actions tab). It copies
+`scripts/install.ps1` and `install.sh` to the site's root, which is what the page's short install commands fetch, and
+leaves out `tailwind/` and this README. Pages' source in the repo settings must be "GitHub Actions". All paths are
+relative, so the `/Stanza/` subpath needs nothing.
+
 ## Regenerating `css/tailwind.css`
 
 Run after adding or changing a class in `js/mock/`:

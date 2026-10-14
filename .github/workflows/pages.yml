@@ -1,0 +1,43 @@
+# Publishes the product page (site/) to GitHub Pages, with copies of the install scripts at its root so the
+# one-line install is https://aalishms.github.io/Stanza/install.ps1 (or install.sh). No build: the folder is static.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'scripts/install.ps1'
+      - 'scripts/install.sh'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
+      # site/tailwind/ is only the generator's config; the page uses the committed css/tailwind.css.
+      - run: |
+          mkdir _site
+          cp -r site/. _site/
+          rm -rf _site/tailwind _site/README.md
+          cp scripts/install.ps1 scripts/install.sh _site/
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v5
