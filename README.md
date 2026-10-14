@@ -144,8 +144,9 @@ When the repo has new commits, a download icon appears next to the app name with
 Update.
 
 - From `npm start`, the app pulls, runs `npm install`, and restarts.
-- From a built `.exe` or `.app`, it closes, pulls, runs `npm install`, rebuilds, and reopens with your tabs. On Windows
-  you'll see a console window while it works.
+- From a built `.exe` or `.app`, it closes, pulls, runs `npm install`, rebuilds, and reopens with your tabs. Nothing
+  is on screen while it works (a notification says it's updating); if it fails, a log opens in Notepad (TextEdit on
+  macOS) and the old build reopens.
 
 If your local edits clash with the update, it stops and shows git's message. To do it by hand, close the app and run
 this in the repo folder:

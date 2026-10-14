@@ -1061,34 +1061,45 @@ function checkUpdate() { // overlapping calls share one fetch
 
 /**
  * A built copy is locked while it runs, so scripts/update.ps1 (update.sh on macOS) does the work after we quit: it waits
- * for the app to close, pulls, runs npm install if needed, rebuilds and reopens the app. Windows shows its console for
- * progress and errors; macOS writes a log that opens in TextEdit on failure. The script runs from a temp copy because
- * git pull may rewrite it.
+ * for the app to close, pulls, runs npm install, rebuilds and reopens the app. No window on either platform: the output
+ * goes to <userData>/update.log, which opens in Notepad (TextEdit on macOS) on failure. The script runs from a temp
+ * copy because git pull may rewrite it.
  */
 async function startExternalUpdate(dir) {
   try {
     const name = IS_MAC ? 'update.sh' : 'update.ps1';
     const tmp = path.join(os.tmpdir(), `stanza-${name}`);
     fs.copyFileSync(path.join(dir, 'scripts', name), tmp);
-    let child;
+    const log = path.join(app.getPath('userData'), 'update.log');
     if (IS_MAC) {
       await shellEnvReady; // git and npm from the login shell's PATH
       const bundle = path.resolve(process.execPath, '..', '..', '..'); // .../Stanza.app/Contents/MacOS/Stanza
-      const log = path.join(app.getPath('userData'), 'update.log');
-      child = spawn('/bin/bash', [tmp, dir, String(process.pid), bundle, log], { detached: true, stdio: 'ignore', env: process.env });
+      const child = spawn('/bin/bash', [tmp, dir, String(process.pid), bundle, log], { detached: true, stdio: 'ignore', env: process.env });
+      await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+      child.unref();
     } else {
-      // Through `start`, which gives PowerShell its own visible console. Spawned directly with detached (no console),
-      // PowerShell 5.1 exits at once. /s strips only the outer quotes, so the quoted paths survive (no quotes in Windows paths).
-      const cmdline = `/d /s /c "start "Updating Stanza" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tmp}"`
-        + ` -Repo "${dir}" -AppPid ${process.pid} -Exe "${process.execPath}""`;
-      // cwd outside dist\: the app's own cwd (win-unpacked, from the shortcuts) would be inherited and block electron-builder's rmdir.
-      child = spawn('cmd.exe', [cmdline], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true, cwd: os.tmpdir() });
+      // A hidden PowerShell starts the script in a console that is hidden from the start (Start-Process -WindowStyle
+      // Hidden), so no window flashes. Spawned directly with detached (no console), PowerShell 5.1 exits at once, and a
+      // plain child would die with the app (Node's job object); the grandchild breaks away from that job. We wait for
+      // the launcher to exit before quitting. cwd outside dist\: the app's own cwd (win-unpacked, from the shortcuts)
+      // would be inherited and block electron-builder's rmdir.
+      const q = (s) => `'"${String(s).replace(/'/g, "''")}"'`; // a PowerShell string holding a double-quoted argument
+      const script = `Start-Process powershell.exe -WindowStyle Hidden -WorkingDirectory $env:TEMP -ArgumentList @(`
+        + `'-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ${q(tmp)}, '-Repo', ${q(dir)}, '-AppPid', '${process.pid}',`
+        + ` '-Exe', ${q(process.execPath)}, '-Log', ${q(log)})`;
+      const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+        '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, stdio: 'ignore', cwd: os.tmpdir() });
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { child.kill(); reject(new Error('the launcher did not finish')); }, 20000);
+        child.once('error', (err) => { clearTimeout(timer); reject(err); });
+        child.once('exit', (code) => { clearTimeout(timer); code ? reject(new Error(`the launcher exited with code ${code}`)) : resolve(); });
+      });
     }
-    await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
-    child.unref();
   } catch (err) {
     return { ok: false, error: `Could not start the updater: ${err.message}\nClose the app and run git pull, then ${IS_MAC ? 'npm run package:mac' : 'npm run package'} in ${dir}.` };
   }
+  // Nothing is on screen while the script works, so say why the app is gone (the toast outlives the app).
+  notify({ title: 'Updating Stanza', body: 'It reopens by itself when the update is built, usually in a minute or two.' });
   forceClose = true;
   app.quit(); // before-quit ends the sessions; the script reopens the app when it is done
   return { ok: true };

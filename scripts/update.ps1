@@ -1,16 +1,30 @@
 # Updates a built copy of Stanza (Windows). Started by the app's Update button, which then quits, because the
-# exe can't be rebuilt while it runs. Runs from a temp copy, since git pull may rewrite this file.
+# exe can't be rebuilt while it runs. Runs from a temp copy, since git pull may rewrite this file. Runs hidden: output
+# goes to a log, which opens in Notepad if something fails.
 #
-#   update.ps1 -Repo <checkout> -AppPid <pid> -Exe <path to Stanza.exe>
+#   update.ps1 -Repo <checkout> -AppPid <pid> -Exe <path to Stanza.exe> -Log <log file>
 
-param([string]$Repo, [int]$AppPid, [string]$Exe)
+param([string]$Repo, [int]$AppPid, [string]$Exe, [string]$Log)
 
-$Host.UI.RawUI.WindowTitle = 'Updating Stanza'
+if (-not $Log) { $Log = Join-Path $env:TEMP 'stanza-update.log' }
+Set-Content -LiteralPath $Log -Value "Stanza update, $(Get-Date)" -Encoding UTF8
+
+# Nobody can answer a prompt in a hidden window, so git must fail instead of waiting for one.
+$env:GIT_TERMINAL_PROMPT = '0'
+$env:GCM_INTERACTIVE = 'never'
 
 # This process inherits the app's working directory (the shortcuts start the exe inside dist\win-unpacked), and a
 # working directory keeps the folder from being deleted: electron-builder then fails with EBUSY on rmdir.
 # Set-Location only moves PowerShell's own location, so move the real one.
 [IO.Directory]::SetCurrentDirectory($env:TEMP)
+
+function Say([string]$text) { Add-Content -LiteralPath $Log -Value $text -Encoding UTF8 }
+
+# Runs a native command with its output (stdout and stderr) in the log; $LASTEXITCODE is its exit code.
+function Run([string]$exe) {
+    Say "`n> $exe $args"
+    & $exe @args 2>&1 | ForEach-Object { "$_" } | Add-Content -LiteralPath $Log -Encoding UTF8
+}
 
 # The app's own process and any process of this exact exe (its helpers keep it locked a moment longer). Matched on the
 # full path of the build being replaced, never on the name, so other copies and dev instances are left alone.
@@ -28,21 +42,21 @@ function WaitGone([int]$seconds) {
 # A copy that closed its window but never exited holds the single-instance lock, so a reopened exe would quit at once.
 function EndLeftover {
     if (WaitGone 20) { return $true }
-    Write-Host 'Stanza did not exit; ending it...' -ForegroundColor Yellow
+    Say 'Stanza did not exit; ending it...'
     AppProcs | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
     WaitGone 10
 }
 
 function Finish([string]$err) {
     if ($err) {
-        Write-Host "`n$err" -ForegroundColor Red
-        Read-Host 'Press Enter to close this window'
+        Say "`n$err"
+        Start-Process -FilePath notepad.exe -ArgumentList "`"$Log`""
     }
     if ((Test-Path $Exe) -and (EndLeftover)) { Start-Process -FilePath $Exe }
     exit $(if ($err) { 1 } else { 0 })
 }
 
-Write-Host 'Waiting for Stanza to close...'
+Say 'Waiting for Stanza to close...'
 if (-not (EndLeftover)) { Finish 'Stanza is still running. Close it, then run "git pull" and "npm run package" in the repo folder.' }
 
 Set-Location -LiteralPath $Repo
@@ -51,24 +65,21 @@ Set-Location -LiteralPath $Repo
 # (from HEAD, so a staged copy goes too).
 git checkout HEAD -- package-lock.json 2>$null
 
-Write-Host "`n> git pull --ff-only" -ForegroundColor Cyan
-git pull --ff-only
+Run git pull --ff-only
 if ($LASTEXITCODE) { Finish 'git pull failed (see above). Nothing was changed; reopening the app.' }
 
 # Always, not only when package(-lock).json changed: an npm install that failed in an earlier update would never be
 # retried (HEAD has moved on), and the build would pack stale node_modules. It takes seconds when nothing changed.
-Write-Host "`n> npm install" -ForegroundColor Cyan
-npm install
+Run npm.cmd install
 if ($LASTEXITCODE) { Finish 'npm install failed (see above). Run it in the repo folder, then "npm run package".' }
 
-Write-Host "`n> npm run package" -ForegroundColor Cyan
-npm run package
+Run npm.cmd run package
 if ($LASTEXITCODE) {
-    Write-Host "`nBuild failed; retrying once..." -ForegroundColor Yellow
+    Say "`nBuild failed; retrying once..."
     Start-Sleep -Seconds 3
-    npm run package
+    Run npm.cmd run package
 }
 if ($LASTEXITCODE) { Finish 'The build failed (see above). The source was updated but not rebuilt, so the app will keep running the old build and say it is up to date. Run "npm run package" in the repo folder to retry.' }
 
-Write-Host "`nUpdated. Starting Stanza..." -ForegroundColor Green
+Say "`nUpdated. Starting Stanza..."
 Finish $null

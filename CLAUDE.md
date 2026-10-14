@@ -183,8 +183,10 @@ site/            the product page (static, open index.html or serve the folder; 
   before the reopen on failure), `git pull --ff-only`, `npm install` (always: after an npm install that failed in an earlier update, HEAD has
   moved on, so a "did package(-lock).json change" check would skip it for good and the build would pack stale
   `node_modules`), `npm run package[:mac]`, then
-  reopens the exe/.app (tabs restore). Windows: a visible console; on failure it shows the error, waits for Enter and
-  reopens the old build. macOS: output in `<userData>/update.log`, opened in TextEdit on failure. Test it against a scratch
+  reopens the exe/.app (tabs restore). No window on either platform (a visible console scared users): output goes to
+  `<userData>/update.log`, opened in Notepad / TextEdit on failure, then the old build reopens; an "Updating Stanza"
+  notification is shown as the app quits. Hidden means no prompt can be answered: the script sets `GIT_TERMINAL_PROMPT=0`
+  / `GCM_INTERACTIVE=never` and must never `Read-Host`. Test it against a scratch
   clone (junction its `node_modules`), never the real `dist\`.
 - **Install** (`scripts/install.ps1` / `install.sh`, piped from raw.githubusercontent.com: `irm ... | iex` / `curl ... | bash`;
   free, no GitHub Release, needs the repo public). The product page shows the shorter
@@ -377,8 +379,10 @@ site/            the product page (static, open index.html or serve the folder; 
   ("transcript saving is off"). Don't strip user config like `ANTHROPIC_*` or `CLAUDE_CODE_USE_*`.
 - `document.hidden` is true for an occluded window, so polling pauses; `visibilitychange` and `focus` resume it.
 - **A detached PowerShell dies at once**: Node's `detached: true` on Windows means no console, and powershell.exe 5.1
-  exits without one. Start it through `cmd /d /s /c "start "title" powershell.exe ..."` (`windowsVerbatimArguments`),
-  as `startExternalUpdate` does; it gets its own console and outlives the app.
+  exits without one. A non-detached child dies with the app (libuv's kill-on-close job object). `startExternalUpdate`
+  spawns a hidden launcher PowerShell (`windowsHide`, `-EncodedCommand`) that runs `Start-Process powershell.exe
+  -WindowStyle Hidden ...`: the grandchild gets its own console, hidden from the start, breaks away from the job
+  (libuv sets silent breakaway) and outlives the app. Wait for the launcher's exit before quitting.
 - **The updater must not run with its cwd inside `dist\win-unpacked`**: the shortcuts start the exe there, a child inherits
   that working directory, and Windows won't delete a folder that is some process's cwd, so electron-builder failed with
   `EBUSY ... rmdir dist\win-unpacked` and the old build reopened (the app then says "up to date", since `checkUpdate`
