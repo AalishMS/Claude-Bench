@@ -21,6 +21,8 @@
   /* The raw accent is dark (white text sits on it in the app); text and lines need a lighter mix on black. */
   --accent-text: color-mix(in srgb, var(--stanza-accent) 45%, #ffffff);
   --accent-line: color-mix(in srgb, var(--stanza-accent) 70%, #ffffff 10%);
+  /* The logo's cursor blue (#507ee0 next to the default accent): the S's cursor, the title's, the tour's spotlight. */
+  --accent-mark: color-mix(in srgb, var(--stanza-accent) 74%, #ffffff);
   --radius: 10px;
 }
 
@@ -42,8 +44,8 @@ button { font: inherit; color: inherit; }
 ::selection { background: color-mix(in srgb, var(--stanza-accent) 55%, transparent); }
 :focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; border-radius: 4px; }
 
-.wrap { width: min(1120px, 100% - 48px); margin-inline: auto; }
-.wrap--wide { width: min(1280px, 100% - 48px); }
+/* One page width, so the nav, the copy and the mock windows share their left edge. */
+.wrap { width: min(1240px, 100% - 48px); margin-inline: auto; }
 
 .skip { position: absolute; left: -9999px; top: 8px; z-index: 100; padding: 8px 12px; border-radius: 8px; background: var(--fg); color: var(--bg); }
 .skip:focus { left: 8px; }

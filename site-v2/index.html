@@ -37,6 +37,7 @@
       <span>Stanza</span>
     </a>
     <nav class="nav__links" aria-label="Sections">
+      <a href="#demo">Demo</a>
       <a href="#features">Features</a>
       <a href="#install">Install</a>
       <a href="#faq">FAQ</a>
@@ -49,123 +50,201 @@
 
 <main id="main">
 
-  <!-- Hero -->
+  <!-- Hero: the copy and the logo's S. The live window is in its own section below, so the fold never cuts it. -->
   <section class="hero" id="top">
-    <div class="wrap">
-      <h1 class="hero__title">All your Claude Code sessions in one&nbsp;window<span class="cursor" aria-hidden="true"></span></h1>
-      <p class="hero__lead">
-        Stanza is a desktop app around the real <code>claude</code> CLI. Every tab is a genuine Claude Code session.
-        Stanza adds what a terminal window doesn't have: your projects and their past sessions, split panes,
-        live git status, and a panel that shows what each session is doing.
-      </p>
-
-      <div class="hero__install">
-        <div class="term" role="group" aria-label="Install command">
-          <div class="term__bar">
-            <div class="switch" role="group" aria-label="Operating system">
-              <button class="switch__btn" type="button" data-os-tab="win" aria-pressed="true">Windows</button>
-              <button class="switch__btn" type="button" data-os-tab="mac" aria-pressed="false">macOS</button>
-            </div>
-            <button class="term__copy" type="button" data-copy aria-label="Copy the install command">
-              <svg class="ico" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span>
-            </button>
-          </div>
-          <code class="term__cmd os-win">irm https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/install.ps1 | iex</code>
-          <code class="term__cmd os-mac">curl -fsSL https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/install.sh | bash</code>
-        </div>
-        <p class="fine">
-          Free and MIT licensed &middot; no account, no telemetry &middot; Windows first, macOS best effort.
-          <a href="#install">What it needs</a>
-        </p>
+    <div class="hero__bg" aria-hidden="true">
+      <div class="hero__lines">
+        <span style="--t:14%;--w:260px;--s:46s;--o:-8s"></span>
+        <span style="--t:27%;--w:120px;--s:38s;--o:-30s"></span>
+        <span style="--t:41%;--w:340px;--s:58s;--o:-21s"></span>
+        <span class="is-accent" style="--t:55%;--w:90px;--s:34s;--o:-5s"></span>
+        <span style="--t:68%;--w:200px;--s:50s;--o:-40s"></span>
+        <span style="--t:82%;--w:150px;--s:42s;--o:-14s"></span>
       </div>
     </div>
 
-    <div class="wrap wrap--wide hero__demo">
-      <div class="window window--hero" id="hero-window" data-crop="0,0,1280,700" role="group"
-           aria-label="Live preview of the Stanza app. It is clickable.">
-        <div class="window__canvas" id="hero-canvas"></div>
+    <div class="wrap hero__in">
+      <div class="hero__copy">
+        <p class="eyebrow hero__eyebrow"><span class="hero__dot" aria-hidden="true"></span>A desktop app for the real Claude Code CLI</p>
+        <h1 class="hero__title">All your Claude Code sessions in one <span class="nowrap">window<span class="cursor" aria-hidden="true"></span></span></h1>
+        <p class="hero__lead">
+          Every tab is a genuine <code>claude</code> session. Stanza adds what a terminal window doesn't have: your
+          projects and their past sessions, split panes, live git status, and a panel that shows what each session is
+          doing.
+        </p>
+
+        <div class="hero__install">
+          <div class="term" role="group" aria-label="Install command">
+            <div class="term__bar">
+              <div class="switch" role="group" aria-label="Operating system">
+                <button class="switch__btn" type="button" data-os-tab="win" aria-pressed="true">Windows</button>
+                <button class="switch__btn" type="button" data-os-tab="mac" aria-pressed="false">macOS</button>
+              </div>
+              <button class="term__copy" type="button" data-copy aria-label="Copy the install command">
+                <svg class="ico" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span>
+              </button>
+            </div>
+            <code class="term__cmd os-win">irm https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/install.ps1 | iex</code>
+            <code class="term__cmd os-mac">curl -fsSL https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/install.sh | bash</code>
+          </div>
+          <p class="fine">
+            Free and MIT licensed &middot; no account, no telemetry &middot; Windows first, macOS best effort.
+            <a href="#install">What it needs</a>
+          </p>
+        </div>
       </div>
-      <div class="hero__under">
-        <div class="switch" id="hero-tabs" role="group" aria-label="Screen of the app"></div>
-        <p class="hero__hint">A live preview. Click around, open the split, type a prompt.</p>
+
+      <!-- The logo's S, drawn from assets/icon-source.png's geometry: five lines of a stanza and the cursor. -->
+      <div class="hero__mark" aria-hidden="true">
+        <div class="mark" id="mark">
+          <svg class="mark__svg" viewBox="176 176 672 672">
+            <defs>
+              <linearGradient id="mark-fill" gradientUnits="userSpaceOnUse" x1="0" y1="216" x2="0" y2="808">
+                <stop offset="0" stop-color="#ffffff"/>
+                <stop offset="1" stop-color="#b4b4bc"/>
+              </linearGradient>
+            </defs>
+            <g class="mark__bar" style="--i:0;--d:10"><rect x="312" y="216" width="496" height="80" rx="40"/></g>
+            <g class="mark__bar" style="--i:1;--d:18"><rect x="216" y="344" width="184" height="80" rx="40"/></g>
+            <g class="mark__bar" style="--i:2;--d:6"><rect x="216" y="472" width="592" height="80" rx="40"/></g>
+            <g class="mark__bar" style="--i:3;--d:22"><rect x="624" y="600" width="184" height="80" rx="40"/></g>
+            <g class="mark__bar" style="--i:4;--d:14"><rect x="216" y="728" width="380" height="80" rx="40"/></g>
+            <g class="mark__bar mark__caret" style="--d:28"><rect x="628" y="728" width="96" height="80" rx="16"/></g>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <a class="hero__cue" href="#demo">
+      <span>See it live</span>
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </a>
+  </section>
+
+  <!-- Live demo: sized so the whole window fits in the viewport. -->
+  <section class="demo" id="demo">
+    <div class="wrap">
+      <div class="demo__head">
+        <div>
+          <p class="eyebrow">Live demo</p>
+          <h2 class="section__title">Try it, right here.</h2>
+        </div>
+        <div class="demo__ctl">
+          <div class="switch" id="hero-tabs" role="group" aria-label="Screen of the app"></div>
+          <p class="hero__hint">Click around, open the split, type a prompt.</p>
+        </div>
+      </div>
+      <div class="demo__frame">
+        <div class="window window--hero" id="hero-window" data-crop="0,0,1280,700" role="group"
+             aria-label="Live preview of the Stanza app. It is clickable.">
+          <div class="window__canvas" id="hero-canvas"></div>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- Feature tour -->
-  <section class="section" id="features">
-    <div class="wrap">
-      <h2 class="section__title">What it adds to the terminal</h2>
+  <!-- Feature tour. Wide and tall screens: a pinned stage; scrolling walks the steps, the window shows each step's
+       whole screen and a spotlight moves to the part the step is about. Otherwise the steps follow each other. -->
+  <section class="section section--tour" id="features">
+    <div class="tour">
+      <div class="tour__pin">
+        <div class="wrap tour__stage">
+          <div class="tour__top">
+            <h2 class="section__title">What it adds to the terminal</h2>
+            <nav class="tour__nav" aria-label="Feature tour">
+              <button type="button" class="tour__pill" data-go="1"><span>01</span>Projects<i></i></button>
+              <button type="button" class="tour__pill" data-go="2"><span>02</span>Split view<i></i></button>
+              <button type="button" class="tour__pill" data-go="3"><span>03</span>Session panel<i></i></button>
+              <button type="button" class="tour__pill" data-go="4"><span>04</span>Make it yours<i></i></button>
+            </nav>
+          </div>
 
-      <div class="tour">
-        <div class="tour__steps">
+          <div class="tour__steps">
 
-          <article class="tour__step" data-step="1">
-            <p class="tour__n">01</p>
-            <h3>Projects, with their history.</h3>
-            <p>
-              Add a folder once. Its past sessions are listed under it, titled by what you did in them: click one to
-              resume it, right-click to fork it and try another direction. Each project shows its branch and changed
-              files, live.
-            </p>
-            <p>
-              On first launch, the three folders you used Claude Code in most recently are already there. The
-              <code>+</code> in the sidebar starts a session in any of them.
-            </p>
-            <div class="window tour__inline" data-screen="new-menu" data-crop="0,0,372,420" role="img"
-                 aria-label="The sidebar with projects and their sessions, and the new-session menu"></div>
-          </article>
+            <article class="tour__step" data-step="1">
+              <div class="tour__head">
+                <p class="tour__n">01</p>
+                <h3>Projects, with their history.</h3>
+              </div>
+              <div class="tour__body">
+                <p>
+                  Add a folder once. Its past sessions are listed under it, titled by what you did in them: click one to
+                  resume it, right-click to fork it and try another direction. Each project shows its branch and changed
+                  files, live.
+                </p>
+                <p>
+                  On first launch, the three folders you used Claude Code in most recently are already there. The
+                  <code>+</code> in the sidebar starts a session in any of them.
+                </p>
+              </div>
+              <div class="window tour__inline" data-screen="new-menu" data-crop="0,0,372,420" role="img"
+                   aria-label="The sidebar with projects and their sessions, and the new-session menu"></div>
+            </article>
 
-          <article class="tour__step" data-step="2">
-            <p class="tour__n">02</p>
-            <h3>Split the screen.</h3>
-            <p>
-              Up to four sessions side by side: drag one from the sidebar onto the terminal, or press
-              <kbd data-win="Ctrl+Shift+→" data-mac="⌘⇧→">Ctrl+Shift+→</kbd>. Mix projects and shells in one split,
-              move between panes and resize them from the keyboard.
-            </p>
-            <p>
-              Each split is a box in the sidebar, and its layout comes back when you reopen the app. Opening a session
-              that's already on screen forks it, so two processes never write one transcript.
-            </p>
-            <div class="window tour__inline" data-screen="split-working" data-crop="0,0,720,540" role="img"
-                 aria-label="Split view: two Claude sessions working and a shell"></div>
-          </article>
+            <article class="tour__step" data-step="2">
+              <div class="tour__head">
+                <p class="tour__n">02</p>
+                <h3>Split the screen.</h3>
+              </div>
+              <div class="tour__body">
+                <p>
+                  Up to four sessions side by side: drag one from the sidebar onto the terminal, or press
+                  <kbd data-win="Ctrl+Shift+→" data-mac="⌘⇧→">Ctrl+Shift+→</kbd>. Mix projects and shells in one split,
+                  move between panes and resize them from the keyboard.
+                </p>
+                <p>
+                  Each split is a box in the sidebar, and its layout comes back when you reopen the app. Opening a session
+                  that's already on screen forks it, so two processes never write one transcript.
+                </p>
+              </div>
+              <div class="window tour__inline" data-screen="split-working" data-crop="228,34,1052,641" role="img"
+                   aria-label="Split view: two Claude sessions working and a shell"></div>
+            </article>
 
-          <article class="tour__step" data-step="3">
-            <p class="tour__n">03</p>
-            <h3>See what the session is doing.</h3>
-            <p>
-              The right panel follows the tab you're in: how full the context window is, which MCP servers are
-              connected, which subagents ran with which model and prompt, the dev servers the session started
-              (click to copy the URL), and the images it was given.
-            </p>
-            <div class="window window--fade tour__inline" data-screen="main" data-crop="720,0,560,420" role="img"
-                 aria-label="The session panel: context usage, MCP servers, subagents, running servers and images"></div>
-          </article>
+            <article class="tour__step" data-step="3">
+              <div class="tour__head">
+                <p class="tour__n">03</p>
+                <h3>See what the session is doing.</h3>
+              </div>
+              <div class="tour__body">
+                <p>
+                  The right panel follows the tab you're in: how full the context window is, which MCP servers are
+                  connected, which subagents ran with which model and prompt, the dev servers the session started
+                  (click to copy the URL), and the images it was given.
+                </p>
+              </div>
+              <div class="window window--fade tour__inline" data-screen="main" data-crop="720,0,560,420" role="img"
+                   aria-label="The session panel: context usage, MCP servers, subagents, running servers and images"></div>
+            </article>
 
-          <article class="tour__step" data-step="4">
-            <p class="tour__n">04</p>
-            <h3>Make it yours.</h3>
-            <p>
-              Dark, light or the system's theme, four accents, terminal text size and interface zoom. Every shortcut
-              can be re-recorded; the defaults stay off the keys Claude Code uses, and on a Mac they use
-              <kbd data-win="⌘" data-mac="⌘">⌘</kbd> so Ctrl stays Claude's.
-            </p>
-            <p class="tour__try">The settings here work. Pick an accent: it colors this page too.</p>
-            <div class="window tour__inline" data-screen="settings-appearance" data-crop="232,34,760,560" data-editable
-                 role="group" aria-label="Settings preview with theme, accent and text size. Its controls work."></div>
-          </article>
+            <article class="tour__step" data-step="4">
+              <div class="tour__head">
+                <p class="tour__n">04</p>
+                <h3>Make it yours.</h3>
+              </div>
+              <div class="tour__body">
+                <p>
+                  Dark, light or the system's theme, four accents, terminal text size and interface zoom. Every shortcut
+                  can be re-recorded; the defaults stay off the keys Claude Code uses, and on a Mac they use
+                  <kbd data-win="⌘" data-mac="⌘">⌘</kbd> so Ctrl stays Claude's.
+                </p>
+                <p class="tour__try">The settings here work. Pick an accent: it colors this page too.</p>
+              </div>
+              <div class="window tour__inline" data-screen="settings-appearance" data-crop="232,34,760,560" data-editable
+                   role="group" aria-label="Settings preview with theme, accent and text size. Its controls work."></div>
+            </article>
 
-        </div>
+          </div>
 
-        <div class="tour__stage">
-          <div class="tour__sticky">
-            <div class="window tour__frame" data-step="1" data-screen="new-menu" data-crop="0,0,372,420" aria-hidden="true"></div>
-            <div class="window tour__frame" data-step="2" data-screen="split-working" data-crop="0,0,720,540" aria-hidden="true"></div>
-            <div class="window window--fade tour__frame" data-step="3" data-screen="main" data-crop="720,0,560,420" aria-hidden="true"></div>
-            <div class="window tour__frame" data-step="4" data-screen="settings-appearance" data-crop="232,34,760,560" data-editable
-                 role="group" aria-label="Settings preview with theme, accent and text size. Its controls work."></div>
+          <div class="tour__screen">
+            <div class="tour__view">
+              <div class="window tour__frame" data-step="1" data-screen="new-menu" data-focus="4,38,362,633" aria-hidden="true"></div>
+              <div class="window tour__frame" data-step="2" data-screen="split-working" data-focus="232,38,1044,633" aria-hidden="true"></div>
+              <div class="window tour__frame" data-step="3" data-screen="main" data-focus="1046,38,230,633" aria-hidden="true"></div>
+              <div class="window tour__frame" data-step="4" data-screen="settings-appearance" data-focus="285,41,700,543" data-editable
+                   role="group" aria-label="Settings preview with theme, accent and text size. Its controls work."></div>
+              <div class="tour__spot" aria-hidden="true"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -261,36 +340,40 @@ npm start</code></pre>
     </div>
   </section>
 
-  <!-- FAQ -->
+  <!-- FAQ: an accordion; opening one question closes the other (name="faq"). -->
   <section class="section" id="faq">
-    <div class="wrap">
-      <h2 class="section__title">Questions</h2>
-      <dl class="qa">
-        <div>
-          <dt>Does Stanza replace Claude Code?</dt>
-          <dd>No. Every tab runs the actual <code>claude</code> CLI. Stanza only adds the sidebar, tabs, split panes, git status and the session panel around it.</dd>
-        </div>
-        <div>
-          <dt>What does it send over the network?</dt>
-          <dd>A <code>git fetch</code> of your clone to check for updates, and a request to Anthropic's usage endpoint for the plan-limit meter, using Claude Code's own login token (read, never written). Nothing else: no account, no analytics.</dd>
-        </div>
-        <div>
-          <dt>Will my existing sessions show up?</dt>
-          <dd>Yes. Stanza reads Claude Code's transcripts under <code>~/.claude/projects</code> (read-only) and lists them under each project by title.</dd>
-        </div>
-        <div>
-          <dt>Does it work on macOS?</dt>
-          <dd>It's built Windows first, and every change is written with a Mac path alongside. It runs on a Mac, but the author can't test it there, so expect the odd rough edge.</dd>
-        </div>
-        <div>
-          <dt>Colors look off in the light theme?</dt>
-          <dd>Claude Code picks some of its own colors. Run <code>/theme</code> in a session and choose a light theme there too.</dd>
-        </div>
-        <div>
-          <dt>How do I uninstall it?</dt>
-          <dd>Delete the install folder and the shortcuts (or the <code>~/Applications</code> link). Settings live in <code>%APPDATA%\stanza</code> or <code>~/Library/Application Support</code>; remove those for a clean slate.</dd>
-        </div>
-      </dl>
+    <div class="wrap faq">
+      <div class="faq__intro">
+        <h2 class="section__title">Questions</h2>
+        <p>What it changes, what it reads and sends, and how to remove it.</p>
+        <p class="fine">Something else? <a href="https://github.com/AalishMS/Stanza/issues" target="_blank" rel="noopener noreferrer">Open an issue</a> on GitHub.</p>
+      </div>
+      <div class="qa">
+        <details class="qa__item" name="faq">
+          <summary><span class="qa__q">Does Stanza replace Claude Code?</span><span class="qa__icon" aria-hidden="true"></span></summary>
+          <div class="qa__a"><p>No. Every tab runs the actual <code>claude</code> CLI. Stanza only adds the sidebar, tabs, split panes, git status and the session panel around it.</p></div>
+        </details>
+        <details class="qa__item" name="faq">
+          <summary><span class="qa__q">What does it send over the network?</span><span class="qa__icon" aria-hidden="true"></span></summary>
+          <div class="qa__a"><p>A <code>git fetch</code> of your clone to check for updates, and a request to Anthropic's usage endpoint for the plan-limit meter, using Claude Code's own login token (read, never written). Nothing else: no account, no analytics.</p></div>
+        </details>
+        <details class="qa__item" name="faq">
+          <summary><span class="qa__q">Will my existing sessions show up?</span><span class="qa__icon" aria-hidden="true"></span></summary>
+          <div class="qa__a"><p>Yes. Stanza reads Claude Code's transcripts under <code>~/.claude/projects</code> (read-only) and lists them under each project by title.</p></div>
+        </details>
+        <details class="qa__item" name="faq">
+          <summary><span class="qa__q">Does it work on macOS?</span><span class="qa__icon" aria-hidden="true"></span></summary>
+          <div class="qa__a"><p>It's built Windows first, and every change is written with a Mac path alongside. It runs on a Mac, but the author can't test it there, so expect the odd rough edge.</p></div>
+        </details>
+        <details class="qa__item" name="faq">
+          <summary><span class="qa__q">Colors look off in the light theme?</span><span class="qa__icon" aria-hidden="true"></span></summary>
+          <div class="qa__a"><p>Claude Code picks some of its own colors. Run <code>/theme</code> in a session and choose a light theme there too.</p></div>
+        </details>
+        <details class="qa__item" name="faq">
+          <summary><span class="qa__q">How do I uninstall it?</span><span class="qa__icon" aria-hidden="true"></span></summary>
+          <div class="qa__a"><p>Delete the install folder and the shortcuts (or the <code>~/Applications</code> link). Settings live in <code>%APPDATA%\stanza</code> or <code>~/Library/Application Support</code>; remove those for a clean slate.</p></div>
+        </details>
+      </div>
     </div>
   </section>
 
@@ -329,6 +412,7 @@ npm start</code></pre>
 <script src="js/page/tour.js"></script>
 <script src="js/page/actions.js"></script>
 <script src="js/page/ticker.js"></script>
+<script src="js/page/fx.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

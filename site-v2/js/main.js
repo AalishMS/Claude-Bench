@@ -14,6 +14,7 @@
   S.tour.init();
   S.actions.init();
   S.ticker.init();
+  S.fx.init();
 
   S.redraw();
 })(window.Stanza);

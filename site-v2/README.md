@@ -1,7 +1,7 @@
 # Stanza product page (v2)
 
-A fresh take on `site/`: dark only (like the app's default), shorter, one live window in the hero and a scrolling
-feature tour. Static, no build step: serve this folder (`npx serve site-v2` or `python -m http.server`) or open
+A fresh take on `site/`: dark only (like the app's default), shorter. A full-screen hero with the logo's S, the live
+window in its own section and a pinned, scrolling feature tour. Static, no build step: serve this folder (`npx serve site-v2` or `python -m http.server`) or open
 `index.html`. No third-party requests (system fonts, no CDN). Not part of the packaged app.
 
 ```
@@ -17,7 +17,8 @@ js/                 plain scripts sharing one namespace, window.Stanza (load ord
   util.js, model.js namespace, helpers; hero screens, accents and the mock's state
   mock/             the app's UI as markup (from site/; the accent list now reads model.js)
   page/             look (mock theme, accent, text size), install (OS switch, copy), windows (scale/crop),
-                    hero (live window), tour (sticky frame), actions (clicks in the mock), ticker
+                    hero (live window), tour (pinned stage), actions (clicks in the mock), ticker,
+                    fx (hero mark parallax, nav backdrop, fade-ins)
   main.js           starts everything
 tailwind/           config used to generate css/tailwind.css
 ```
@@ -25,10 +26,16 @@ tailwind/           config used to generate css/tailwind.css
 ## How it works
 
 `mock/` renders the app's screens as HTML strings at a fixed 1280x700; `page/windows.js` scales and crops them
-(`data-crop="x,y,w,h"`). The hero window (`#hero-window`) is live: clicks inside it carry `data-act` / `data-arg` and
-`page/actions.js` maps them to state changes. Other windows (`data-screen`) are frozen pictures, except the settings
-controls of `data-editable` ones. The tour has two copies of each picture: one sticky frame per step on wide screens
-(`.tour__frame`, shown by `page/tour.js`), and one inline window per step on narrow screens (`.tour__inline`, CSS only).
+(`data-crop="x,y,w,h"`). The hero is copy plus the logo's S (inline SVG, drawn from `assets/icon-source.png`'s
+geometry; its cursor uses `--accent-mark`). The live window (`#hero-window`) is the `#demo` section after it, sized so
+it fits the viewport whole: clicks inside it carry `data-act` / `data-arg` and `page/actions.js` maps them to state
+changes. Other windows (`data-screen`) are frozen pictures, except the settings controls of `data-editable` ones.
+
+The tour has two copies of each picture. On wide, tall screens (`min-width: 901px and min-height: 640px`, with JS) the
+section pins a stage: `page/tour.js` turns the scroll position inside `.tour` into the active step (caption, pill with
+its progress bar, uncropped `.tour__frame`) and moves the spotlight to that frame's `data-focus` rect (mock px). Below
+860 px of height the caption sits beside the window instead of above it. Elsewhere each step shows its own cropped
+`.tour__inline` window (CSS only).
 
 ## Regenerating `css/tailwind.css`
 
