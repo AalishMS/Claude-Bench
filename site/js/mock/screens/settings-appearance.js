@@ -109,12 +109,7 @@
                   Primary buttons, focus rings, meters, attention dots and the split view.
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
-                  ${[
-                    { key: 'blue', label: 'Blue', hex: '#2563eb' },
-                    { key: 'violet', label: 'Violet', hex: '#6d5dfc' },
-                    { key: 'teal', label: 'Teal', hex: '#0d9488' },
-                    { key: 'rose', label: 'Rose', hex: '#e11d48' }
-                  ].map(item => `
+                  ${Object.entries(S.model.ACCENTS).map(([key, hex]) => ({ key, hex, label: key[0].toUpperCase() + key.slice(1) })).map(item => `
                     <button data-act="setStanzaAccent" data-arg="${item.key}" class="px-3 py-1.5 rounded-lg ${acc === item.key ? 'border-2 font-semibold' : 'border'} flex items-center gap-2 text-[11.5px] transition-all" style="border-color: ${acc === item.key ? item.hex : 'var(--border-card)'}; ${acc === item.key ? `background: color-mix(in srgb, ${item.hex} 10%, transparent);` : ''} color: var(--text-primary);">
                       <span class="w-2.5 h-2.5 rounded-full" style="background: ${item.hex};"></span>
                       <span>${item.label}</span>

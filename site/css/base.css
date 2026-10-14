@@ -1,87 +1,136 @@
-/* Reset, typography and page layout containers. */
+/* Tokens, reset, type and the few shared pieces (code, kbd, the install "term", the switch).
+   The page is dark only, like the app's default. --stanza-accent is the one accent; the mock's settings set it. */
 
-*, *::before, *::after { box-sizing: border-box; }
+:root {
+  color-scheme: dark;
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --font-display: 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --font-mono: 'Cascadia Mono', 'Cascadia Code', Consolas, ui-monospace, 'SF Mono', Menlo, monospace;
+  --stanza-accent: #2850a5;
+  --stanza-term-size: 12.5px;
 
-[hidden] { display: none !important; }
-
-html {
-  scroll-behavior: smooth;
-  scroll-padding-top: 72px;
-  -webkit-text-size-adjust: 100%;
+  --bg: #0a0a0a;
+  --surface: #111111;
+  --surface-2: #171717;
+  --fg: #fafafa;
+  --fg-2: #d4d4d4;
+  --muted: #a1a1a1;
+  --faint: #737373;
+  --border: rgb(255 255 255 / 9%);
+  --border-2: rgb(255 255 255 / 14%);
+  /* The raw accent is dark (white text sits on it in the app); text and lines need a lighter mix on black. */
+  --accent-text: color-mix(in srgb, var(--stanza-accent) 45%, #ffffff);
+  --accent-line: color-mix(in srgb, var(--stanza-accent) 70%, #ffffff 10%);
+  /* The logo's cursor blue (#507ee0 next to the default accent): the S's cursor, the title's, the tour's spotlight. */
+  --accent-mark: color-mix(in srgb, var(--stanza-accent) 74%, #ffffff);
+  --radius: 10px;
 }
 
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 1.6;
+  font: 16px/1.6 var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  text-rendering: optimizeLegibility;
 }
-
-h1, h2, h3, p, ul, table { margin: 0; }
-img, svg { display: block; max-width: 100%; }
+img, svg { display: block; }
+h1, h2, h3, p, dl, dd, pre { margin: 0; }
+a { color: inherit; }
 button { font: inherit; color: inherit; }
+::selection { background: color-mix(in srgb, var(--stanza-accent) 55%, transparent); }
+:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; border-radius: 4px; }
 
-a { color: var(--accent-text); text-decoration: none; }
-a:hover { text-decoration: underline; text-underline-offset: 3px; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+/* One page width, so the nav, the copy and the mock windows share their left edge. */
+.wrap { width: min(1240px, 100% - 48px); margin-inline: auto; }
 
-code, kbd, pre { font-family: var(--font-mono); }
+.skip { position: absolute; left: -9999px; top: 8px; z-index: 100; padding: 8px 12px; border-radius: 8px; background: var(--fg); color: var(--bg); }
+.skip:focus { left: 8px; }
 
-/* Page-level code and keys only: the mock draws its own (.kbd-pill). */
-p code, li code, td code {
-  font-size: 0.86em;
-  background: var(--code-bg);
-  border: 1px solid var(--border-soft);
-  padding: 0.12em 0.42em;
+.ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* Inline code and keys */
+code, kbd, pre { font-family: var(--font-mono); font-feature-settings: "liga" 0; }
+p code, dd code {
+  padding: 1px 5px;
   border-radius: 5px;
+  background: var(--surface-2);
   color: var(--fg-2);
+  font-size: 0.86em;
 }
-kbd:not(.kbd-pill) {
+kbd {
   display: inline-block;
-  font-size: 0.78em;
-  line-height: 1.45;
-  padding: 0.08em 0.52em;
-  border: 1px solid var(--border);
+  padding: 0 6px;
+  border: 1px solid var(--border-2);
   border-bottom-width: 2px;
   border-radius: 5px;
-  background: var(--code-bg);
+  background: var(--surface);
   color: var(--fg-2);
+  font-size: 0.8em;
+  line-height: 1.6;
   white-space: nowrap;
-  font-weight: 500;
+  vertical-align: 1px;
 }
 
-.skip {
-  position: absolute;
-  left: -999px;
-  top: 8px;
-  z-index: 100;
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: var(--fg);
-  color: var(--bg);
+/* A segmented switch: OS picker, hero screens. Text buttons, the pressed one lit. */
+.switch { display: inline-flex; gap: 2px; }
+.switch__btn {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--faint);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
 }
-.skip:focus { left: 12px; }
+.switch__btn:hover { color: var(--fg-2); }
+.switch__btn[aria-pressed="true"] { background: var(--surface-2); color: var(--fg); }
 
-.wrap { width: min(1140px, calc(100% - 40px)); margin-inline: auto; }
-.wrap--wide { width: min(1260px, calc(100% - 32px)); }
-.wrap--narrow { width: min(840px, calc(100% - 40px)); }
-
-.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
-
-.note { font-size: 13px; color: var(--faint); }
-.note--center { margin-top: 20px; text-align: center; }
-
-@media (max-width: 980px) {
-  .grid4 { grid-template-columns: repeat(2, 1fr); }
+/* The install command, drawn like a small terminal. Only the visitor's OS's line shows. */
+.term {
+  overflow: hidden;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  background: #050505;
 }
-@media (max-width: 640px) {
-  .grid3, .grid4 { grid-template-columns: 1fr; }
+.term__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 6px 6px 8px;
+  border-bottom: 1px solid var(--border);
 }
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
+.term__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
 }
+.term__copy:hover { background: var(--surface-2); color: var(--fg); }
+.term__copy .ico { width: 14px; height: 14px; }
+.term__copy.is-done { color: #7fb77e; }
+.term__cmd {
+  display: block;
+  padding: 16px 18px;
+  color: var(--fg);
+  font-size: 13.5px;
+  line-height: 1.6;
+  word-break: break-all; /* the long URL fills each line instead of scrolling; Copy takes the text, not the lines */
+}
+.term__cmd::before { content: '> '; color: var(--faint); }
+[data-os="win"] .os-mac, [data-os="mac"] .os-win { display: none; }
+
+.fine { color: var(--faint); font-size: 13.5px; line-height: 1.6; }
+.fine a { color: var(--muted); text-underline-offset: 3px; }
+.fine a:hover { color: var(--fg); }
+.fine code { font-size: 0.9em; }

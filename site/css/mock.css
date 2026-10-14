@@ -56,42 +56,42 @@
 }
 
 .stanza-root.theme-dark {
-  --bg-main: #0c0c0e;
-  --bg-sidebar: #121215;
-  --bg-right: #0c0c0e;
-  --bg-header: #0c0c0e;
-  --bg-header-sidebar: #121215;
-  --bg-footer-main: #0c0c0e;
-  --bg-footer-sidebar: #121215;
-  --bg-active-row: #232329;
-  --bg-hover-row: #19191e;
-  --bg-card-active: #18181d;
-  --bg-split-box: color-mix(in srgb, var(--stanza-accent) 11%, #121215);
-  --border-split-box: color-mix(in srgb, var(--stanza-accent) 28%, #222227);
-  --bg-Split-badge: color-mix(in srgb, var(--stanza-accent) 22%, #18181d);
-  --bg-prompt-bar: #1e1e23;
-  --bg-kbd: #1a1a1f;
-  --border-kbd: #2c2c33;
-  --border-color: #222227;
-  --border-card: #242429;
+  --bg-main: #0a0a0a;
+  --bg-sidebar: #030303;
+  --bg-right: #0a0a0a;
+  --bg-header: #0a0a0a;
+  --bg-header-sidebar: #030303;
+  --bg-footer-main: #0a0a0a;
+  --bg-footer-sidebar: #030303;
+  --bg-active-row: #262626;
+  --bg-hover-row: #141414;
+  --bg-card-active: #171717;
+  --bg-split-box: color-mix(in srgb, var(--stanza-accent) 11%, #030303);
+  --border-split-box: color-mix(in srgb, var(--stanza-accent) 40%, #1d1d1d);
+  --bg-Split-badge: color-mix(in srgb, var(--stanza-accent) 30%, #171717);
+  --bg-prompt-bar: #1c1c1c;
+  --bg-kbd: #171717;
+  --border-kbd: #2a2a2a;
+  --border-color: #1d1d1d;
+  --border-card: #262626;
   --border-term-rule: #52525b;
-  --text-primary: #f3f4f6;
+  --text-primary: #fafafa;
   --text-secondary: #d4d4d8;
-  --text-muted: #8b8b95;
-  --text-faint: #52525b;
+  --text-muted: #a1a1a1;
+  --text-faint: #737373;
   --text-code: #60a5fa;
-  --text-connected: #22c55e;
-  --dot-green: #22c55e;
-  --dot-amber: #d69e5c;
-  --text-amber: #e59934;
+  --text-connected: #7fb77e;
+  --dot-green: #7fb77e;
+  --dot-amber: #d6b25e;
+  --text-amber: #d6b25e;
   --text-auto-mode: #d9822b;
   --text-computing: #ef4444;
   --accent-violet: var(--stanza-accent);
-  --track-bg: #27272a;
-  --menu-bg: #16161a;
+  --track-bg: #262626;
+  --menu-bg: #171717;
   --menu-shadow: 0 14px 32px -4px rgba(0, 0, 0, 0.7);
-  --icon-active-bg: #27272c;
-  --scrollbar-thumb: #2e2e36;
+  --icon-active-bg: #262626;
+  --scrollbar-thumb: #2a2a2a;
 }
 
 .stanza-root {

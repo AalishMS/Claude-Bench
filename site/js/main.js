@@ -2,22 +2,19 @@
 (function (S) {
   'use strict';
 
-  /* Repaints everything that shows the mock: the live demo, the previews and the comparison. */
+  /* Repaints everything that shows the mock: the live hero window and the frozen ones. */
   S.redraw = () => {
-    S.stage.draw();
-    S.windows.drawCrops();
-    S.compare.draw();
+    S.hero.draw();
+    S.windows.drawFrozen();
   };
 
-  S.os.init();
-  S.appearance.init();
-  S.stage.init();
+  S.install.init();
+  S.hero.init();
   S.windows.init();
-  S.compare.init();
-  S.copy.init();
+  S.tour.init();
   S.actions.init();
-  S.scroll.init();
   S.ticker.init();
+  S.fx.init();
 
   S.redraw();
 })(window.Stanza);

@@ -1,29 +1,17 @@
-/* What the live demo shows and the state it keeps: tabs, captions, accents and the mock's own UI state. */
+/* What the live demo can show and the state it keeps: screens, accents and the mock's own UI state. */
 (function (S) {
   'use strict';
 
-  /* The tabs above the demo. `screens` are the mock screens a tab covers; a second entry is its working/idle twin. */
+  /* The screen switch under the hero window. A second screen is the tab's working/idle twin. */
   const TABS = [
     { label: 'Session', screens: ['main', 'main-working'] },
     { label: 'Split view', screens: ['split-working', 'split'] },
-    { label: 'Projects', screens: ['home'] },
-    { label: 'Quick launch', screens: ['new-menu'] },
-    { label: 'Appearance', screens: ['settings-appearance'] },
-    { label: 'Shortcuts', screens: ['settings-shortcuts'] },
+    { label: 'Projects', screens: ['new-menu', 'home'] },
+    { label: 'Settings', screens: ['settings-appearance', 'settings-shortcuts'] },
   ];
 
-  const CAPTIONS = {
-    main: 'Single-pane Claude Code session with live context meter and MCP inspector.',
-    'main-working': 'Active session streaming with live working indicator and token counter.',
-    split: 'Three-pane workspace with two Claude sessions and an integrated PowerShell.',
-    'split-working': 'Parallel Claude Code sessions actively streaming side by side.',
-    home: 'Launchpad with recent project folders, git status, and keyboard shortcuts.',
-    'new-menu': 'Quick project picker for opening a new Claude session or a chat without a project.',
-    'settings-appearance': 'Light, dark or system theme, accent colors, and terminal text size.',
-    'settings-shortcuts': 'Customizable keyboard bindings for sessions, split panes, and window controls.',
-  };
-
-  const ACCENTS = { blue: '#2563eb', violet: '#6d5dfc', teal: '#0d9488', rose: '#e11d48' };
+  /* The app's own accent hues (--hue-* in src/styles.css). */
+  const ACCENTS = { blue: '#2850a5', violet: '#6b4fc8', teal: '#12776f', rose: '#b8336a' };
 
   const AUTO_MODES = ['▸▸ auto mode on', '▸▸ plan mode on', '▸▸ ask before edits'];
   const SPINNER_FRAMES = ['✻', '✢', '✳', '✶', '✹', '✵'];
@@ -36,8 +24,8 @@
 
   const state = {
     activeView: 'main',
-    sliderView: 'split-working',
-    accentKey: 'violet',
+    theme: 'dark', // the mock's theme; the page itself is always dark
+    accentKey: 'blue',
     fontSizePx: 14,
     leftSidebarOpen: true,
     rightSidebarOpen: true,
@@ -58,7 +46,6 @@
 
   S.model = {
     TABS,
-    CAPTIONS,
     ACCENTS,
     state,
 

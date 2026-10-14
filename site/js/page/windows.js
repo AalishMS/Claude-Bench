@@ -4,7 +4,7 @@
 
   const FULL = [0, 0, 1280, 700];
   const wins = S.$$('.window');
-  const crops = S.$$('.window[data-screen]');
+  const frozen = S.$$('.window[data-screen]');
   const observer = new ResizeObserver(entries => entries.forEach(entry => fit(entry.target)));
 
   /* data-crop="x,y,w,h": the part of the mock this window shows. */
@@ -21,23 +21,19 @@
     });
   }
 
-  function addCanvas(win) {
-    const canvas = document.createElement('div');
-    canvas.className = 'window__canvas';
-    win.appendChild(canvas);
-    return canvas;
-  }
-
-  /* Windows with a data-screen show that screen, frozen. Settings previews are data-editable: their controls work. */
-  function drawCrops() {
-    crops.forEach(win => {
-      const canvas = S.$('.window__canvas', win);
-      canvas.innerHTML = S.mock.build(win.dataset.screen, S.appearance.currentTheme(), { live: false });
+  /* Windows with a data-screen show that screen, frozen. data-editable ones keep their settings controls working. */
+  function drawFrozen() {
+    frozen.forEach(win => {
+      S.$('.window__canvas', win).innerHTML = S.mock.build(win.dataset.screen, S.model.state.theme, { live: false });
     });
   }
 
   function init() {
-    crops.forEach(addCanvas);
+    frozen.forEach(win => {
+      const canvas = document.createElement('div');
+      canvas.className = 'window__canvas';
+      win.appendChild(canvas);
+    });
     wins.forEach(win => {
       const { w, h } = cropOf(win);
       win.style.setProperty('--w', w);
@@ -46,5 +42,5 @@
     });
   }
 
-  S.windows = { init, drawCrops };
+  S.windows = { init, drawFrozen };
 })(window.Stanza);
