@@ -495,8 +495,9 @@ function tabLabel(tab) {
   return same.length > 1 ? `${projName(tab.project)} ${n}` : projName(tab.project);
 }
 
-async function openSession(project, { kind = 'claude', resumeId = null, fork = false, beside = false, below = false, at } = {}) {
+async function openSession(project, { kind = 'claude', resumeId = null, fork = false, skipPerms = false, beside = false, below = false, at } = {}) {
   const tab = createTab(project, { kind, resumeId, fork });
+  tab.skipPerms = skipPerms; // --dangerously-skip-permissions, kept for Restart/Resume (not saved: restored tabs ask again)
   if (beside) addToSplit(tab.id, at, below);
   activate(tab.id);
   fitTab(tab);
@@ -620,7 +621,7 @@ function saveTabs() {
 async function startPty(tab) {
   if (!tabs.has(tab.id)) return;
   const res = await api.ptyCreate({
-    id: tab.id, cwd: tab.project.path, kind: tab.kind, resumeId: tab.resumeId, fork: tab.fork,
+    id: tab.id, cwd: tab.project.path, kind: tab.kind, resumeId: tab.resumeId, fork: tab.fork, skipPerms: !!tab.skipPerms,
     cols: tab.term.cols, rows: tab.term.rows,
   });
   if (!tabs.has(tab.id)) { if (res.ok) api.ptyKill(tab.id); return; } // closed while starting
@@ -878,12 +879,31 @@ async function restartTab(tab, mode) {
   unpark(tab, false);
   if (mode === 'resume') { tab.resumeId = tab.sessionId; tab.fork = false; }
   if (mode === 'fresh') { tab.resumeId = null; tab.fork = false; }
-  tab.term.write(`\r\n\x1b[2m— ${mode === 'resume' ? 'resuming' : 'restarting'} —\x1b[0m\r\n`);
+  tab.term.write(`\r\n\x1b[2m— ${mode === 'resume' ? 'resuming' : 'restarting'}${tab.skipPerms ? ', skipping permissions' : ''} —\x1b[0m\r\n`);
   tab.status = 'starting';
   tab.sessionId = tab.fork ? null : tab.resumeId; // a restarted fresh (or forked) tab is a new Claude session
   tab.startedAt = Date.now();
   await startPty(tab);
   tab.term.focus();
+}
+
+/**
+ * Restarts a Claude tab on its own transcript with or without --dangerously-skip-permissions. Asks only when Claude
+ * is mid-task; the old process must exit before the new one can take the tab's id.
+ */
+async function relaunchTab(tab, skipPerms) {
+  if (tab.relaunch) return;
+  if (isWorking(tab) && !(await confirmDialog({
+    title: 'Relaunch this session?', message: 'Claude is working in it; relaunching stops the current task.', okLabel: 'Relaunch',
+  }))) return;
+  if (!tabs.has(tab.id)) return;
+  tab.skipPerms = skipPerms;
+  if (tab.status === 'running') {
+    await new Promise((resolve) => { tab.relaunch = resolve; api.ptyKill(tab.id); });
+    delete tab.relaunch;
+    if (!tabs.has(tab.id)) return;
+  }
+  restartTab(tab, 'resume');
 }
 
 /** Only asks if closing interrupts something: Claude mid-task or a dev server this tab started. */
@@ -1548,10 +1568,10 @@ const projTag = (t, show) => (show ? h('span', { class: 's-proj' }, projName(t.p
 /** A transcript row; `t` is the open tab showing it (a session opened twice gets one row per tab). */
 function sessionRow(p, s, t = null, showProject = false) {
   return h('div', {
-    class: `session${t ? (t.id === activeId ? ' active' : '') + ' has-tab' : ''}`,
+    class: `session${t ? (t.id === activeId ? ' active' : '') + ' has-tab' : ''}${menuFor === `s:${s.id}` ? ' menu-open' : ''}`,
     'data-tab': t?.id,
     ...rowDrag({ id: t?.id || null, project: p, resumeId: s.id }),
-    title: `${s.title}\n${new Date(s.last).toLocaleString()}\nDrag onto the terminal (or ${kbd('Shift+click')}) to open beside the current session\nRight-click to fork`,
+    title: `${s.title}\n${new Date(s.last).toLocaleString()}\nDrag onto the terminal (or ${kbd('Shift+click')}) to open beside the current session\nRight-click (or …) for more`,
     onclick: (e) => (e.shiftKey && activeId
       ? besideRow(t, () => openSession(p, { resumeId: s.id, beside: true }))
       : openSessionRow(p, s)),
@@ -1561,6 +1581,10 @@ function sessionRow(p, s, t = null, showProject = false) {
     dotMark(t ? tabDot(t) : ''),
     h('span', { class: 's-title' }, s.title),
     showProject ? projTag(t, true) : h('span', { class: 's-time' }, fmtAgo(s.last)),
+    h('button', {
+      class: 'btn ghost icon sm s-menu', title: 'More actions',
+      onclick: (e) => { e.stopPropagation(); sessionMenu(p, s, t, e, e.currentTarget.closest('.session')); },
+    }, ico('more')),
     t ? closeButton(t) : null);
 }
 
@@ -1811,15 +1835,25 @@ async function openChat() {
 }
 
 /** Right-click on a transcript row: open it (beside), or fork it, i.e. resume a copy under a new session id to try another way. */
-function sessionMenu(p, s, t, e) {
+function sessionMenu(p, s, t, e, row = null) {
+  const key = `s:${s.id}`;
+  if (row && menuFor === key) { closeMenu(); return; } // the … button toggles
+  closeMenu();
+  let x = e.clientX, y = e.clientY, flipY = y;
+  if (row) { const r = e.currentTarget.getBoundingClientRect(); x = r.left; y = r.bottom + 4; flipY = r.top - 4; }
   const room = activeId && visibleIds().length < SPLIT_MAX;
-  openMenu(`s:${s.id}`, [
+  openMenu(key, [
     menuItem('arrowRight', t ? 'Show' : 'Open', () => openSessionRow(p, s)),
     room ? menuItem('columns', 'Open beside', () => besideRow(t, () => openSession(p, { resumeId: s.id, beside: true }))) : null,
     h('div', { class: 'menu-sep' }),
     menuItem('fork', 'Fork session', () => openSession(p, { resumeId: s.id, fork: true })),
     room ? menuItem('fork', 'Fork beside', () => openSession(p, { resumeId: s.id, fork: true, beside: true })) : null,
-  ], e.clientX, e.clientY, e.clientY);
+    h('div', { class: 'menu-sep' }),
+    t?.skipPerms
+      ? menuItem('redo', 'Relaunch with permissions', () => relaunchTab(t, false))
+      : menuItem('zap', 'Relaunch, skip permissions', () => (t ? relaunchTab(t, true) : openSession(p, { resumeId: s.id, skipPerms: true }))),
+  ], x, y, flipY);
+  row?.classList.add('menu-open'); // keeps its … visible while the menu is open
 }
 
 // Projects are reordered by dragging their rows (a line shows where the row lands) or with "Move to top".
@@ -1870,7 +1904,7 @@ function closeMenu() {
   if (!menuFor) return;
   menuFor = null;
   $('#menu').hidden = true;
-  $('.project.menu-open')?.classList.remove('menu-open');
+  $('.project.menu-open, .session.menu-open')?.classList.remove('menu-open');
 }
 
 // ---------------------------------------------------------------- footer ----
@@ -3072,6 +3106,7 @@ function wireGlobalEvents() {
   api.onPtyExit((id, code) => {
     const tab = tabs.get(id);
     if (!tab) return;
+    if (tab.relaunch) { tab.relaunch(); return; } // relaunchTab ended it: no "Session ended" overlay
     tab.status = 'exited';
     tab.exitCode = code;
     tab.busy = false;
@@ -3118,7 +3153,7 @@ function wireGlobalEvents() {
   document.addEventListener('mousedown', (e) => {
     if (detailKind && !e.target.closest('#detail, .fstat')) setDetail(null);
     // the "…" button toggles the menu itself on click, so a mousedown on it must not close it first
-    if (menuFor && !e.target.closest('#menu, .project.menu-open .p-more, #new-tab')) closeMenu();
+    if (menuFor && !e.target.closest('#menu, .project.menu-open .p-more, .session.menu-open .s-menu, #new-tab')) closeMenu();
   });
   window.addEventListener('blur', closeMenu);
   window.addEventListener('resize', closeMenu);

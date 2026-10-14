@@ -283,7 +283,7 @@ function endSession(s) {
   }), 5000).unref();
 }
 
-function createSession({ id, cwd, kind, resumeId, fork, cols, rows }) {
+function createSession({ id, cwd, kind, resumeId, fork, skipPerms, cols, rows }) {
   if (sessions.has(id)) return { ok: false, error: 'Session already exists' };
   if (!isDir(cwd)) return { ok: false, error: `Folder not found: ${cwd}` };
   // Only a bare UUID may reach the command line as a session id.
@@ -303,6 +303,7 @@ function createSession({ id, cwd, kind, resumeId, fork, cols, rows }) {
     // tab couldn't know which (the renderer resolves "Continue last conversation" to a resumeId instead).
     const extra = resumeId ? ['--resume', resumeId, ...(fork === true ? ['--fork-session'] : [])] : [];
     if (isChatDir(cwd)) extra.push('--add-dir', os.homedir()); // chats may tidy the Desktop, Downloads...
+    if (skipPerms === true) extra.push('--dangerously-skip-permissions'); // the session menu's "Relaunch, skip permissions"
     if (IS_MAC) {
       // Found on the login shell's PATH (shellEnvReady); the tab ends when claude exits, like cmd /c.
       file = 'claude';

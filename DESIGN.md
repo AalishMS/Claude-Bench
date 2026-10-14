@@ -197,7 +197,9 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - Session rows: no guide line. Columns line up: the status dot sits under the folder icon (slot at 28 px),
   titles start at 52 px like the project name. Title 13 px with ellipsis; time 11 px `--faint` on the right. Rows
   backed by an open tab show `×` in place of the time on hover (middle-click closes too). Active = weight 500.
-  Right-click a transcript row opens the DropdownMenu at the pointer: Open/Show, Open beside, Fork session, Fork beside.
+  Right-click a transcript row opens the DropdownMenu at the pointer: Open/Show, Open beside, Fork session, Fork beside,
+  then Relaunch, skip permissions (or Relaunch with permissions). On hover a ghost icon `…` replaces the time (left of `×`)
+  and opens the same menu below it; it stays visible while that menu is open.
 - Footer: one slim 44 px row. Grouped on the left, 2 px apart: `settings` (ghost icon, `.on` while the settings page is open), the update button and the usage stat; the running stat alone right-aligned. Stats are each **icon + value** in a
   28 px `rounded-md` button (padding 0 8, gap 6, 2 px apart, 12 px tabular numbers): plan **session** usage as a ring
   gauge + `10%`; running as a status dot + `3 running`. Icons `--faint`, values

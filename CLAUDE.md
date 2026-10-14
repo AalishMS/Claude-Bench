@@ -120,6 +120,11 @@ site/            the product page (static, open index.html or serve the folder; 
   matched to its new transcript by `assignSessions` like a fresh tab; its placeholder says "Forked session".
   Exit shows Restart / Close; a Claude tab with a transcript gets Resume (`--resume <sessionId>`, follows `/clear`) and
   New session instead (`restartTab(tab, 'resume' | 'fresh')`).
+  "Relaunch, skip permissions" (last item of `sessionMenu`) sends `skipPerms` (main adds `--dangerously-skip-permissions`):
+  a closed session opens with it, an open tab is relaunched on its transcript (`relaunchTab`: asks only if `isWorking`,
+  ends the pty and waits for its exit, which `tab.relaunch` swallows instead of the exit overlay, then `restartTab(tab, 'resume')`).
+  `tab.skipPerms` sticks for Restart/Resume and flips the item to "Relaunch with permissions"; it is not saved, so
+  restored tabs come back with normal permissions. Session rows show a `…` (`.s-menu`) on hover that opens the same menu.
 - **macOS** (`IS_MAC` in main.js, `IS_MAC`/`mod(e)`/`kbd()` in renderer.js; `api.platform` from preload). Windows code
   stays as is; Mac branches sit next to it and fail soft.
   - Sessions: `claude` is spawned directly, shell tabs run `$SHELL -l`. Both (and `claude mcp list`) wait for
