@@ -125,8 +125,15 @@ kbd {
   color: var(--fg);
   font-size: 13.5px;
   line-height: 1.6;
-  word-break: break-all; /* the long URL fills each line instead of scrolling; Copy takes the text, not the lines */
+  /* One line that scrolls sideways (no scrollbar; Copy takes the whole text). The fades sit on the padding only,
+     so text fades where it's cut and never at either end of the scroll. */
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 18px, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 18px, #000 calc(100% - 18px), transparent);
 }
+.term__cmd::-webkit-scrollbar { display: none; }
 .term__cmd::before { content: '> '; color: var(--faint); }
 [data-os="win"] .os-mac, [data-os="mac"] .os-win { display: none; }
 
