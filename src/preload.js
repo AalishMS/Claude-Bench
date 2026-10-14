@@ -6,6 +6,7 @@ const on = (channel, cb) => ipcRenderer.on(channel, (_e, ...args) => cb(...args)
 
 contextBridge.exposeInMainWorld('api', {
   platform: process.platform,
+  initialClaude: process.argv.includes('--stanza-claude'),
   getState: () => ipcRenderer.invoke('state:get'),
   addProjects: () => ipcRenderer.invoke('projects:add'),
   chatProject: () => ipcRenderer.invoke('projects:chat'),

@@ -10,10 +10,13 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 // Theme: main sets nativeTheme.themeSource from ui.theme (dark | light | system) before the window opens, so
-// prefers-color-scheme already resolves it here. data-theme picks the token set in styles.css; set it before first paint.
+// prefers-color-scheme already resolves it here. ui.claude (the Claude colors switch) picks Claude desktop's palette for
+// that scheme: claude-dark / claude-light; before init() loads ui, preload's initialClaude says whether it is on.
+// data-theme picks the token set in styles.css; set it before first paint.
 const darkScheme = matchMedia('(prefers-color-scheme: dark)');
-const themeName = () => (darkScheme.matches ? 'dark' : 'light');
-document.documentElement.dataset.theme = themeName();
+const schemeName = (claude) => (claude ? 'claude-' : '') + (darkScheme.matches ? 'dark' : 'light');
+const themeName = () => schemeName(ui.claude);
+document.documentElement.dataset.theme = schemeName(api.initialClaude);
 
 /** Tiny DOM builder. Text is always added as text nodes; `html` is for static icons only. */
 function h(tag, props, ...children) {
@@ -35,6 +38,7 @@ function h(tag, props, ...children) {
 const ICONS = {
   plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
   x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  spark: '<path d="M14.2 12.3L21.4 13.3M13.7 13.4L17.5 16.3M12.8 14.0L15.2 20.0M11.7 14.2L11.1 18.3M10.6 13.7L6.3 19.2M10.0 12.8L5.1 14.8M9.8 11.7L3.3 10.8M10.3 10.6L6.8 7.9M11.2 10.0L8.4 3.1M12.3 9.8L13.0 5.1M13.4 10.3L17.0 5.5M14.0 11.2L18.3 9.5"/>', // the Claude colors switch's thumb: twelve uneven rays
   redo: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
   terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
   branch: '<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
@@ -236,7 +240,7 @@ const TERM_FONT = {
   lineHeight: 1.4,
   letterSpacing: 0.2,
 };
-const termWeight = () => (themeName() === 'light' ? '400' : '300');
+const termWeight = () => (themeName().endsWith('light') ? '400' : '300');
 const FONT_SIZE = { min: 10, max: 24, default: 14 };
 const ZOOM_STEPS = [0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5]; // window zoom (ui.zoom), main clamps it too
 
@@ -252,6 +256,28 @@ const XTERM_DARK = {
   brightRed: '#f0908c', brightGreen: '#a3d58b', brightYellow: '#efce7d',
   brightBlue: '#8cc2f0', brightMagenta: '#d8aee3', brightCyan: '#92d9d4', brightWhite: '#ffffff',
 };
+// Claude colors: Claude desktop's warm dark (ivory text, clay cursor). brightBlack sits one step above #262624.
+const XTERM_CLAUDE_DARK = {
+  foreground: '#e8e6dc',
+  cursor: '#d97757',
+  selectionBackground: 'rgba(217, 119, 87, 0.28)',
+  black: '#3a3a37', red: '#e5776f', green: '#93b77a', yellow: '#dcb064',
+  blue: '#7fa7d6', magenta: '#c49ac9', cyan: '#78bdb1', white: '#a8a69c',
+  brightBlack: '#30302e', // the user's message bar: one step above --background (#262624)
+  brightRed: '#f09a8c', brightGreen: '#aecd96', brightYellow: '#ecc883',
+  brightBlue: '#9fc0e6', brightMagenta: '#d8b6dc', brightCyan: '#98d2c8', brightWhite: '#faf9f5',
+};
+// ... and its light: cream, warm near-black text. brightBlack sits one step below #faf9f5.
+const XTERM_CLAUDE_LIGHT = {
+  foreground: '#3d3d3a',
+  cursor: '#c96442',
+  selectionBackground: 'rgba(201, 100, 66, 0.2)',
+  black: '#3d3d3a', red: '#b53b2f', green: '#3e7a2c', yellow: '#8c6100',
+  blue: '#2f62a8', magenta: '#8e3f9e', cyan: '#1d7576', white: '#73726c',
+  brightBlack: '#ede9de', // the user's message bar: one step below --background (#faf9f5)
+  brightRed: '#a02e22', brightGreen: '#326b22', brightYellow: '#7a5300',
+  brightBlue: '#2554a0', brightMagenta: '#7c318c', brightCyan: '#146668', brightWhite: '#141413',
+};
 const XTERM_LIGHT = {
   foreground: '#262626',
   cursor: '#1a1a1a',
@@ -264,7 +290,7 @@ const XTERM_LIGHT = {
 };
 /** The terminal background is --background of the current theme. */
 const xtermTheme = () => ({
-  ...(themeName() === 'light' ? XTERM_LIGHT : XTERM_DARK),
+  ...{ light: XTERM_LIGHT, 'claude-dark': XTERM_CLAUDE_DARK, 'claude-light': XTERM_CLAUDE_LIGHT }[themeName()] || XTERM_DARK,
   background: cssVar('--background'),
   cursorAccent: cssVar('--background'),
 });
@@ -2299,24 +2325,35 @@ async function changeChatDir(call) {
 function appearanceSection() {
   const field = setField;
   const line = (cls, width) => h('i', { class: `pv-line${cls ? ' ' + cls : ''}`, style: width ? `width: ${width}%` : null });
-  // a mini window in that theme's own tokens (styles.css applies [data-theme] to any element)
-  const mini = (theme) => h('div', { class: 'pv', 'data-theme': theme },
+  // a mini window in that theme's own tokens (styles.css applies [data-theme] to any element), in Claude colors when on
+  const mini = (theme) => h('div', { class: 'pv', 'data-theme': (ui.claude ? 'claude-' : '') + theme },
     h('div', { class: 'pv-side' }, line('sel'), line(null, 80), line(null, 65)),
     h('div', { class: 'pv-main' }, line('fg', 80), line(null, 60), line(null, 70), line('acc')));
   const def = FONT_SIZE.default;
   const zoom = ui.zoom || 1;
   return h('section', {},
     secHead('Appearance', 'How Stanza looks. Changes apply at once.'),
+    h('div', { class: 'set-field claude-field' },
+      h('div', { class: 'set-text' },
+        h('div', { class: 'set-field-name' }, 'Claude colors'),
+        h('div', { class: 'set-field-desc' }, 'The Claude desktop app’s warm palette and clay accent, in the dark or light theme below.')),
+      h('button', {
+        class: `claude-switch${ui.claude ? ' on' : ''}`, role: 'switch', 'aria-checked': String(!!ui.claude),
+        'aria-label': 'Claude colors', 'data-fk': 'claude', onclick: (e) => setClaude(!ui.claude, e.currentTarget),
+      }, h('span', { class: 'cs-thumb' }, ico('spark')))),
     field('Theme', `System follows ${IS_MAC ? 'macOS' : 'Windows'}. Claude Code picks some colors itself: run /theme in a session to match.`,
       h('div', { class: 'theme-opts', role: 'radiogroup', 'aria-label': 'Theme' }, THEMES.map(([id, label]) =>
         h('button', {
           class: `theme-opt${ui.theme === id ? ' on' : ''}`, role: 'radio', 'aria-checked': String(ui.theme === id), 'data-fk': `theme-${id}`,
           onclick: () => setTheme(id),
         }, h('span', { class: 'pv-frame' }, id === 'system' ? [mini('dark'), mini('light')] : mini(id)), label)))),
-    field('Accent color', 'Primary buttons, focus rings, meters, attention dots and the split view.',
+    field('Accent color', ui.claude
+      ? 'Claude colors use Claude’s clay. Your choice comes back when you turn them off.'
+      : 'Primary buttons, focus rings, meters, attention dots and the split view.',
       h('div', { class: 'accent-opts', role: 'radiogroup', 'aria-label': 'Accent color' }, ACCENTS.map(([id, label]) =>
         h('button', {
           class: `accent-opt${ui.accent === id ? ' on' : ''}`, role: 'radio', 'aria-checked': String(ui.accent === id), 'data-fk': `accent-${id}`,
+          disabled: !!ui.claude,
           onclick: () => setAccent(id),
         }, h('span', { class: 'swatch', 'data-accent': id }), label)))),
     field('Terminal text size', 'For every session.',
@@ -2341,6 +2378,36 @@ function setTheme(theme) {
   ui.theme = theme;
   api.setUi({ theme }); // main sets nativeTheme.themeSource; the prefers-color-scheme change then calls applyTheme
   renderSettings();
+}
+
+/**
+ * The Claude colors switch. The thumb slides and its spark turns first (CSS, on this button), then the new palette
+ * spreads over the window in a circle from the switch: a view transition whose new snapshot is revealed by a growing
+ * clip-path. Reduced motion (or no view transitions) just swaps. Clicks during the animation are ignored.
+ */
+let claudeSwitching = false;
+function setClaude(on, btn) {
+  if (claudeSwitching) return;
+  ui.claude = on;
+  api.setUi({ claude: on });
+  btn.classList.toggle('on', on);
+  btn.setAttribute('aria-checked', String(on));
+  if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) return applyTheme();
+  claudeSwitching = true;
+  setTimeout(() => {
+    const r = btn.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const end = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    const vt = document.startViewTransition(() => {
+      applyTheme(); // re-renders the page: the new switch is born in its end state
+      if (on) $('#settings .claude-switch')?.classList.add('pop'); // one ring burst, not on every re-render
+    });
+    vt.ready.then(() => document.documentElement.animate(
+      { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${end}px at ${x}px ${y}px)`] },
+      { duration: 700, easing: 'cubic-bezier(0.22, 0.8, 0.2, 1)', pseudoElement: '::view-transition-new(root)' },
+    )).catch(() => {});
+    vt.finished.finally(() => { claudeSwitching = false; });
+  }, 260);
 }
 
 function setAccent(accent) {

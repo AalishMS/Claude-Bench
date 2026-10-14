@@ -56,8 +56,8 @@ tokens and component recipes, never installed (no React/Tailwind/Radix).
 
 - Tokens use shadcn names (`--background #0a0a0a`, `--sidebar #030303` = the darker left frame, `--foreground`, `--muted`, `--accent` = neutral hover surface,
   `--border`, `--input`, `--ring`, `--sidebar`...) as CSS variables at the top of `src/styles.css`. Change tokens,
-  not scattered values. **Two themes**: color tokens live in `:root, [data-theme="dark"]` and `[data-theme="light"]`;
-  every UI change must look right in both (check light too).
+  not scattered values. **Two themes** plus Claude colors: color tokens live in `:root, [data-theme="dark"]`, `[data-theme="light"]`,
+  `[data-theme="claude-dark"]` and `[data-theme="claude-light"]`; every UI change must look right in all four (check light too).
 - **`--primary` is the single accent variable**, chosen in Settings > Appearance (`ui.accent`: blue `#2850a5` default,
   violet, teal, rose; `--hue-*` + `[data-accent]` rules in styles.css). Hover and ring tints derive from it with
   `color-mix()`. Never hard-code an accent hue anywhere else.
@@ -207,13 +207,17 @@ site/            the product page (static, open index.html or serve the folder; 
   capture-phase keydown handler) prefers exact combos over patterns; a `run` returning `false` lets the key through. `ui.keys`
   stores only actions that differ from the defaults (main sanitizes it). Tooltips and hints read the live bindings through
   `tip()` / `keyText()`; `keysChanged()` redraws them.
-- **Appearance** (`ui.theme` dark | light | system, default dark; `ui.accent`): main's `applyTheme` validates both
+- **Appearance** (`ui.theme` dark | light | system, default dark; `ui.claude`; `ui.accent`): main's `applyTheme` validates both
   (`THEMES` / `ACCENTS`) and sets `nativeTheme.themeSource`, at startup before the window and on `ui:set`; `applyChrome`
   repaints the window background and Windows title bar buttons (`CHROME`) on every `nativeTheme` 'updated'. The renderer
   never decides the theme itself: `themeName()` = `prefers-color-scheme`, which follows `themeSource` (so System tracks
   the OS live). `data-theme` is set at the top of renderer.js (before first paint); `applyTheme()` sets `data-theme` /
   `data-accent` and restyles every terminal (`xtermTheme()`, `termWeight()`), on the media query's `change` and on an
-  accent change. Claude Code's own colors follow its `/theme`, not ours.
+  accent change. Claude Code's own colors follow its `/theme`, not ours. **Claude colors** (`ui.claude`, a switch
+  above the theme cards) = the Claude desktop app's palettes over the resolved scheme: `themeName()` = `claude-dark` /
+  `claude-light`, clay `--primary` (accent options disabled), main's `chrome()` picks `CHROME['claude-*']`. Preload's
+  `initialClaude` (main's `additionalArguments`) covers first paint. `setClaude` animates the switch, then reveals the new
+  palette in a circle from it (view transition + `clip-path`). An old `ui.theme: 'claude'` becomes dark + Claude colors. No Mac branch.
 - **Zoom** (`ui.zoom`, `ZOOM_STEPS` 75-150 %): the `zoomIn/zoomOut/zoomReset` keys change the terminal text size when
   focus is in a `.xterm` (`inTerminal`), otherwise `setZoom` / `stepZoom`. Main applies it with `webPreferences.zoomFactor`
   at start and `applyZoom` (`setZoomFactor`) on `ui:set`. Window buttons are in screen px, so they follow it: Windows'

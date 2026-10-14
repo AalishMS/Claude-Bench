@@ -78,6 +78,64 @@
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
 }
 
+/* Claude colors (ui.claude): the Claude desktop app's palettes, picked for the resolved scheme. Dark = warm charcoal and
+   ivory, light = cream and warm near-black. --primary is fixed to clay (below the accent table, so it beats data-accent). */
+[data-theme="claude-dark"] {
+  color-scheme: dark;
+  --background: #262624;
+  --foreground: #faf9f5;
+  --card: #262624;
+  --popover: #30302e;
+  --secondary: #3a3a37;
+  --muted: #3a3a37;
+  --accent: #3a3a37;
+  --muted-foreground: #c2c0b6;
+  --faint: #8f8d85;
+  --border: rgb(222 220 209 / 12%);
+  --input: rgb(222 220 209 / 18%);
+  --destructive: #f0706a;
+  --destructive-fill: color-mix(in srgb, var(--destructive) 60%, transparent);
+  --success: #8fbf7f;
+  --warning: #dcb064;
+  --sidebar: #1f1e1d;
+  --sidebar-foreground: #faf9f5;
+  --sidebar-accent: #3a3a37;
+  --sidebar-hover: color-mix(in srgb, var(--sidebar-accent) 50%, transparent);
+  --sidebar-border: #34332f;
+  --scrim: rgb(0 0 0 / 55%);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 30%);
+  --shadow-md: 0 8px 24px -6px rgb(0 0 0 / 50%), 0 2px 6px -2px rgb(0 0 0 / 35%);
+  --shadow-lg: 0 20px 40px -8px rgb(0 0 0 / 60%), 0 6px 12px -6px rgb(0 0 0 / 45%);
+}
+
+[data-theme="claude-light"] {
+  color-scheme: light;
+  --background: #faf9f5;
+  --foreground: #141413;
+  --card: #faf9f5;
+  --popover: #ffffff;
+  --secondary: #f0eee6;
+  --muted: #f0eee6;
+  --accent: #ede9de;
+  --muted-foreground: #5e5d59;
+  --faint: #87867f;
+  --border: rgb(31 30 29 / 10%);
+  --input: rgb(31 30 29 / 16%);
+  --destructive: #b53333;
+  --destructive-fill: var(--destructive);
+  --success: #3e7a2c;
+  --warning: #9a6200;
+  --sidebar: #f3f1ea;
+  --sidebar-foreground: #141413;
+  --sidebar-accent: #e6e2d6;
+  --sidebar-hover: color-mix(in srgb, var(--sidebar-accent) 60%, transparent);
+  --sidebar-border: #e3dfd3;
+  --scrim: rgb(20 20 19 / 35%);
+  --shadow-sm: 0 1px 2px 0 rgb(31 30 29 / 6%);
+  --shadow-md: 0 4px 6px -1px rgb(31 30 29 / 10%), 0 2px 4px -2px rgb(31 30 29 / 10%);
+  --shadow-lg: 0 10px 15px -3px rgb(31 30 29 / 10%), 0 4px 6px -4px rgb(31 30 29 / 10%);
+}
+
 /* Accents (ui.accent, data-accent on <html>; swatches carry their own data-accent). The only place these hues live.
    Each keeps white text readable on primary buttons. The split-group color that matches the accent is swapped for
    blue, so the five group colors stay distinct. */
@@ -86,11 +144,13 @@
   --hue-violet: #6b4fc8;
   --hue-teal: #12776f;
   --hue-rose: #b8336a;
+  --hue-clay: #c96442; /* Claude's, only with Claude colors on */
 }
 :root, [data-accent="blue"] { --primary: var(--hue-blue); }
 [data-accent="violet"] { --primary: var(--hue-violet); --group-1: var(--hue-blue); }
 [data-accent="teal"] { --primary: var(--hue-teal); --group-2: var(--hue-blue); }
 [data-accent="rose"] { --primary: var(--hue-rose); --group-3: var(--hue-blue); }
+[data-theme^="claude-"] { --primary: var(--hue-clay); --group-4: var(--hue-blue); } /* the orange group color steps aside */
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -517,7 +577,7 @@ body.settings-open #settings { display: block; }
 .set-field-desc { margin: 2px 0 12px; font-size: 12px; color: var(--muted-foreground); }
 .set-path { padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 12px; color: var(--muted-foreground); overflow-wrap: anywhere; user-select: text; }
 .set-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.theme-opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 520px; }
+.theme-opts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; max-width: 680px; }
 .theme-opt { display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: none; color: var(--muted-foreground); font-size: 12px; font-weight: 500; text-align: center; cursor: pointer; }
 .theme-opt:hover, .theme-opt.on { color: var(--foreground); }
 .theme-opt:focus-visible { outline: 0; }
@@ -536,10 +596,36 @@ body.settings-open #settings { display: block; }
 .pv-line.acc { margin-top: auto; width: 34%; height: 9px; border-radius: 3px; background: var(--primary); }
 .accent-opts { display: flex; flex-wrap: wrap; gap: 8px; }
 .accent-opt { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 10px; border: 1px solid var(--input); border-radius: var(--radius-md); background: color-mix(in srgb, var(--input) 30%, transparent); color: var(--muted-foreground); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color 0.15s, color 0.15s, border-color 0.15s; }
-.accent-opt:hover { background: var(--accent); color: var(--foreground); }
+.accent-opt:hover:not(:disabled) { background: var(--accent); color: var(--foreground); }
+.accent-opt:disabled { opacity: 0.5; cursor: default; }
 .accent-opt.on { border-color: var(--ring); color: var(--foreground); }
 .accent-opt:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
 .swatch { width: 14px; height: 14px; border-radius: 50%; background: var(--primary); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 15%); }
+/* Claude colors switch: the page's one playful control. The thumb carries a spark that turns and lights clay when on
+   (a springy slide, wider while pressed); switching on bursts a ring (.pop, set once by setClaude), then the new
+   palette spreads from the switch (a view transition, ::view-transition-* below). */
+.claude-field { display: flex; align-items: center; gap: 24px; }
+.claude-field .set-field-desc { margin-bottom: 0; }
+.claude-switch { position: relative; flex: none; width: 56px; height: 32px; padding: 0; border: 0; border-radius: 999px; background: var(--input); cursor: pointer; transition: background-color 0.3s, box-shadow 0.3s; }
+.claude-switch:hover { background: color-mix(in srgb, var(--foreground) 24%, transparent); }
+.claude-switch.on { background: var(--hue-clay); box-shadow: 0 0 0 1px color-mix(in srgb, var(--hue-clay) 50%, transparent), 0 0 20px -2px color-mix(in srgb, var(--hue-clay) 65%, transparent); }
+.claude-switch.on:hover { background: color-mix(in srgb, var(--hue-clay) 88%, white); }
+.claude-switch:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+.cs-thumb { position: absolute; top: 4px; left: 4px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 12px; background: #fff; color: #a8a29e; box-shadow: 0 1px 3px rgb(0 0 0 / 30%); transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), width 0.2s, color 0.3s; }
+.claude-switch:active .cs-thumb { width: 30px; }
+.claude-switch.on .cs-thumb { transform: translateX(24px); color: var(--hue-clay); }
+.claude-switch.on:active .cs-thumb { transform: translateX(18px); }
+.cs-thumb .ico { width: 18px; height: 18px; transition: transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.cs-thumb .ico svg { stroke-width: 2.2; }
+.claude-switch.on .cs-thumb .ico { transform: rotate(180deg) scale(1.1); }
+.claude-switch.on:hover .cs-thumb .ico { transform: rotate(225deg) scale(1.1); }
+.claude-switch.pop::after { content: ""; position: absolute; top: 4px; left: 28px; width: 24px; height: 24px; border: 2px solid var(--hue-clay); border-radius: 50%; pointer-events: none; animation: cs-burst 0.7s ease-out forwards; }
+@keyframes cs-burst { from { transform: scale(1); opacity: 0.9; } to { transform: scale(2.8); opacity: 0; } }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+@media (prefers-reduced-motion: reduce) {
+  .claude-switch, .cs-thumb, .cs-thumb .ico { transition: none; }
+  .claude-switch.pop::after { animation: none; }
+}
 .size-ctl { display: flex; align-items: center; gap: 8px; }
 .size-val { min-width: 52px; text-align: center; font: 12px var(--mono); font-variant-numeric: tabular-nums; }
 .size-ctl .set-hint { margin-left: 8px; }

@@ -13,12 +13,30 @@ helper uses. The Tailwind class names in this file only say which shadcn recipe 
 All colors, radii and shadows are CSS variables in `src/styles.css`, and they use shadcn's names. Change a token,
 never a scattered value.
 
-**Themes** (Settings > Appearance, `ui.theme` = `dark` | `light` | `system`, default dark). Main sets
+**Themes** (Settings > Appearance, `ui.theme` = `dark` | `light` | `system`, default dark; `ui.claude` = Claude colors). Main sets
 `nativeTheme.themeSource`, so `prefers-color-scheme` resolves the choice (System follows the OS live); renderer.js
 mirrors it as `data-theme` on `<html>`. The color tokens sit in two blocks: `:root, [data-theme="dark"]` and
 `[data-theme="light"]`. Any element with `data-theme` gets that theme's tokens (the settings page's preview cards use
 this). Theme-independent tokens (radii, `--mono`, widths, `--group-*`, the accent) stay on `:root` only, so a nested
 `[data-theme]` never resets the accent.
+
+**Claude colors** (`ui.claude`, a switch above the theme cards): the Claude desktop app's palettes, applied to whichever
+scheme the theme resolves to, so `data-theme` becomes `claude-dark` or `claude-light` (`themeName()` in renderer.js;
+preload's `initialClaude`, from main's `additionalArguments`, covers first paint before `ui` loads).
+
+| Token | `claude-dark` | `claude-light` |
+|---|---|---|
+| `--background`, `--card` | `#262624` | `#faf9f5` (cream) |
+| `--foreground` | `#faf9f5` (ivory) | `#141413` |
+| `--popover` | `#30302e` | `#ffffff` |
+| `--secondary`, `--muted`, `--accent` | `#3a3a37` | `#f0eee6` / `#ede9de` |
+| `--muted-foreground` / `--faint` | `#c2c0b6` / `#8f8d85` | `#5e5d59` / `#87867f` |
+| `--border` / `--input` | `rgb(222 220 209 / 12%)` / `18%` | `rgb(31 30 29 / 10%)` / `16%` |
+| `--sidebar` / `--sidebar-accent` / `--sidebar-border` | `#1f1e1d` / `#3a3a37` / `#34332f` | `#f3f1ea` / `#e6e2d6` / `#e3dfd3` |
+
+`--primary` is fixed to Claude's clay `--hue-clay` `#c96442` (`[data-theme^="claude-"]`, below the accent table so it
+beats `data-accent`; `--group-4`, the orange split color, becomes blue); the Accent color options are disabled while
+it is on, and the theme preview cards show the Claude variants.
 
 | Token | Dark | Light | Used for |
 |---|---|---|---|
@@ -138,7 +156,12 @@ section header has a 14 px / 600 title, a 12 px muted line, an optional `Reset a
 a 1 px `--border` rule under it.
 
 Appearance is a stack of fields (20 px padding, `--border` rules between): name 13 px / 500, a 12 px muted line, then
-the control. **Theme**: three preview cards (16:10, `rounded-lg`, 1 px `--border` ring; hover `--input`; selected 2 px
+the control. **Claude colors** comes first: name and line on the left, a switch on the right (`.claude-switch`, the page's
+one playful control, a deliberate exception to the quiet rules): a 56x32 pill, `--input` off and clay with a soft clay
+glow on, a white thumb holding a 12-ray spark (`ico('spark')`) that slides with a springy overshoot (wider while
+pressed), turns 180 degrees and goes clay. Switching on bursts one clay ring from the thumb (`.pop`), and the new
+palette spreads over the window in a circle from the switch (`setClaude`: a view transition whose new snapshot is
+revealed by a growing `clip-path`, 700 ms). Reduced motion turns all of it off. **Theme**: three preview cards (16:10, `rounded-lg`, 1 px `--border` ring; hover `--input`; selected 2 px
 `--ring`), each a mini window drawn with that theme's own tokens (`.pv[data-theme]`: sidebar strip, a few
 `--muted` lines, a `--primary` button); System shows dark and light cut diagonally. Label under the card, 12 px / 500,
 `--foreground` when selected. **Accent color**: outline-style option buttons (h 32) with a 14 px swatch dot + name;
@@ -308,7 +331,8 @@ Per-line font size is impossible in a terminal grid, and the app never re-parses
   secondary/meta text and rules, `white`+dim = diff context, `brightWhite` on `brightBlack` bg = the user's message bar,
   `brightBlue` = inline code, `brightGreen` = bullets and diff +, `brightRed` = diff -, bold = headings/strong, italic
   = emphasis/quotes, H1 = bold+italic+underline.
-- Two palettes, `XTERM_DARK` and `XTERM_LIGHT`; `xtermTheme()` picks one and `applyTheme()` restyles every open
+- Four palettes, `XTERM_DARK`, `XTERM_LIGHT`, `XTERM_CLAUDE_DARK` (warm greys, ivory `brightWhite`, clay cursor,
+  `brightBlack` `#30302e`) and `XTERM_CLAUDE_LIGHT` (warm near-black, `brightBlack` `#ede9de`); `xtermTheme()` picks one and `applyTheme()` restyles every open
   terminal live. Keep `white` mid-grey (hierarchy) and `brightBlack` a quiet message bar one step off `--background`:
   `#262626` in dark, `#ebebeb` in light. `brightWhite` is the strongest text, so it is `#ffffff` in dark and `#000000`
   in light (the bar's text). If the background moves, move `brightBlack` with it. `minimumContrastRatio: 3` keeps
@@ -319,11 +343,11 @@ Per-line font size is impossible in a terminal grid, and the app never re-parses
 
 ## 6. Sync points (literals that can't read CSS)
 
-- `src/main.js`: `CHROME` = `{ dark: { bg: '#0a0a0a', symbol: '#a1a1a1' }, light: { bg: '#ffffff', symbol: '#525252' } }`,
+- `src/main.js`: `CHROME` = `{ dark: { bg: '#0a0a0a', symbol: '#a1a1a1' }, light: { bg: '#ffffff', symbol: '#525252' }, 'claude-dark': { bg: '#262624', symbol: '#c2c0b6' }, 'claude-light': { bg: '#faf9f5', symbol: '#5e5d59' } }`,
   used for `backgroundColor` and `titleBarOverlay` at creation and by `applyChrome()` (`setBackgroundColor` +
   `setTitleBarOverlay`, Windows only) whenever the theme resolves differently. They paint before CSS loads and the
   window controls sit on the top bar: keep `bg` equal to each theme's `--background`. `titleBarOverlay.height` is 39, one
   less than the 40 px top row, so the overlay doesn't paint over the bar's 1 px `border-bottom`.
-- `XTERM_DARK.brightBlack` / `XTERM_LIGHT.brightBlack` (renderer.js) are tuned against each `--background` (see section 5).
+- `XTERM_DARK.brightBlack` / `XTERM_LIGHT.brightBlack` / `XTERM_CLAUDE_*.brightBlack` (renderer.js) are tuned against each `--background` (see section 5).
 - `THEMES` / `ACCENTS` in main.js (validation) and renderer.js (settings page) list the same ids as styles.css.
 - `assets/icon-source.png` (1024 px master) → `assets/icon.png` (512 px, renderer and Windows toasts), `assets/icon.ico` (PNG frames: 16, 24, 32, 48, 64, 128, 256 px, Windows window/taskbar/shortcuts/package; the white mark is scaled 1.12x inside the same tile, keeping its margin ratios, so it matches the size of neighbouring taskbar icons such as Windows Terminal's) and `assets/icon-mac.png` (tile at 824 px centred on 1024, macOS window and package). Outside the rounded tile is transparent. Replace derived assets together; the old code generator has been removed.

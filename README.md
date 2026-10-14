@@ -182,8 +182,8 @@ projects, tabs and settings. On macOS, a Claude Bench icon kept in the Dock need
 | `Ctrl+,` | Settings |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Terminal text size when a terminal has focus, else zoom the whole window |
 
-Settings (the gear at the bottom left) has two pages. **Appearance**: dark, light or system theme, an accent color
-(blue, violet, teal, rose), the terminal text size and the interface zoom. Claude Code picks some of its colors itself, so after switching
+Settings (the gear at the bottom left) has two pages. **Appearance**: dark, light or system theme, a Claude colors switch
+(the Claude desktop app's warm palette and clay accent, in dark and light), an accent color (blue, violet, teal, rose), the terminal text size and the interface zoom. Claude Code picks some of its colors itself, so after switching
 to light run `/theme` in a session and pick a light theme there too. **Shortcuts**: every shortcut can be changed. The defaults stay clear of keys Claude Code
 uses, except `Ctrl+T`, `Ctrl+S`, `Ctrl+W` and `Ctrl+K`. Drop files onto a terminal to paste their paths. `F12` opens DevTools.
 

@@ -76,7 +76,7 @@ if (IS_MAC && !process.env.LANG) process.env.LANG = 'en_US.UTF-8'; // Finder lau
 
 const defaults = {
   projects: [], // [{ path, name }]
-  ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, fontSize: 14, zoom: 1, theme: 'dark', accent: 'blue', expanded: [], collapsed: [], keys: {} }, // theme: dark | light | system; accent: ACCENTS; expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut; keys: shortcut overrides (action id -> combos)
+  ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, fontSize: 14, zoom: 1, theme: 'dark', claude: false, accent: 'blue', expanded: [], collapsed: [], keys: {} }, // theme: dark | light | system; claude: Claude desktop's palette over that theme; accent: ACCENTS; expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut; keys: shortcut overrides (action id -> combos)
   bounds: null,
   maximized: false,
   tabs: [], // open tabs in tab order, reopened at launch: [{ project: path, kind: 'claude' | 'shell', sessionId }]
@@ -1150,18 +1150,23 @@ function visibleBounds(b) {
 }
 
 // Appearance (settings page). The renderer's CSS follows prefers-color-scheme, which nativeTheme.themeSource drives,
-// so 'system' needs no code of its own. These literals paint before CSS loads: keep them equal to --background
-// (and --muted-foreground for the window buttons) of each theme (DESIGN.md sync point).
+// so 'system' needs no code of its own. ui.claude swaps in Claude desktop's palette for whichever scheme that resolves
+// to (claude-dark / claude-light). These literals paint before CSS loads: keep them equal to --background (and
+// --muted-foreground for the window buttons) of each theme (DESIGN.md sync point).
 const THEMES = ['dark', 'light', 'system'];
 const ACCENTS = ['blue', 'violet', 'teal', 'rose'];
-const CHROME = { dark: { bg: '#0a0a0a', symbol: '#a1a1a1' }, light: { bg: '#ffffff', symbol: '#525252' } };
-const chrome = () => CHROME[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'];
+const CHROME = {
+  dark: { bg: '#0a0a0a', symbol: '#a1a1a1' }, light: { bg: '#ffffff', symbol: '#525252' },
+  'claude-dark': { bg: '#262624', symbol: '#c2c0b6' }, 'claude-light': { bg: '#faf9f5', symbol: '#5e5d59' },
+};
+const chrome = () => CHROME[(state.ui.claude ? 'claude-' : '') + (nativeTheme.shouldUseDarkColors ? 'dark' : 'light')];
 // Window zoom (ui.zoom, Settings > Appearance / Ctrl+= outside a terminal). The window buttons are sized in screen
 // pixels, not page pixels, so they follow it: the overlay stays 1 px short of the zoomed 40 px top bar.
 const zoom = () => Math.min(2, Math.max(0.5, Number(state.ui.zoom) || 1));
 const overlayH = () => Math.round(40 * zoom()) - 1;
 
 function applyTheme() {
+  if (state.ui.theme === 'claude') Object.assign(state.ui, { theme: 'dark', claude: true }); // a short-lived theme id
   if (!THEMES.includes(state.ui.theme)) state.ui.theme = 'dark';
   if (!ACCENTS.includes(state.ui.accent)) state.ui.accent = 'blue';
   if (nativeTheme.themeSource !== state.ui.theme) nativeTheme.themeSource = state.ui.theme;
@@ -1209,6 +1214,7 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       zoomFactor: zoom(),
+      additionalArguments: state.ui.claude ? ['--stanza-claude'] : [], // preload's initialClaude: first paint in Claude colors
     },
   });
   if (state.maximized) mainWindow.maximize();
@@ -1456,7 +1462,7 @@ function registerIpc() {
     }
     state.ui.fontSize = Math.min(24, Math.max(10, Math.round(state.ui.fontSize) || 14));
     state.ui.zoom = zoom();
-    if (patch?.theme || patch?.accent) applyTheme();
+    if (patch?.theme || patch?.accent || typeof patch?.claude === 'boolean') applyTheme();
     if (patch?.zoom) applyZoom();
     saveState();
   });
