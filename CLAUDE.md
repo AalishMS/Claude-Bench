@@ -378,6 +378,9 @@ site/            the product page (static, open index.html or serve the folder; 
   like a session drag) or "Move to top" in the `…` menu; both call `moveProject` -> `projects:reorder`. Same-name folders:
   `projParent(p)` = the fewest parent folders that tell it apart, `projName(p)` = `app (clients)` for tab labels,
   notifications and split-group rows; the project row shows the parent as a muted `.p-parent`.
+  "Remove from list" keeps the project's tabs open: `orphanProjects()` (tab projects no longer in `projects`) are drawn at
+  the bottom of the sidebar, always open, listing only their open tabs (no drag, no actions, `.project.orphan`), and polled
+  by `pollSessions`, until their last tab closes.
 - Renderer builds DOM with the `h()` helper. User/process text always goes in as text nodes. `html:` is only for
   static icon SVG.
 

@@ -447,6 +447,13 @@ const activeTab = () => tabs.get(activeId);
 const tabsOf = (projectPath) => [...tabs.values()].filter((t) => t.project.path === projectPath);
 /** Projects without the pinned Chats entry ("No project" sessions in the home folder). */
 const realProjects = () => projects.filter((p) => !p.chat);
+/** Projects removed from the list whose tabs are still open: shown at the bottom until their last tab closes. */
+function orphanProjects() {
+  const listed = new Set(projects.map((p) => p.path));
+  const out = new Map();
+  for (const t of tabs.values()) if (!listed.has(t.project.path) && !out.has(t.project.path)) out.set(t.project.path, t.project);
+  return [...out.values()];
+}
 
 /** The parent folders that tell a project apart from others of the same folder name ("clients" for C:\code\clients\app), else ''. */
 const projParent = (p) => (p.chat ? '' : distinctParent(p, realProjects()));
@@ -1107,6 +1114,7 @@ async function closeTab(id) {
   const idx = order.indexOf(id);
   const slot = groupOf(id)?.ids.indexOf(id) ?? -1;
   tabs.delete(id);
+  tab.relaunch?.(); // a relaunch waiting for this pty's exit would wait forever (onPtyExit ignores closed tabs); it sees the tab is gone
   const mates = removeFromSplit(id);
   if (activeId === id) {
     activeId = null;
@@ -1826,7 +1834,8 @@ function renderSidebar(force = false) {
 
   const root = $('#projects');
   const emptyNote = () => h('div', { class: 'empty-note' }, 'No projects yet.', h('br'), 'Add a folder to start a Claude session in it.');
-  if (!projects.length) {
+  const orphans = orphanProjects(); // every open tab needs a row (there is no tab strip)
+  if (!projects.length && !orphans.length) {
     root.replaceChildren(emptyNote());
     return;
   }
@@ -1846,21 +1855,22 @@ function renderSidebar(force = false) {
       return splitGroup(g, false);
     });
   };
-  const groups = projects.map((p) => {
+  const groups = [...projects, ...orphans].map((p) => {
+    const orphan = orphans.includes(p);
     const loaded = sessionsBy[p.path];
     const matches = q ? (loaded || []).filter((s) => s.title.toLowerCase().includes(q)) : loaded || [];
     if (q && !matches.length) return null;
-    const isOpen = q ? true : expanded.has(p.path);
+    const isOpen = q || orphan ? true : expanded.has(p.path);
     // Open tabs first, in tab order (newest first), then the project's other sessions, newest first.
     // A reopened past session (parked, not in a split) stays among them at its own place until its first prompt.
     // Only while its transcript is listed (a restarted-as-new tab has no sessionId, so it needs its open row).
     const mine = tabsOf(p.path);
     const listed = loaded && mine.some((t) => t.parked) ? new Set(loaded.map((s) => s.id)) : null;
     const inPlace = new Set(); // session ids of parked tabs whose row stays in the list below
-    for (const t of mine) if (t.parked && listed?.has(t.sessionId) && !groupOf(t.id)) inPlace.add(t.sessionId);
+    if (!orphan) for (const t of mine) if (t.parked && listed?.has(t.sessionId) && !groupOf(t.id)) inPlace.add(t.sessionId);
     const open = q ? [] : mine.filter((t) => !inPlace.has(t.sessionId));
     const openIds = new Set(open.map((t) => t.sessionId));
-    const rest = matches.filter((s) => !openIds.has(s.id));
+    const rest = orphan && !q ? [] : matches.filter((s) => !openIds.has(s.id)); // a removed project lists only its open tabs
     const isActive = p.path === activeProject;
 
     let list = null;
@@ -1880,7 +1890,7 @@ function renderSidebar(force = false) {
           : null);
     }
     return h('div', { class: 'group' },
-      projectRow(p, isActive, isOpen),
+      projectRow(p, isActive, isOpen, orphan),
       isActive && git[p.path] ? gitSubLine(git[p.path]) : null,
       list);
   }).filter(Boolean);
@@ -1892,23 +1902,25 @@ function renderSidebar(force = false) {
 }
 
 /** One line: chevron, folder icon, name, and a running dot (swapped for + and … on hover). */
-function projectRow(p, isActive, isOpen) {
+/** `orphan`: removed from the list but still has open tabs, so it stays open and has no actions. */
+function projectRow(p, isActive, isOpen, orphan = false) {
   const dots = tabsOf(p.path).map(tabDot);
   const run = ['attention', 'working', 'running'].find((d) => dots.includes(d));
   return h('div', {
-    class: `project${isActive && !isOpen ? ' current' : ''}${menuFor === p.path ? ' menu-open' : ''}`,
-    title: [p.path, gitSummary(git[p.path]), p.chat ? null : 'Drag to reorder'].filter(Boolean).join('\n'),
-    onclick: () => toggleExpand(p), // only collapses/expands; new sessions come from + or the shortcut
-    ...(p.chat ? {} : projDragProps(p)), // Chats stays pinned first
+    class: `project${isActive && !isOpen ? ' current' : ''}${menuFor === p.path ? ' menu-open' : ''}${orphan ? ' orphan' : ''}`,
+    title: [p.path, gitSummary(git[p.path]), orphan ? 'Removed from the list: shown while its sessions are open'
+      : p.chat ? null : 'Drag to reorder'].filter(Boolean).join('\n'),
+    onclick: () => { if (!orphan) toggleExpand(p); }, // only collapses/expands; new sessions come from + or the shortcut
+    ...(p.chat || orphan ? {} : projDragProps(p)), // Chats stays pinned first
   },
     h('button', {
-      class: `chev${isOpen ? ' open' : ''}`, title: isOpen ? 'Hide sessions' : 'Show sessions',
-      onclick: (e) => { e.stopPropagation(); toggleExpand(p); },
+      class: `chev${isOpen ? ' open' : ''}`, title: orphan ? null : isOpen ? 'Hide sessions' : 'Show sessions',
+      onclick: (e) => { e.stopPropagation(); if (!orphan) toggleExpand(p); },
     }, ico('chevron')),
     h('span', { class: 'p-icon' }, ico(p.chat ? 'chat' : 'folder')),
     h('span', { class: 'p-name' }, p.name, projParent(p) ? h('span', { class: 'p-parent' }, projParent(p)) : null),
     h('span', { class: 'p-run', title: run ? 'Something is running' : null }, run ? h('i', { class: `dot ${run}` }) : null),
-    h('div', { class: 'p-acts' },
+    orphan ? null : h('div', { class: 'p-acts' },
       rowButton('plus', 'New Claude session', () => openSession(p)),
       h('button', {
         class: 'btn ghost icon sm p-more', title: 'More actions',
@@ -3215,7 +3227,8 @@ let sessionsQueued = false;
 let sessionsTick = 0;
 async function pollSessions(all = true) {
   const shown = all ? null : new Set([...[...tabs.values()].map((t) => t.project.path), ...expanded, currentProject()?.path]);
-  const paths = projects.map((p) => p.path).filter((p) => all || shown.has(p));
+  // removed projects with open tabs too: their rows need titles, fresh tabs their transcript (assignSessions)
+  const paths = [...projects, ...orphanProjects()].map((p) => p.path).filter((p) => all || shown.has(p));
   if (sessionsBusy && all) sessionsQueued = true;
   if (sessionsBusy || document.hidden || !paths.length) return;
   sessionsBusy = true;

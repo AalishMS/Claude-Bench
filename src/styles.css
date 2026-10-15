@@ -280,7 +280,8 @@ body.resizing .rz { pointer-events: auto; }
 .p-run { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 24px; }
 .p-acts { display: none; flex: none; }
 .project:hover .p-acts, .project.menu-open .p-acts { display: flex; }
-.project:hover .p-run, .project.menu-open .p-run { display: none; }
+.project:not(.orphan):hover .p-run, .project.menu-open .p-run { display: none; }
+.project.orphan { cursor: default; } /* removed from the list, still has open tabs: no actions */
 .p-sub { display: flex; padding: 0 8px 2px 52px; font-size: 11px; color: var(--faint); white-space: nowrap; }
 .p-sub span { flex: none; }
 .p-sub .p-branch { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
