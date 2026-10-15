@@ -331,8 +331,12 @@ site/            the product page (static, open index.html or serve the folder; 
   the new file's birth, so an idle neighbour can't take it; an exited fresh tab doesn't hold the follow back.
   Until a tab's transcript is listed (after the first reply) it shows as an italic "New session" placeholder row;
   PowerShell tabs get a "PowerShell" row. Every open tab has a row (there is no tab strip).
-- **Session info** (right side of the status bar for Claude tabs, `session:info`): model = last reply's model or `/model` output in the transcript tail,
-  effort = `/effort` / `/model` output, else `modelSettings[<id>].effortLevel` in `~/.claude/settings.json`. Subagents come from
+- **Session info** (right side of the status bar for Claude tabs, `session:info`): model = last reply's model or `/model` output in the transcript,
+  effort = `/effort` / `/model` output, else `modelSettings[<id>].effortLevel` in `~/.claude/settings.json`. `readModelEffort` scans
+  the whole transcript once, then only its new lines (`modelCache`: byte offset + values; a 64 KB tail lost an `/effort` a few
+  tool calls back). The settings fallback is the copy main read when the tab's Claude started (`sessions.get(id).settings`,
+  so `session:info` takes the tab id): `/model` and `/effort` save the default for *new* sessions, so another tab's change
+  must not show here; a tab with no transcript yet reads the live file. No Mac branch. Subagents come from
   `<session>/subagents/agent-*.jsonl` + `.meta.json`; finished = the last message line (`agentDone` skips attachments) is a `SubagentHandback` call or its result, a text reply with `stop_reason` `end_turn`/`stop_sequence` (Explore, Plan and /code-review runs never hand back; mid-run text lines have `stop_reason` null, since text and the next tool call are separate lines), or a `[Request interrupted by user]` line (stopped; otherwise it would stay "working" for `AGENT_STALE_MS`). A finished run is followed by a ~100 KB `prompt_snapshot` attachment whose tool list names SubagentHandback, so never text-search the tail for it; with no message line in 64 KB, `readAgent` reads 1 MB.
 - **Scrollbar**: our own `.vbar` replaces xterm's. Normal buffer = real position. Claude's `"tui": "fullscreen"` uses the
   alternate screen (no scrollback), so there the strip forwards synthetic wheel events to `.xterm-screen` (Claude has mouse

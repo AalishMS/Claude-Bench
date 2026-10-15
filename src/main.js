@@ -334,7 +334,8 @@ function createSession({ id, cwd, kind, resumeId, fork, skipPerms, cols, rows })
     return { ok: false, error: String(err.message || err) };
   }
 
-  const s = { pty: p, cwd, kind, buf: '', timer: null };
+  // /model and /effort save the default for new sessions only: this process keeps the one it started with (sessionInfo)
+  const s = { pty: p, cwd, kind, buf: '', timer: null, settings: kind === 'claude' ? readSettingsSync() : null };
   sessions.set(id, s);
 
   // Coalesce bursts of output into one IPC message per few milliseconds.
@@ -675,14 +676,38 @@ async function readJson(file) {
   }
 }
 
-const modelCache = new Map(); // file -> { sig, value }
+// The whole transcript, read once and then only its new lines: a tail would lose an /effort a few tool calls back and
+// fall back to settings.json, which another tab's /model or /effort may have changed since.
+const modelCache = new Map(); // file -> { off, value }, the newest 50 files
+const MODEL_CHUNK = 1024 * 1024;
 async function readModelEffort(file) {
   const st = await fs.promises.stat(file);
-  const sig = `${st.mtimeMs}:${st.size}`;
-  const hit = modelCache.get(file);
-  if (hit?.sig === sig) return hit.value;
-  const value = parseModelEffort(await readTail(file, st.size, TAIL_BYTES));
-  modelCache.set(file, { sig, value });
+  let hit = modelCache.get(file);
+  if (!hit || st.size < hit.off) hit = { off: 0, value: { model: null, effort: null } }; // new, or rewritten
+  let { off, value } = hit;
+  if (st.size > off) {
+    const fh = await fs.promises.open(file, 'r');
+    try {
+      let carry = Buffer.alloc(0); // a line cut at the chunk's end; one still being written waits for the next poll
+      for (let pos = off; pos < st.size;) {
+        const buf = Buffer.alloc(Math.min(MODEL_CHUNK, st.size - pos));
+        const { bytesRead } = await fh.read(buf, 0, buf.length, pos);
+        if (!bytesRead) break;
+        pos += bytesRead;
+        const data = carry.length ? Buffer.concat([carry, buf.subarray(0, bytesRead)]) : buf.subarray(0, bytesRead);
+        const nl = data.lastIndexOf(0x0a);
+        if (nl < 0) { carry = data; continue; }
+        value = parseModelEffort(data.toString('utf8', 0, nl + 1), value);
+        carry = Buffer.from(data.subarray(nl + 1));
+        off = pos - carry.length;
+      }
+    } finally {
+      await fh.close();
+    }
+  }
+  modelCache.delete(file);
+  modelCache.set(file, { off, value });
+  if (modelCache.size > 50) modelCache.delete(modelCache.keys().next().value);
   return value;
 }
 
@@ -721,8 +746,19 @@ async function readAgent(dir, name) {
   return agent;
 }
 
-async function sessionInfo(cwd, sessionId) {
-  const settings = await readJson(SETTINGS_FILE);
+function readSettingsSync() {
+  try {
+    return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8').replace(/^\uFEFF/, ''));
+  } catch {
+    return null;
+  }
+}
+
+// `tabId`'s settings as its Claude started, not today's file: another tab's /model or /effort changes the file, not this
+// session. A tab with no transcript yet reads the file, where a /model or /effort typed before the first prompt shows.
+async function sessionInfo(cwd, sessionId, tabId) {
+  const started = sessionId ? sessions.get(tabId)?.settings : null;
+  const settings = started || (await readJson(SETTINGS_FILE));
   let model = null;
   let effort = null;
   let agents = [];
@@ -1521,7 +1557,7 @@ function registerIpc() {
     const entries = await Promise.all((paths || []).map(async (p) => [p, await listSessions(p)]));
     return Object.fromEntries(entries);
   });
-  ipcMain.handle('session:info', (_e, cwd, sessionId) => sessionInfo(cwd, sessionId));
+  ipcMain.handle('session:info', (_e, cwd, sessionId, tabId) => sessionInfo(cwd, sessionId, tabId));
   ipcMain.handle('mcp:list', (_e, cwd) => mcpList(cwd));
   ipcMain.handle('agents:defined', (_e, cwd) => definedAgents(cwd));
   ipcMain.handle('agents:prompt', (_e, cwd, sessionId, name) => agentPrompts(cwd, sessionId, name));

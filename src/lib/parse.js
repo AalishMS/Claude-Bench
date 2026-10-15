@@ -218,9 +218,12 @@ function withLongContext(model, configured) {
   return fam && fam === modelFamily(configured) ? `${model}[1m]` : model;
 }
 
-/** Latest model (from replies or /model) and effort (from /effort or /model) in a transcript tail. */
-function parseModelEffort(text) {
-  const out = { model: null, effort: null };
+/**
+ * Latest model (from replies or /model) and effort (from /effort or /model) in transcript text. `prev` = the result for
+ * the text before it, so a transcript can be read in pieces: a value is kept until a later line changes it.
+ */
+function parseModelEffort(text, prev) {
+  const out = { model: prev?.model || null, effort: prev?.effort || null };
   for (const line of text.split('\n')) {
     try {
       if (line.includes('"type":"assistant"') && line.includes('"model"')) {

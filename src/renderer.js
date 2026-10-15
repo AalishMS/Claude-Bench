@@ -2825,8 +2825,9 @@ async function pollInfo() {
   if (infoBusy.has(tab.id) || document.hidden) return;
   infoBusy.add(tab.id);
   try {
-    const next = await api.sessionInfo(tab.project.path, tab.sessionId);
-    if (tabs.has(tab.id)) infoBy.set(tab.id, next);
+    const session = tab.sessionId;
+    const next = await api.sessionInfo(tab.project.path, session, tab.id);
+    if (tabs.has(tab.id) && tab.sessionId === session) infoBy.set(tab.id, next); // /clear meanwhile: the next poll has it
     renderInfo(); // key-diffed, shows whichever tab is active now
     renderRside();
   } finally {

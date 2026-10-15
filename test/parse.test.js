@@ -230,6 +230,11 @@ test('parseModelEffort follows /model, /effort and replies', () => {
   // a later reply of another family replaces it, synthetic replies don't
   assert.deepEqual(p.parseModelEffort(jl(stdout('Set model to Opus 4.6 (1M context)'), reply('claude-haiku-5-5'), reply('<synthetic>'))),
     { model: 'claude-haiku-5-5', effort: null });
+  // read in pieces: an early /effort and [1m] carry over to later text that doesn't mention them
+  const first = p.parseModelEffort(jl(stdout('Set model to `Opus 4.6` (1M context) with `high` effort')));
+  assert.deepEqual(p.parseModelEffort(jl(reply('claude-opus-4-6')), first), { model: 'claude-opus-4-6[1m]', effort: 'high' });
+  assert.deepEqual(p.parseModelEffort(jl(stdout('Set effort level to low (saved as your default for new sessions)')), first),
+    { model: 'Opus 4.6[1m]', effort: 'low' });
 });
 
 test('agentDone: handback, final text reply or interrupt = finished; a tool call, mid-run text or a partial line = working', () => {
