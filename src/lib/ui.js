@@ -188,9 +188,52 @@
     return room * (1 - off / Math.max(off, max || guess));
   }
 
+  /**
+   * Which transcript each Claude tab shows. `tabs`: Claude tabs in tab order, `{ id, project, sessionId, running,
+   * working, startedAt, enters }` (`enters` = times an Enter was typed in it); `sessionsBy`: project path ->
+   * `[{ id, birth, mtime }]`; `retired`: ids a tab let go of (closed, restarted as new, left by /clear), never handed
+   * to another tab. Returns `[{ id, sessionId, followed }]` for the tabs whose transcript changes.
+   * Fresh and forked tabs get the oldest free transcript born after they started. An idle tab follows its own /clear
+   * (or /resume) to a free transcript born after its current one went quiet, only if an Enter was typed in that tab
+   * when the file was created: an idle neighbour in the same project must not take it.
+   */
+  function matchSessions(tabs, sessionsBy, retired) {
+    const claimed = new Set(retired);
+    for (const t of tabs) if (t.sessionId) claimed.add(t.sessionId);
+    const now = new Map(tabs.map((t) => [t.id, t.sessionId]));
+    const out = [];
+    const pending = tabs.filter((t) => t.running && !t.sessionId).sort((a, b) => a.startedAt - b.startedAt);
+    for (const t of pending) {
+      const pick = (sessionsBy[t.project] || [])
+        .filter((s) => !claimed.has(s.id) && s.birth >= t.startedAt - 1000)
+        .sort((a, b) => a.birth - b.birth)[0];
+      if (!pick) continue;
+      claimed.add(pick.id);
+      now.set(t.id, pick.id);
+      out.push({ id: t.id, sessionId: pick.id, followed: false });
+    }
+    // a running tab still waiting for its first transcript could own the new file: don't follow in that project yet
+    const waiting = new Set(tabs.filter((t) => t.running && !now.get(t.id)).map((t) => t.project));
+    for (const t of tabs) {
+      const id = now.get(t.id);
+      if (!id || !t.running || t.working || waiting.has(t.project)) continue;
+      const list = sessionsBy[t.project] || [];
+      const cur = list.find((s) => s.id === id);
+      if (!cur) continue;
+      const typed = (s) => (t.enters || []).some((e) => e >= s.birth - 10000 && e <= s.birth + 2000);
+      const next = list
+        .filter((s) => !claimed.has(s.id) && s.birth >= t.startedAt && s.birth >= cur.mtime - 2000 && s.mtime > cur.mtime && typed(s))
+        .sort((a, b) => a.birth - b.birth)[0];
+      if (!next) continue;
+      claimed.add(next.id);
+      out.push({ id: t.id, sessionId: next.id, followed: true });
+    }
+    return out;
+  }
+
   const helpers = {
     contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches,
-    jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop,
+    jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions,
   };
   if (typeof module === 'object' && module.exports) module.exports = helpers;
   else Object.assign(globalThis, helpers);

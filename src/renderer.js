@@ -1,7 +1,7 @@
 'use strict';
 
 /* global Terminal, FitAddon, WebLinksAddon, WebglAddon, api */
-/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop -- lib/ui.js */
+/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions -- lib/ui.js */
 
 // ------------------------------------------------------------- helpers ----
 
@@ -566,6 +566,7 @@ function createTab(project, { kind = 'claude', resumeId = null, fork = false, ap
     status: 'starting', exitCode: null, title: '',
     parked: !!resumeId && !fork && !append, // a reopened past session keeps its place until the first prompt (trackTab)
     lastActive: 0, lastOutput: 0, attention: false, busy: false, busyTimer: null,
+    enters: [], // when an Enter was typed (the last 20): tells which tab a /clear's new transcript belongs to
   };
   tabs.set(id, tab);
   if (!append && !tab.parked) toFront([id]);
@@ -673,7 +674,11 @@ function wireTerminal(tab) {
   const { term, host } = tab;
 
   term.onData((d) => {
-    if (tab.parked && d.includes('\r')) unpark(tab); // Enter = the first prompt: the row moves up
+    if (d.includes('\r')) {
+      tab.enters.push(Date.now());
+      if (tab.enters.length > 20) tab.enters.shift();
+      if (tab.parked) unpark(tab); // Enter = the first prompt: the row moves up
+    }
     api.ptyWrite(tab.id, d);
   });
   term.onResize(({ cols, rows }) => { api.ptyResize(tab.id, cols, rows); autoRside(); });
@@ -1032,7 +1037,9 @@ async function restartTab(tab, mode) {
   if (mode === 'fresh') { tab.resumeId = null; tab.fork = false; }
   tab.term.write(`\r\n\x1b[2m— ${mode === 'resume' ? 'resuming' : 'restarting'}${tab.skipPerms ? ', skipping permissions' : ''} —\x1b[0m\r\n`);
   tab.status = 'starting';
+  const old = tab.sessionId;
   tab.sessionId = tab.fork ? null : tab.resumeId; // a restarted fresh (or forked) tab is a new Claude session
+  if (old && old !== tab.sessionId) retired.add(old);
   tab.startedAt = Date.now();
   await startPty(tab);
   tab.term.focus();
@@ -1088,6 +1095,7 @@ async function closeTab(id) {
     closing.delete(id);
   }
   api.ptyKill(id);
+  if (tab.sessionId) retired.add(tab.sessionId); // no other tab may take its transcript over
   clearTimeout(tab.busyTimer);
   tab.term.dispose();
   tab.host.remove();
@@ -1650,32 +1658,27 @@ const tabOfSession = (id) => [...tabs.values()].find((t) => t.sessionId === id);
 
 
 /**
- * Tabs we started fresh (or forked) don't know their transcript yet. Match each to a session of its project whose
- * file was created after the tab started. Best effort: a Claude run in an outside terminal in the same folder could be
- * mistaken for ours.
+ * Session ids a tab let go of (closed, restarted as a new session, left by /clear). Never matched to another tab: a
+ * closed split pane's transcript used to be taken over by an idle tab of the same project, which then showed its title.
+ */
+const retired = new Set();
+
+/**
+ * Tabs we started fresh (or forked) don't know their transcript yet: match each to a session of its project whose file
+ * was created after the tab started. /clear (and /resume inside a tab) switches to a new transcript: follow it, or the
+ * right sidebar keeps reading the old session's subagents. Rules in matchSessions (lib/ui.js). Best effort: a Claude
+ * run in an outside terminal in the same folder could be mistaken for ours.
  */
 function assignSessions() {
-  const claimed = new Set([...tabs.values()].map((t) => t.sessionId).filter(Boolean));
-  const pending = [...tabs.values()]
-    .filter((t) => t.kind === 'claude' && !t.sessionId && t.status === 'running')
-    .sort((a, b) => a.startedAt - b.startedAt);
-  for (const t of pending) {
-    const pick = (sessionsBy[t.project.path] || [])
-      .filter((s) => !claimed.has(s.id) && s.birth >= t.startedAt - 1000)
-      .sort((a, b) => a.birth - b.birth)[0];
-    if (pick) { t.sessionId = pick.id; claimed.add(pick.id); }
-  }
-  // /clear (and /resume inside a tab) switches to a new transcript: follow it, or the right sidebar keeps reading the old
-  // session's subagents. Only while the tab is idle and its old transcript went quiet when the new one began (another
-  // session of the same project writing meanwhile must not hijack it), and when no fresh tab of the project is still waiting for its first transcript.
-  for (const t of tabs.values()) {
-    if (t.kind !== 'claude' || !t.sessionId || t.status !== 'running') continue;
-    const list = sessionsBy[t.project.path] || [];
-    const cur = list.find((s) => s.id === t.sessionId);
-    if (!cur || isWorking(t) || [...tabs.values()].some((o) => o !== t && o.kind === 'claude' && !o.sessionId && o.project.path === t.project.path)) continue;
-    const next = list.filter((s) => !claimed.has(s.id) && s.birth >= t.startedAt && s.birth >= cur.mtime - 2000 && cur.mtime <= s.birth + 2000 && s.mtime > cur.mtime)
-      .sort((a, b) => a.birth - b.birth)[0];
-    if (next) { t.sessionId = next.id; claimed.add(next.id); infoBy.delete(t.id); }
+  const claude = [...tabs.values()].filter((t) => t.kind === 'claude');
+  const changes = matchSessions(claude.map((t) => ({
+    id: t.id, project: t.project.path, sessionId: t.sessionId, running: t.status === 'running',
+    working: isWorking(t), startedAt: t.startedAt, enters: t.enters,
+  })), sessionsBy, retired);
+  for (const c of changes) {
+    const t = tabs.get(c.id);
+    if (c.followed) { retired.add(t.sessionId); infoBy.delete(t.id); }
+    t.sessionId = c.sessionId;
   }
   saveTabs(); // diffed: only writes when a tab just got its transcript
 }

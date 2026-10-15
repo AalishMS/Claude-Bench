@@ -182,3 +182,53 @@ test('lineShift measures how far the transcript rows moved between two repaints'
   const streaming = [...at(30).slice(0, 18), 'new line', 'another']; // the bottom rows changed, the rest stayed
   assert.equal(ui.lineShift(at(30), streaming), 0);
 });
+
+test('matchSessions: fresh tabs get the oldest free transcript born after they started', () => {
+  const tab = (id, startedAt) => ({ id, project: 'P', sessionId: null, running: true, working: false, startedAt, enters: [] });
+  const sessionsBy = { P: [
+    { id: 'old', birth: 500, mtime: 600 },
+    { id: 's2', birth: 3500, mtime: 3600 },
+    { id: 's1', birth: 3000, mtime: 3700 },
+  ] };
+  assert.deepEqual(ui.matchSessions([tab('b', 2900), tab('a', 2000)], sessionsBy, new Set()), [
+    { id: 'a', sessionId: 's1', followed: false },
+    { id: 'b', sessionId: 's2', followed: false },
+  ]);
+  // an exited tab is not matched
+  assert.deepEqual(ui.matchSessions([{ ...tab('a', 1000), running: false }], sessionsBy, new Set()), []);
+});
+
+test('matchSessions: a retired transcript (closed split pane) is never adopted', () => {
+  // A idles since 1000; B (closed) wrote s-b from 5000 on; Claude's exit bumped it last
+  const a = { id: 'a', project: 'P', sessionId: 's-a', running: true, working: false, startedAt: 0, enters: [900] };
+  const sessionsBy = { P: [{ id: 's-a', birth: 100, mtime: 1000 }, { id: 's-b', birth: 5000, mtime: 9000 }] };
+  assert.deepEqual(ui.matchSessions([a], sessionsBy, new Set(['s-b'])), []);
+  // nor by a fresh tab waiting for its first transcript
+  const fresh = { id: 'x', project: 'P', sessionId: null, running: true, working: false, startedAt: 4800, enters: [] };
+  assert.deepEqual(ui.matchSessions([fresh], sessionsBy, new Set(['s-b'])), []);
+});
+
+test('matchSessions: /clear is followed only by the tab it was typed in', () => {
+  const sessionsBy = { P: [
+    { id: 's-c', birth: 1000, mtime: 10000 },
+    { id: 's-a', birth: 2000, mtime: 50000 },
+    { id: 's-new', birth: 60000, mtime: 80000 },
+  ] };
+  const c = { id: 'c', project: 'P', sessionId: 's-c', running: true, working: false, startedAt: 0, enters: [9000] };
+  const a = { id: 'a', project: 'P', sessionId: 's-a', running: true, working: false, startedAt: 0, enters: [40000, 59000] };
+  // C comes first in tab order and idled longer, but A got the Enter
+  assert.deepEqual(ui.matchSessions([c, a], sessionsBy, new Set()), [{ id: 'a', sessionId: 's-new', followed: true }]);
+  // no Enter near the new file: nobody follows (a closed pane's transcript before it is retired)
+  assert.deepEqual(ui.matchSessions([c, { ...a, enters: [40000] }], sessionsBy, new Set()), []);
+  // still working: wait
+  assert.deepEqual(ui.matchSessions([c, { ...a, working: true }], sessionsBy, new Set()), []);
+});
+
+test('matchSessions: only a running fresh tab holds back /clear follow in its project', () => {
+  const sessionsBy = { P: [{ id: 's-a', birth: 200, mtime: 5000 }, { id: 's-new', birth: 6000, mtime: 8000 }] };
+  const a = { id: 'a', project: 'P', sessionId: 's-a', running: true, working: false, startedAt: 0, enters: [5900] };
+  const dead = { id: 'd', project: 'P', sessionId: null, running: false, working: false, startedAt: 9000, enters: [] };
+  assert.deepEqual(ui.matchSessions([dead, a], sessionsBy, new Set()), [{ id: 'a', sessionId: 's-new', followed: true }]);
+  // a running fresh tab (started after s-new, so it can't take it) still blocks
+  assert.deepEqual(ui.matchSessions([{ ...dead, running: true }, a], sessionsBy, new Set()), []);
+});

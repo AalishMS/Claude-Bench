@@ -323,7 +323,11 @@ site/            the product page (static, open index.html or serve the folder; 
   using the token in `~/.claude/.credentials.json`, cached 2 min in main, never written; the token lasts hours and only Claude
   Code refreshes it, so with no session running it expires: `refreshLogin` then runs `claude mcp list` in the home folder
   (it refreshes the token; `claude auth status` does not, tested on v2.1.296), at most once per 10 min, also on a 401; a failure blocks requests for its `Retry-After` (429 default 5 min, max 15) and the last good numbers are served as `stale`, because retrying a 429 keeps the limit from clearing), the update button
-  (see "Update"), and tab state. Fresh and forked tabs are matched to their transcript heuristically (`assignSessions`: the oldest unclaimed file born after the tab started).
+  (see "Update"), and tab state. Fresh and forked tabs are matched to their transcript heuristically (`assignSessions` -> `matchSessions` in lib/ui.js: the oldest unclaimed file born after the tab started).
+  An id a tab let go of (closed, restarted as new, left by /clear) goes into `retired` and is never matched to another tab:
+  a closed split pane's transcript used to be taken over by an idle tab of the same project (its row took that title, the
+  wrong id was saved for restore). Following /clear also needs an Enter typed in that tab (`tab.enters`) within 10 s before
+  the new file's birth, so an idle neighbour can't take it; an exited fresh tab doesn't hold the follow back.
   Until a tab's transcript is listed (after the first reply) it shows as an italic "New session" placeholder row;
   PowerShell tabs get a "PowerShell" row. Every open tab has a row (there is no tab strip).
 - **Session info** (right side of the status bar for Claude tabs, `session:info`): model = last reply's model or `/model` output in the transcript tail,
