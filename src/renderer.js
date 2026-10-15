@@ -445,7 +445,7 @@ async function imageDialog(tab, session, it) {
 
 const activeTab = () => tabs.get(activeId);
 const tabsOf = (projectPath) => [...tabs.values()].filter((t) => t.project.path === projectPath);
-/** Projects without the pinned Chats entry ("No project" sessions in the home folder). */
+/** Projects without the pinned Chats entry ("No project" sessions in the chat folder). */
 const realProjects = () => projects.filter((p) => !p.chat);
 /** Projects removed from the list whose tabs are still open: shown at the bottom until their last tab closes. */
 function orphanProjects() {
@@ -546,7 +546,10 @@ function createTab(project, { kind = 'claude', resumeId = null, fork = false, ap
   const host = h('div', { class: 'term-host' }, head);
   $('#terminals').append(host);
   hostObserver.observe(host);
-  host.addEventListener('mousedown', () => { if (activeId !== id && visibleIds().includes(id)) activate(id); }, true);
+  // Not on a pane header's − / ×: activating rebuilt the headers, and the button pressed was gone before the click.
+  host.addEventListener('mousedown', (e) => {
+    if (activeId !== id && visibleIds().includes(id) && !e.target.closest('.pane-head button')) activate(id);
+  }, true);
 
   const term = new Terminal({
     ...TERM_FONT,
@@ -573,7 +576,7 @@ function createTab(project, { kind = 'claude', resumeId = null, fork = false, ap
     status: 'starting', exitCode: null, title: '',
     parked: !!resumeId && !fork && !append, // a reopened past session keeps its place until the first prompt (trackTab)
     lastActive: 0, lastOutput: 0, attention: false, busy: false, busyTimer: null,
-    enters: [], // when an Enter was typed (the last 20): tells which tab a /clear's new transcript belongs to
+    enters: [], // when an Enter was typed (the last 100): tells which tab a new transcript belongs to (assignSessions)
   };
   tabs.set(id, tab);
   if (!append && !tab.parked) toFront([id]);
@@ -683,7 +686,7 @@ function wireTerminal(tab) {
   term.onData((d) => {
     if (d.includes('\r')) {
       tab.enters.push(Date.now());
-      if (tab.enters.length > 20) tab.enters.shift();
+      if (tab.enters.length > 100) tab.enters.shift();
       if (tab.parked) unpark(tab); // Enter = the first prompt: the row moves up
     }
     api.ptyWrite(tab.id, d);
@@ -1267,7 +1270,6 @@ function toFront(ids) {
   saveTabs();
 }
 
-/** Show exactly the visible tabs (all split members, or just the active one), then refit them. */
 /**
  * WebGL renderer for panes on screen only: Chromium keeps 16 live WebGL contexts per page and drops the oldest past
  * that, so with many tabs the hidden ones use xterm's DOM renderer (free while hidden) and get WebGL back when shown.
@@ -1293,6 +1295,7 @@ function setWebgl(t, on) {
   }
 }
 
+/** Show exactly the visible tabs (all split members, or just the active one), then refit them. */
 function syncVisible() {
   const shown = visibleIds();
   for (const t of tabs.values()) {
@@ -1514,7 +1517,8 @@ function renderSplit() {
 let lastPanesKey = '';
 function renderPanes() {
   const ids = curSplit()?.ids || [];
-  const key = JSON.stringify([ids.map((id) => { const t = tabs.get(id); return [id, tabDot(t), paneTitle(t)]; }), activeId, sessionsVer]);
+  // No activeId: the focused pane is styled on its host (renderSplit), and a rebuild on focus swallowed clicks.
+  const key = JSON.stringify([ids.map((id) => { const t = tabs.get(id); return [id, tabDot(t), paneTitle(t)]; }), sessionsVer]);
   if (key === lastPanesKey) return;
   lastPanesKey = key;
   for (const id of ids) {
@@ -1696,7 +1700,7 @@ const retired = new Set();
 function assignSessions() {
   const claude = [...tabs.values()].filter((t) => t.kind === 'claude');
   const changes = matchSessions(claude.map((t) => ({
-    id: t.id, project: t.project.path, sessionId: t.sessionId, running: t.status === 'running',
+    id: t.id, project: t.project.path, sessionId: t.sessionId, fork: t.fork, running: t.status === 'running',
     working: isWorking(t), startedAt: t.startedAt, enters: t.enters,
   })), sessionsBy, retired);
   for (const c of changes) {
@@ -2000,7 +2004,7 @@ function menuArrow(e) {
   items[n].focus();
 }
 
-/** A new Claude session in the home folder, listed under the pinned "Chats" group (or the home project, if it is one). */
+/** A new Claude session in the chat folder, listed under the pinned "Chats" group (or that folder's project, if it is one). */
 async function openChat() {
   const r = await api.chatProject();
   if (r.error) {
@@ -2239,7 +2243,7 @@ function renderWelcome() {
                 h('span', { class: 'proj-ico' }, ico('chat')),
                 h('div', { class: 'proj-main' },
                   h('div', { class: 'p-name' }, 'No project'),
-                  h('div', { class: 'p-path' }, 'Chat in your home folder')),
+                  h('div', { class: 'p-path' }, 'Chat outside your projects')),
                 h('span', { class: 'proj-go' }, ico('arrowRight'))),
               projects.map((p) =>
                 h('div', { class: 'proj', onclick: () => focusProject(p) },
@@ -2785,10 +2789,12 @@ async function pollDefinedAgents() {
 
 /** claude-opus-5-5 -> "Opus 5.5"; aliases ("opus") and display names pass through. */
 function prettyModel(m) {
-  const id = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?(\[1m\])?$/i.exec(m);
+  const long = /\[1m\]$/i.test(m) ? ' (1M)' : ''; // also on an alias or a /model display name: "opus[1m]", "Opus 4.6[1m]"
+  const base = m.replace(/\[1m\]$/i, '');
+  const id = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/i.exec(base);
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-  if (!id) return cap(m);
-  return `${cap(id[1])} ${id[2]}${id[3] ? '.' + id[3] : ''}${id[4] ? ' (1M)' : ''}`;
+  if (!id) return cap(base) + long;
+  return `${cap(id[1])} ${id[2]}${id[3] ? '.' + id[3] : ''}${long}`;
 }
 
 let lastInfoKey = '';
@@ -3081,7 +3087,7 @@ function renderUpdatePop() {
   const what = `${n} new commit${n === 1 ? '' : 's'}`;
   const how = update.packaged
     ? `The app closes and a separate ${IS_MAC ? 'process' : 'window'} rebuilds it (a minute or two), then reopens it.`
-    : 'Pulls the update, runs npm install if dependencies changed, and restarts the app.';
+    : 'Pulls the update, runs npm install and restarts the app.';
   if (updating) { // progress: no buttons, the app restarts by itself
     pop.replaceChildren(
       h('h4', {}, 'Updating Stanza…'),
@@ -3216,7 +3222,7 @@ let gitBusy = false;
 let gitQueued = false;
 let gitTick = 0;
 async function pollGit(all = true) {
-  const list = realProjects(); // the home folder of Chats is no repo worth watching
+  const list = realProjects(); // the chat folder is no repo worth watching
   if (gitBusy && all) gitQueued = true;
   if (gitBusy || document.hidden || !list.length) return;
   const cur = all ? null : currentProject();
@@ -3376,7 +3382,12 @@ function wireGlobalEvents() {
     if (!document.hidden) { pollGit(); pollPorts(); pollSessions(); pollUsage(); }
   });
   document.addEventListener('mousedown', (e) => {
-    if (detailKind && !e.target.closest('#detail, .fstat')) setDetail(null);
+    // Closed without rebuilding the footer: a rebuild on mousedown swallowed the click on its gear or update button.
+    if (detailKind && !e.target.closest('#detail, .fstat')) {
+      detailKind = null;
+      $('#detail').hidden = true;
+      $('#side-foot .fstat.on')?.classList.remove('on');
+    }
     // the "…" button toggles the menu itself on click, so a mousedown on it must not close it first
     if (menuFor && !e.target.closest('#menu, .project.menu-open .p-more, .session.menu-open .s-menu, #new-tab')) closeMenu();
   });
@@ -3476,7 +3487,8 @@ async function init() {
   setInterval(() => { if (!idle() || Date.now() - portsAt > 30000) pollPorts(); }, 6000);
   setInterval(() => pollSessions(++sessionsTick % 5 === 0), 4000);
   setInterval(pollUsage, 60000);
-  setInterval(pollMcp, 60000); // served from main's 5 min cache; a project change polls at once (activate)
+  // served from main's 5 min cache; a project change polls at once (activate). Definitions too: one made with /agents shows up.
+  setInterval(() => { pollMcp(); pollDefinedAgents(); }, 60000);
   setTimeout(pollUpdate, 10000); // after startup settles; git fetch is network
   setInterval(pollUpdate, 30 * 60 * 1000);
   // "Working" depends on recent output, so re-check it (cheap: the renders are key-diffed).

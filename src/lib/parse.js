@@ -144,22 +144,48 @@ const oneLine = (s) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, 160)
 
 const usageTokens = (u) => u ? (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.output_tokens || 0) : 0;
 
+/**
+ * What Claude writes by itself on a resume of a session that ended mid-tool-call (stamped with the resume time): a
+ * "[Tool call interrupted ..." result for each open call and a synthetic "No response requested." reply. Not a message
+ * the user had. (Other synthetic replies, such as API errors, are real events and count.)
+ */
+function resumeFiller(j) {
+  const c = j.message?.content;
+  if (j.type === 'assistant') {
+    return j.message?.model === '<synthetic>' && Array.isArray(c) && c.length > 0
+      && c.every((x) => x?.type === 'text' && x.text === 'No response requested.');
+  }
+  return Array.isArray(c) && c.length > 0
+    && c.every((x) => x?.type === 'tool_result' && typeof x.content === 'string' && x.content.startsWith('[Tool call interrupted'));
+}
+
+/**
+ * The newest title, prompt, reply usage and message time in a transcript tail. `custom` = the name given with /rename
+ * (Claude Code re-appends it like the AI title, and shows it in place of that). `compacted` = the context size a
+ * /compact (or auto-compact) left, when no reply came after it: until one does, the last usage is the old size.
+ */
 function parseTail(text) {
-  const out = { title: null, prompt: null, usage: null, model: null, last: 0 };
+  const out = { title: null, custom: null, prompt: null, usage: null, model: null, compacted: null, last: 0 };
   for (const line of text.split('\n')) {
     try {
       const msg = line.includes('"type":"assistant"') ? 'assistant' : line.includes('"type":"user"') ? 'user' : null;
       if (msg) {
         // Last real conversation entry. The file's mtime also moves on a mere resume and on exit (Claude touches the
-        // transcript and appends a cost-state line), so the sidebar sorts by this instead.
+        // transcript and appends a cost-state line), so the sidebar sorts by this instead; so does a resume's filler.
         const j = JSON.parse(line);
         if (j.type !== msg) continue;
-        if (!j.isMeta && j.timestamp) out.last = Date.parse(j.timestamp) || out.last;
+        if (!j.isMeta && j.timestamp && !resumeFiller(j)) out.last = Date.parse(j.timestamp) || out.last;
         const m = j.message;
-        if (msg === 'assistant' && m?.usage && m.model !== '<synthetic>') { out.usage = m.usage; out.model = m.model; }
+        if (msg === 'assistant' && m?.usage && m.model !== '<synthetic>') { out.usage = m.usage; out.model = m.model; out.compacted = null; }
       } else if (line.includes('"type":"ai-title"')) {
         const j = JSON.parse(line);
         if (j.type === 'ai-title' && j.aiTitle) out.title = j.aiTitle;
+      } else if (line.includes('"type":"custom-title"')) {
+        const j = JSON.parse(line);
+        if (j.type === 'custom-title' && j.customTitle) out.custom = j.customTitle;
+      } else if (line.includes('"subtype":"compact_boundary"')) {
+        const post = JSON.parse(line).compactMetadata?.postTokens;
+        if (Number.isFinite(post)) out.compacted = post;
       } else if (line.includes('"type":"last-prompt"')) {
         const j = JSON.parse(line);
         if (j.type === 'last-prompt' && j.lastPrompt) out.prompt = j.lastPrompt;
@@ -220,10 +246,11 @@ function withLongContext(model, configured) {
 
 /**
  * Latest model (from replies or /model) and effort (from /effort or /model) in transcript text. `prev` = the result for
- * the text before it, so a transcript can be read in pieces: a value is kept until a later line changes it.
+ * the text before it, so a transcript can be read in pieces: a value is kept until a later line changes it. `set` = a
+ * /model was run in the session, so the model it started with (settings) no longer says whether it is a 1M one.
  */
 function parseModelEffort(text, prev) {
-  const out = { model: prev?.model || null, effort: prev?.effort || null };
+  const out = { model: prev?.model || null, effort: prev?.effort || null, set: !!prev?.set };
   for (const line of text.split('\n')) {
     try {
       if (line.includes('"type":"assistant"') && line.includes('"model"')) {
@@ -233,8 +260,13 @@ function parseModelEffort(text, prev) {
         const c = JSON.parse(line).message?.content;
         if (typeof c !== 'string') continue;
         const model = /Set model to `([^`]+)`/.exec(c)?.[1] || /Set model to ([^\s(<]+(?: [\d.]+)?)/.exec(c)?.[1];
-        // "Set model to Opus 4.6 (1M context)" names the window only in the trailing note
-        if (model) out.model = /\[1m\]$/i.test(model) || !/\b1M context\b/i.test(c) ? model : `${model}[1m]`;
+        // The window is in the display name ("`Opus 4.6 (1M context)`") or, in older versions, a trailing note
+        // ("Set model to Opus 4.6 (1M context)"); either way it becomes a "[1m]", not part of the name.
+        if (model) {
+          const name = model.replace(/\s*\((?:1M context|default)\)/gi, '').replace(/\[1m\]$/i, '').trim();
+          out.model = /\[1m\]$/i.test(model) || /\b1M context\b/i.test(c) ? `${name}[1m]` : name;
+          out.set = true;
+        }
         const effort = /Set effort level to (\w+)/.exec(c)?.[1] || /with `?(\w+)`? effort/.exec(c)?.[1];
         if (effort) out.effort = effort;
       }
@@ -289,6 +321,22 @@ function lastModel(tail) {
 }
 
 /**
+ * The prompt a subagent run was given: the first user line of its transcript head (a fork's transcript starts with a
+ * `fork-context-ref` line instead). '' when it is cut off or missing.
+ */
+function agentPrompt(head) {
+  for (const line of head.split('\n')) {
+    if (!line.includes('"type":"user"')) continue;
+    let j;
+    try { j = JSON.parse(line); } catch { return ''; } // longer than the head that was read
+    if (j.type !== 'user') continue;
+    const c = j.message?.content;
+    return (typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => x?.text || '').join('\n') : '').trim();
+  }
+  return '';
+}
+
+/**
  * A subagent definition (~/.claude/agents/<file>.md) -> { name, model, body }. The frontmatter is the block between a
  * leading `---` line and the next one; without it the name is the file name and the whole text is the body.
  * `model` is null when not set.
@@ -297,7 +345,7 @@ function parseAgentFile(text, fileName) {
   const t = text.replace(/^\uFEFF/, '');
   const m = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)([\s\S]*)$/.exec(t);
   const fm = m ? m[1] : '';
-  const field = (k) => new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(fm)?.[1].trim().replace(/^["']|["']$/g, '') || null;
+  const field = (k) => new RegExp(`^${k}:[ \\t]*(.+)$`, 'm').exec(fm)?.[1].trim().replace(/^["']|["']$/g, '') || null; // an empty value must not take the next line
   return { name: oneLine(field('name') || fileName.replace(/\.md$/i, '')), model: field('model'), body: (m ? m[2] : t).trim() };
 }
 
@@ -339,7 +387,7 @@ module.exports = {
   parseGitStatus,
   parentPid, parseNetstat, parseMsysPs, etimeSeconds, parseLsof, parsePs, macDevName, withoutFlagValues,
   oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, defaultEffort, modelFamily, withLongContext, parseModelEffort,
-  agentDone, lastModel, parseAgentFile,
+  agentDone, lastModel, agentPrompt, parseAgentFile,
   parseMcpList,
   remapSplits,
 };

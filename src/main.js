@@ -8,7 +8,7 @@ const { execFile, spawn } = require('child_process');
 const pty = require('@lydell/node-pty');
 const {
   parseGitStatus, parentPid, parseNetstat, parseMsysPs, parseLsof, parsePs, macDevName, withoutFlagValues,
-  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel,
+  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel, agentPrompt,
   parseAgentFile, parseMcpList, remapSplits,
 } = require('./lib/parse');
 const { scanImages } = require('./lib/images');
@@ -101,8 +101,9 @@ function loadState() {
     // The right sidebar used to default to closed, so a saved `false` is usually just that old default: reopen it once.
     if (!saved.ui?.rsideMigrated) { state.ui.servers = true; state.ui.rsideMigrated = true; }
     // Chats used to live in the home folder (Claude Code never keeps trust there): move the entry to its own folder.
+    // Not when the user picked home as the chat folder in settings (it would be re-expanded on every launch).
     for (const p of state.projects) {
-      if (!p.chat || !samePath(p.path, os.homedir())) continue;
+      if (!p.chat || !samePath(p.path, os.homedir()) || samePath(chatDir(), os.homedir())) continue;
       try { fs.mkdirSync(chatDir(), { recursive: true }); p.path = chatDir(); } catch { continue; /* stays at home */ }
       if (Array.isArray(state.ui.expanded)) state.ui.expanded.push(p.path); // shown open, like before
     }
@@ -267,7 +268,12 @@ function flushSession(id) {
 // its first seconds Claude is too busy to beat that, so its fullscreen boot canary stays in ~/.claude.json and the
 // next launch falls back to the classic renderer (two strikes turn fullscreen off for that version). For Claude
 // tabs, close only the console (Claude exits on the close event) and end what is left after 5 s.
+// Once only: node-pty closes the native pseudoconsole on every kill() and a second close corrupts the heap (the whole app
+// crashed). A Claude tab can take seconds to exit, so closing a tab during a relaunch, or quitting right after closing
+// one, used to kill it twice. Its pty also takes no writes or resizes any more (native calls on the closed console).
 function endSession(s) {
+  if (s.ending) return;
+  s.ending = true;
   const agent = s.pty._agent;
   if (IS_MAC || s.kind !== 'claude' || typeof agent?._getConsoleProcessList !== 'function') {
     try { s.pty.kill(); } catch { /* already gone */ }
@@ -334,8 +340,9 @@ function createSession({ id, cwd, kind, resumeId, fork, skipPerms, cols, rows })
     return { ok: false, error: String(err.message || err) };
   }
 
-  // /model and /effort save the default for new sessions only: this process keeps the one it started with (sessionInfo)
-  const s = { pty: p, cwd, kind, buf: '', timer: null, settings: kind === 'claude' ? readSettingsSync() : null };
+  // /model and /effort save the default for new sessions only: this process keeps the one it started with (sessionInfo).
+  // startedAt: subagent runs written before it belong to an earlier process (resumed session), so they can't be running.
+  const s = { pty: p, cwd, kind, buf: '', timer: null, startedAt: Date.now(), settings: kind === 'claude' ? readSettingsSync() : null };
   sessions.set(id, s);
 
   // Coalesce bursts of output into one IPC message per few milliseconds.
@@ -590,12 +597,16 @@ async function readSession(file, st) {
 
   let info = null;
   // Sessions that never got a reply or a title (only /model and friends) are noise.
-  if (t.title || t.usage || st.size > read) {
-    const title = oneLine(t.title)
-      || oneLine(firstPrompt(await readRange(file, 0, Math.min(st.size, HEAD_BYTES))))
+  if (t.title || t.custom || t.usage || st.size > read) {
+    let head = null;
+    const readHead = async () => (head ??= await readRange(file, 0, Math.min(st.size, HEAD_BYTES)));
+    // A /rename name wins over the AI title, as in Claude Code; one never re-appended is only in the head.
+    const custom = t.custom || (st.size > read ? parseTail(await readHead()).custom : null);
+    const title = oneLine(custom)
+      || oneLine(t.title)
+      || oneLine(firstPrompt(await readHead()))
       || oneLine(t.prompt)
       || 'Untitled session';
-    const u = t.usage;
     info = {
       id: path.basename(file, '.jsonl'),
       title,
@@ -603,7 +614,7 @@ async function readSession(file, st) {
       last: t.last || Math.round(st.mtimeMs), // last message time: the sidebar's sort and "ago" (mtime is bumped by resume/exit)
       birth: Math.round(st.birthtimeMs),
       model: t.model,
-      ctx: usageTokens(u),
+      ctx: t.compacted ?? usageTokens(t.usage), // after a /compact with no reply yet: what it left, not the old size
     };
   }
   sessionCache.set(file, { sig, info });
@@ -683,7 +694,7 @@ const MODEL_CHUNK = 1024 * 1024;
 async function readModelEffort(file) {
   const st = await fs.promises.stat(file);
   let hit = modelCache.get(file);
-  if (!hit || st.size < hit.off) hit = { off: 0, value: { model: null, effort: null } }; // new, or rewritten
+  if (!hit || st.size < hit.off) hit = { off: 0, value: { model: null, effort: null, set: false } }; // new, or rewritten
   let { off, value } = hit;
   if (st.size > off) {
     const fh = await fs.promises.open(file, 'r');
@@ -761,10 +772,11 @@ async function sessionInfo(cwd, sessionId, tabId) {
   const settings = started || (await readJson(SETTINGS_FILE));
   let model = null;
   let effort = null;
+  let set = false;
   let agents = [];
   if (typeof cwd === 'string' && typeof sessionId === 'string' && UUID_RE.test(sessionId)) {
     try {
-      ({ model, effort } = await readModelEffort(path.join(projectDir(cwd), `${sessionId}.jsonl`)));
+      ({ model, effort, set } = await readModelEffort(path.join(projectDir(cwd), `${sessionId}.jsonl`)));
     } catch { /* no transcript yet */ }
     const dir = path.join(projectDir(cwd), sessionId, 'subagents');
     try {
@@ -772,7 +784,8 @@ async function sessionInfo(cwd, sessionId, tabId) {
       agents = await Promise.all(names.map((n) => readAgent(dir, n).catch(() => null)));
     } catch { /* no subagents */ }
   }
-  model = withLongContext(model, settings?.model) || settings?.model || null;
+  // The settings' "[1m]" only says how the session started: after a /model in it, the transcript knows better.
+  model = (set ? model : withLongContext(model, settings?.model)) || settings?.model || null;
   // A bare alias from settings ("sonnet") has no version: use the one model of that family known in modelSettings.
   const alias = model && /^([a-z]+)(\[1m\])?$/i.exec(model);
   if (alias) {
@@ -781,8 +794,11 @@ async function sessionInfo(cwd, sessionId, tabId) {
   }
   effort = effort || defaultEffort(settings, model);
   const now = Date.now();
+  // Only this tab's live Claude runs agents: none once it exited, and none from before it started (a resumed session's
+  // runs that were cut off when the old process ended).
+  const proc = sessions.get(tabId);
   agents = agents.filter(Boolean)
-    .map((a) => ({ ...a, running: !a.done && now - a.mtime < AGENT_STALE_MS }))
+    .map((a) => ({ ...a, running: !a.done && !!proc && a.mtime >= proc.startedAt && now - a.mtime < AGENT_STALE_MS }))
     .sort((a, b) => b.start - a.start);
   return { model, effort, agents };
 }
@@ -790,8 +806,10 @@ async function sessionInfo(cwd, sessionId, tabId) {
 // Right sidebar data. MCP health comes from `claude mcp list` (the transcript does not store it): it health-checks every
 // configured server (spawning every stdio one), so it is slow (seconds), cached per folder and never run twice at once.
 // MCP config rarely changes mid-session, so the cache lives 5 minutes. Without a project (home screen) it runs in the home
-// folder: user-level servers and claude.ai connectors. `force` skips the cache (refreshLogin).
+// folder: user-level servers and claude.ai connectors. `force` skips the cache (refreshLogin). A failed run (timeout, claude
+// not found yet) is retried after 30 s instead, or the section would say "Could not read" for 5 minutes.
 const MCP_TTL_MS = 5 * 60 * 1000;
+const MCP_RETRY_MS = 30 * 1000;
 const mcpCache = new Map(); // cwd -> { at, value } | { pending }
 
 function mcpList(cwd, force = false) {
@@ -799,7 +817,7 @@ function mcpList(cwd, force = false) {
   if (typeof cwd !== 'string' || !fs.existsSync(cwd)) return Promise.resolve({ ok: false, servers: [] });
   const hit = mcpCache.get(cwd);
   if (hit?.pending) return hit.pending;
-  if (!force && hit && Date.now() - hit.at < MCP_TTL_MS) return Promise.resolve(hit.value);
+  if (!force && hit && Date.now() - hit.at < (hit.value?.ok ? MCP_TTL_MS : MCP_RETRY_MS)) return Promise.resolve(hit.value);
   const [file, args] = IS_MAC ? ['claude', ['mcp', 'list']] : ['cmd.exe', ['/d', '/c', 'claude', 'mcp', 'list']];
   const pending = shellEnvReady.then(() => new Promise((resolve) => {
     const env = { ...process.env }; // after shellEnvReady, so macOS gets the login shell's PATH
@@ -835,7 +853,7 @@ async function definedAgents(cwd) {
 
 /**
  * What a subagent is told: the system prompt of its definition file (the body after the frontmatter), and the prompt each
- * run of this type in the session was given (first line of its transcript). Both are capped, they can be long.
+ * run of this type in the session was given (first user line of its transcript). Both are capped, they can be long.
  */
 const PROMPT_CAP = 20000;
 async function agentPrompts(cwd, sessionId, name) {
@@ -873,13 +891,11 @@ async function agentPrompts(cwd, sessionId, name) {
           const file = path.join(dir, n);
           const meta = (await readJson(file.replace(/\.jsonl$/, '.meta.json'))) || {};
           if ((meta.agentType || 'agent') !== name) continue;
-          const first = (await readRange(file, 0, 512 * 1024)).split('\n')[0];
-          const c = JSON.parse(first).message?.content;
-          const prompt = typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => x.text || '').join('\n') : '';
+          const prompt = agentPrompt(await readRange(file, 0, 512 * 1024));
           const a = await readAgent(dir, n);
-          out.runs.push({ id: a.id, description: a.description, prompt: prompt.trim().slice(0, PROMPT_CAP), start: a.start, ctx: a.ctx,
+          out.runs.push({ id: a.id, description: a.description, prompt: prompt.slice(0, PROMPT_CAP), start: a.start, ctx: a.ctx,
             model: withLongContext(withLongContext(a.model, a.requested), configured) || a.requested });
-        } catch { /* partial first line or unreadable */ }
+        } catch { /* unreadable */ }
       }
     } catch { /* no subagents */ }
     out.runs.sort((a, b) => b.start - a.start);
@@ -1078,7 +1094,7 @@ function getLimits() {
 
 // ---------------------------------------------------------------- update ----
 // The app is installed by cloning the repo; there is no auto-update. The footer's Update button (shown when the
-// branch's upstream has new commits) pulls, runs npm install if dependencies changed, and restarts. A packaged build
+// branch's upstream has new commits) pulls, runs npm install (always, see applyUpdate) and restarts. A packaged build
 // is locked while it runs, so it hands over to scripts/update.* and quits (startExternalUpdate).
 
 /** stdout and stderr of a command, never rejects. */
@@ -1539,9 +1555,10 @@ function registerIpc() {
   });
 
   ipcMain.handle('pty:create', (_e, opts) => (IS_MAC ? shellEnvReady.then(() => createSession(opts)) : createSession(opts)));
-  ipcMain.on('pty:write', (_e, id, data) => sessions.get(id)?.pty.write(data));
+  const live = (id) => { const s = sessions.get(id); return s && !s.ending ? s : null; }; // not one endSession is closing
+  ipcMain.on('pty:write', (_e, id, data) => live(id)?.pty.write(data));
   ipcMain.on('pty:resize', (_e, id, cols, rows) => {
-    try { sessions.get(id)?.pty.resize(Math.max(cols, 2), Math.max(rows, 2)); } catch { /* exited */ }
+    try { live(id)?.pty.resize(Math.max(cols, 2), Math.max(rows, 2)); } catch { /* exited */ }
   });
   ipcMain.on('pty:kill', (_e, id) => {
     const s = sessions.get(id);

@@ -276,7 +276,8 @@ site/            the product page (static, open index.html or serve the folder; 
   Windows caches the name at an ID's first toast: if one fired before the key existed, delete
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\com.local.stanza` to reset it.
 - **Right sidebar** (`#rside`, toggled by the top-bar button or `Ctrl+Shift+S`, saved as `ui.servers`; `renderRside`): the active tab's
-  **Context** (`x / yk` + %), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**, **Images**.
+  **Context** (`x / yk` + %; the last reply's usage, or after a `/compact` with no reply yet the `compact_boundary` line's
+  `postTokens`, `parseTail`'s `compacted`), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**, **Images**.
   Subagents and Running show `RSIDE_SHOWN` (5) rows, then "Show N more" / "Show less" (`foldRows`, `rsideMore`, runtime only;
   collapsing the section clears it, so reopening shows 5 again). Images is last and never folded.
   Home screen (no active tab): Context and Images are left out; with no `currentProject()` MCPs and Subagents show the
@@ -319,7 +320,8 @@ site/            the product page (static, open index.html or serve the folder; 
     outside `--flag=` values (Antigravity's `agy.exe --add-dir=<project>` is no server). Rows are status dot, short name, port; clicking a row
     copies `http://localhost:<port>`, Shift+click opens it with `openExternal` (rows without a port, or emulators, do nothing). No kill, no "Show all".
 - **Sessions and usage**: read-only from `~/.claude/projects/<cwd, non-alphanumerics -> "-">/<uuid>.jsonl`. The sidebar lists a
-  project's sessions (title = last `ai-title`, else first prompt) under it; clicking one focuses its tab or opens
+  project's sessions under it (title as in Claude Code: the `/rename` name, `custom-title`, which Claude re-appends like the
+  AI title and which is looked for in the head too, else the last `ai-title`, else the first prompt); clicking one focuses its tab or opens
   `claude --resume <uuid>` (main accepts only a bare UUID as `resumeId`). Lists read just the file tail and cache by
   mtime+size. `pollSessions` lists the projects on screen (open tabs, expanded in the sidebar, `currentProject`) every 4 s and
   all projects every 20 s and on focus (`pollSessions(all)`, partial results merged into `sessionsBy`; a full poll asked for
@@ -327,11 +329,16 @@ site/            the product page (static, open index.html or serve the folder; 
   using the token in `~/.claude/.credentials.json`, cached 2 min in main, never written; the token lasts hours and only Claude
   Code refreshes it, so with no session running it expires: `refreshLogin` then runs `claude mcp list` in the home folder
   (it refreshes the token; `claude auth status` does not, tested on v2.1.296), at most once per 10 min, also on a 401; a failure blocks requests for its `Retry-After` (429 default 5 min, max 15) and the last good numbers are served as `stale`, because retrying a 429 keeps the limit from clearing), the update button
-  (see "Update"), and tab state. Fresh and forked tabs are matched to their transcript heuristically (`assignSessions` -> `matchSessions` in lib/ui.js: the oldest unclaimed file born after the tab started).
+  (see "Update"), and tab state. Fresh and forked tabs are matched to their transcript heuristically (`assignSessions` -> `matchSessions` in lib/ui.js).
+  Claude creates a transcript when a prompt is sent (birth ~150 ms after the Enter, measured), so each free file goes to the
+  running tab whose Enter (`tab.enters`, the last 100) came last before its birth: a tab without one yet (up to 60 s before;
+  a fork also may own a file born within 15 s of its start, in case it writes its copy at once) or one whose transcript had
+  gone quiet when the file was born (/clear, up to 10 s before). A tab nothing was typed in gets nothing: the oldest fresh
+  tab used to take the first new file, so typing into the newer of two new tabs first (a split) swapped their transcripts,
+  and an untouched new tab held every /clear follow in its project back. If the winner is still working, the file waits.
   An id a tab let go of (closed, restarted as new, left by /clear) goes into `retired` and is never matched to another tab:
   a closed split pane's transcript used to be taken over by an idle tab of the same project (its row took that title, the
-  wrong id was saved for restore). Following /clear also needs an Enter typed in that tab (`tab.enters`) within 10 s before
-  the new file's birth, so an idle neighbour can't take it; an exited fresh tab doesn't hold the follow back.
+  wrong id was saved for restore).
   Until a tab's transcript is listed (after the first reply) it shows as an italic "New session" placeholder row;
   PowerShell tabs get a "PowerShell" row. Every open tab has a row (there is no tab strip).
 - **Session info** (right side of the status bar for Claude tabs, `session:info`): model = last reply's model or `/model` output in the transcript,
@@ -340,7 +347,7 @@ site/            the product page (static, open index.html or serve the folder; 
   tool calls back). The settings fallback is the copy main read when the tab's Claude started (`sessions.get(id).settings`,
   so `session:info` takes the tab id): `/model` and `/effort` save the default for *new* sessions, so another tab's change
   must not show here; a tab with no transcript yet reads the live file. No Mac branch. Subagents come from
-  `<session>/subagents/agent-*.jsonl` + `.meta.json`; finished = the last message line (`agentDone` skips attachments) is a `SubagentHandback` call or its result, a text reply with `stop_reason` `end_turn`/`stop_sequence` (Explore, Plan and /code-review runs never hand back; mid-run text lines have `stop_reason` null, since text and the next tool call are separate lines), or a `[Request interrupted by user]` line (stopped; otherwise it would stay "working" for `AGENT_STALE_MS`). A finished run is followed by a ~100 KB `prompt_snapshot` attachment whose tool list names SubagentHandback, so never text-search the tail for it; with no message line in 64 KB, `readAgent` reads 1 MB.
+  `<session>/subagents/agent-*.jsonl` + `.meta.json`; finished = the last message line (`agentDone` skips attachments) is a `SubagentHandback` call or its result, a text reply with `stop_reason` `end_turn`/`stop_sequence` (Explore, Plan and /code-review runs never hand back; mid-run text lines have `stop_reason` null, since text and the next tool call are separate lines), or a `[Request interrupted by user]` line (stopped; otherwise it would stay "working" for `AGENT_STALE_MS`). Only the tab's live Claude runs agents: a run counts as running only while the tab's pty exists and the run was written since that pty started (`startedAt`), so an exited tab or a resumed session's cut-off runs don't show as working. A finished run is followed by a ~100 KB `prompt_snapshot` attachment whose tool list names SubagentHandback, so never text-search the tail for it; with no message line in 64 KB, `readAgent` reads 1 MB.
 - **Scrollbar**: our own `.vbar` replaces xterm's. Normal buffer = real position. Claude's `"tui": "fullscreen"` uses the
   alternate screen (no scrollback), so there the strip forwards synthetic wheel events to `.xterm-screen` (Claude has mouse
   tracking on). Claude never reports its scroll position, so `wireScrollbar` measures it: `alt.off` (lines above the
@@ -447,6 +454,14 @@ site/            the product page (static, open index.html or serve the folder; 
   during a restore used to cause strikes. `endSession` in main.js closes only the console for Claude tabs (and ends
   leftovers after 5 s); it relies on node-pty's private `_agent._getConsoleProcessList` (falls back to `kill()`), so
   recheck it after a node-pty update (tested on v2.1.296).
+- **Never kill a pty twice**: node-pty's Windows `kill()` closes the native pseudoconsole on every call, and a second
+  close corrupts the heap: the whole app crashed (APPCRASH 0xc0000374). A Claude tab takes seconds to exit after
+  `endSession`, so closing a tab during a relaunch, or quitting right after closing one (`before-quit` ends every session
+  still listed), killed it twice. `endSession` runs once per session (`s.ending`), and an ending pty gets no writes or
+  resizes (`live(id)` in the IPC handlers).
+- **Don't rebuild a clickable element on mousedown**: the click never arrives if the pressed button is replaced before
+  mouseup. A pane's mousedown activates it (not when the target is a pane-header button, and `renderPanes`' key has no
+  `activeId`), and closing the footer popover on an outside mousedown only hides it, like `closeMenu`.
 - **Context tile**: the window size is not in the transcript, so `contextWindow(model, used)` in renderer.js derives it from the model id or display name: 1M for Opus and Sonnet 4.6+, Haiku 5+, Fable, Mythos or a `[1m]` model, 200k for everything else (Haiku 4.5, Opus/Sonnet up to 4.5, Claude 2/3, unrecognised models; 1M once a session exceeds it). Transcripts drop the `[1m]` (which only matters for the 200k-by-default models), so main.js re-attaches it with `withLongContext` from settings `model`, a `/model` line, or for a subagent run its definition `model:` (or the parent session model when `inherit`). The main tab, the footer tile and each subagent run in the agent popup all use it, each with its own model. Update it when a new model family ships with a different window.
   Plan-limit percentages are not on disk; they come from the undocumented usage endpoint (may change).
 - A hidden window (`document.hidden`) skips all polling, so when driving a test instance over CDP, override `document.hidden`

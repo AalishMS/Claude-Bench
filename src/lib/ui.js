@@ -189,44 +189,50 @@
   }
 
   /**
-   * Which transcript each Claude tab shows. `tabs`: Claude tabs in tab order, `{ id, project, sessionId, running,
+   * Which transcript each Claude tab shows. `tabs`: Claude tabs in tab order, `{ id, project, sessionId, fork, running,
    * working, startedAt, enters }` (`enters` = times an Enter was typed in it); `sessionsBy`: project path ->
    * `[{ id, birth, mtime }]`; `retired`: ids a tab let go of (closed, restarted as new, left by /clear), never handed
    * to another tab. Returns `[{ id, sessionId, followed }]` for the tabs whose transcript changes.
-   * Fresh and forked tabs get the oldest free transcript born after they started. An idle tab follows its own /clear
-   * (or /resume) to a free transcript born after its current one went quiet, only if an Enter was typed in that tab
-   * when the file was created: an idle neighbour in the same project must not take it.
+   * Claude creates a transcript when a prompt is sent (a session's first, or the first after /clear), so an Enter was
+   * typed in its tab just before the file was born: each free file goes to the tab whose Enter came last before it.
+   * Candidates: fresh and forked tabs still without a transcript (an Enter up to 60 s before, so a prompt typed while
+   * Claude was starting counts; a fork may write its copy as it starts, before anything is typed), and tabs whose own
+   * transcript had gone quiet when the file was born (/clear; an Enter up to 10 s before). A tab nothing was typed in
+   * gets nothing, so two new tabs typed into in either order each get their own. If the winner is still working, the
+   * file waits for a later call.
    */
   function matchSessions(tabs, sessionsBy, retired) {
     const claimed = new Set(retired);
     for (const t of tabs) if (t.sessionId) claimed.add(t.sessionId);
-    const now = new Map(tabs.map((t) => [t.id, t.sessionId]));
     const out = [];
-    const pending = tabs.filter((t) => t.running && !t.sessionId).sort((a, b) => a.startedAt - b.startedAt);
-    for (const t of pending) {
-      const pick = (sessionsBy[t.project] || [])
-        .filter((s) => !claimed.has(s.id) && s.birth >= t.startedAt - 1000)
-        .sort((a, b) => a.birth - b.birth)[0];
-      if (!pick) continue;
-      claimed.add(pick.id);
-      now.set(t.id, pick.id);
-      out.push({ id: t.id, sessionId: pick.id, followed: false });
-    }
-    // a running tab still waiting for its first transcript could own the new file: don't follow in that project yet
-    const waiting = new Set(tabs.filter((t) => t.running && !now.get(t.id)).map((t) => t.project));
-    for (const t of tabs) {
-      const id = now.get(t.id);
-      if (!id || !t.running || t.working || waiting.has(t.project)) continue;
-      const list = sessionsBy[t.project] || [];
-      const cur = list.find((s) => s.id === id);
-      if (!cur) continue;
-      const typed = (s) => (t.enters || []).some((e) => e >= s.birth - 10000 && e <= s.birth + 2000);
-      const next = list
-        .filter((s) => !claimed.has(s.id) && s.birth >= t.startedAt && s.birth >= cur.mtime - 2000 && s.mtime > cur.mtime && typed(s))
-        .sort((a, b) => a.birth - b.birth)[0];
-      if (!next) continue;
-      claimed.add(next.id);
-      out.push({ id: t.id, sessionId: next.id, followed: true });
+    const changed = new Set();
+    // the last Enter typed in `t` (since it started) up to `ms` before file `s` was born
+    const lastEnter = (t, s, ms) => Math.max(-Infinity,
+      ...(t.enters || []).filter((e) => e >= t.startedAt && e >= s.birth - ms && e <= s.birth + 250));
+    const live = tabs.filter((t) => t.running).sort((a, b) => a.startedAt - b.startedAt);
+    for (const project of new Set(live.map((t) => t.project))) {
+      const list = sessionsBy[project] || [];
+      for (const s of list.filter((x) => !claimed.has(x.id)).sort((a, b) => a.birth - b.birth)) {
+        let best = null;
+        let bestAt = -Infinity;
+        for (const t of live) {
+          if (t.project !== project || changed.has(t.id)) continue;
+          let at;
+          if (!t.sessionId) {
+            if (s.birth < t.startedAt - 1000) continue;
+            at = Math.max(lastEnter(t, s, 60000), t.fork && s.birth <= t.startedAt + 15000 ? t.startedAt : -Infinity);
+          } else {
+            const cur = list.find((x) => x.id === t.sessionId);
+            if (!cur || s.birth < t.startedAt || s.birth < cur.mtime - 2000 || s.mtime <= cur.mtime) continue;
+            at = lastEnter(t, s, 10000);
+          }
+          if (at > bestAt) { best = t; bestAt = at; }
+        }
+        if (!best || (best.sessionId && best.working)) continue;
+        claimed.add(s.id);
+        changed.add(best.id);
+        out.push({ id: best.id, sessionId: s.id, followed: !!best.sessionId });
+      }
     }
     return out;
   }

@@ -171,6 +171,39 @@ test('parseTail: last title, prompt, usage and message time; skips synthetic rep
   assert.equal(t.model, 'claude-opus-5-5');
   assert.deepEqual(t.usage, { input_tokens: 100, output_tokens: 5 });
   assert.equal(t.last, Date.parse('2026-10-01T10:00:06Z')); // meta lines don't count
+  assert.equal(t.custom, null);
+  assert.equal(t.compacted, null);
+});
+
+test('parseTail: a resume\'s filler for a call cut off at exit doesn\'t move the last message time', () => {
+  const t = p.parseTail(jl(
+    { type: 'assistant', timestamp: '2026-10-11T06:00:00Z', message: { model: 'claude-opus-5-5', usage: { input_tokens: 9 }, content: [{ type: 'tool_use', name: 'Bash' }] } },
+    // written by `claude --resume` an hour later, before anything is typed
+    { type: 'user', timestamp: '2026-10-11T07:00:00Z', message: { content: [{ type: 'tool_result', is_error: true, content: '[Tool call interrupted: the session ended before this call\'s result was recorded, so its outcome is unknown.]' }] } },
+    { type: 'assistant', timestamp: '2026-10-11T07:00:00Z', message: { model: '<synthetic>', usage: { input_tokens: 0 }, content: [{ type: 'text', text: 'No response requested.' }] } },
+  ));
+  assert.equal(t.last, Date.parse('2026-10-11T06:00:00Z'));
+  assert.deepEqual(t.usage, { input_tokens: 9 });
+  // a real tool result does count
+  assert.equal(p.parseTail(jl({ type: 'user', timestamp: '2026-10-11T07:00:00Z', message: { content: [{ type: 'tool_result', content: 'ok' }] } })).last,
+    Date.parse('2026-10-11T07:00:00Z'));
+});
+
+test('parseTail: a /rename name next to the AI title; a /compact leaves its size until the next reply', () => {
+  const reply = (input) => ({ type: 'assistant', message: { model: 'claude-opus-5-5', usage: { input_tokens: input } } });
+  const boundary = { type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', compactMetadata: { trigger: 'auto', preTokens: 280437, postTokens: 9899 } };
+  const t = p.parseTail(jl(
+    { type: 'custom-title', customTitle: 'Landing page redesign', sessionId: 'x' },
+    { type: 'ai-title', aiTitle: 'Landing page', sessionId: 'x' },
+    reply(279990),
+    boundary,
+    { type: 'user', isCompactSummary: true, message: { content: 'This session is being continued...' } },
+  ));
+  assert.equal(t.custom, 'Landing page redesign');
+  assert.equal(t.title, 'Landing page');
+  assert.equal(t.compacted, 9899);
+  assert.equal(p.parseTail(jl(reply(279990), boundary, reply(12000))).compacted, null); // the reply has the new size
+  assert.equal(p.parseTail(jl(reply(1), { ...boundary, compactMetadata: { preTokens: 5 } })).compacted, null); // no size given
 });
 
 test('firstPrompt skips meta lines and command output', () => {
@@ -221,20 +254,26 @@ test('withLongContext re-attaches [1m] only for the same model family', () => {
 test('parseModelEffort follows /model, /effort and replies', () => {
   const stdout = (s) => ({ type: 'user', message: { content: `<local-command-stdout>${s}</local-command-stdout>` } });
   const reply = (model) => ({ type: 'assistant', message: { model, content: [] } });
-  assert.deepEqual(p.parseModelEffort(jl(stdout('Set model to `Sonnet 5.5` with `high` effort'))), { model: 'Sonnet 5.5', effort: 'high' });
+  assert.deepEqual(p.parseModelEffort(jl(stdout('Set model to `Sonnet 5.5` with `high` effort'))), { model: 'Sonnet 5.5', effort: 'high', set: true });
   // "(1M context)" only in the trailing note; the next reply keeps the [1m]
   assert.deepEqual(
     p.parseModelEffort(jl(stdout('Set model to Opus 4.6 (1M context)'), reply('claude-opus-4-6'), stdout('Set effort level to low'))),
-    { model: 'claude-opus-4-6[1m]', effort: 'low' },
+    { model: 'claude-opus-4-6[1m]', effort: 'low', set: true },
   );
+  // ...or in the display name between the backticks (current versions): a [1m], not part of the name
+  assert.deepEqual(p.parseModelEffort(jl(stdout('Set model to `Opus 4.6 (1M context)` and saved as your default for new sessions'))),
+    { model: 'Opus 4.6[1m]', effort: null, set: true });
+  assert.equal(p.parseModelEffort(jl(stdout('Set model to `Opus 5.5 (default)` for this session only'))).model, 'Opus 5.5');
   // a later reply of another family replaces it, synthetic replies don't
   assert.deepEqual(p.parseModelEffort(jl(stdout('Set model to Opus 4.6 (1M context)'), reply('claude-haiku-5-5'), reply('<synthetic>'))),
-    { model: 'claude-haiku-5-5', effort: null });
+    { model: 'claude-haiku-5-5', effort: null, set: true });
+  // replies alone: no /model in the session
+  assert.deepEqual(p.parseModelEffort(jl(reply('claude-opus-5-5'))), { model: 'claude-opus-5-5', effort: null, set: false });
   // read in pieces: an early /effort and [1m] carry over to later text that doesn't mention them
   const first = p.parseModelEffort(jl(stdout('Set model to `Opus 4.6` (1M context) with `high` effort')));
-  assert.deepEqual(p.parseModelEffort(jl(reply('claude-opus-4-6')), first), { model: 'claude-opus-4-6[1m]', effort: 'high' });
+  assert.deepEqual(p.parseModelEffort(jl(reply('claude-opus-4-6')), first), { model: 'claude-opus-4-6[1m]', effort: 'high', set: true });
   assert.deepEqual(p.parseModelEffort(jl(stdout('Set effort level to low (saved as your default for new sessions)')), first),
-    { model: 'Opus 4.6[1m]', effort: 'low' });
+    { model: 'Opus 4.6[1m]', effort: 'low', set: true });
 });
 
 test('agentDone: handback, final text reply or interrupt = finished; a tool call, mid-run text or a partial line = working', () => {
@@ -288,6 +327,19 @@ test('parseAgentFile reads frontmatter name and model, the body after it', () =>
     { name: 'helper', model: null, body: 'Use name: fake\n\n---\nmore' });
   // A "---" inside the body after the frontmatter stays in the body
   assert.equal(p.parseAgentFile('---\nname: b\n---\nintro\n---\nend', 'b.md').body, 'intro\n---\nend');
+  // An empty value doesn't take the next line
+  assert.equal(p.parseAgentFile('---\nname: c\nmodel:\ndescription: finds things\n---\nx', 'c.md').model, null);
+  assert.equal(p.parseAgentFile('---\r\nname: c\r\nmodel:  \r\ndescription: finds things\r\n---\r\nx', 'c.md').model, null);
+});
+
+test('agentPrompt: the first user line, also after a fork\'s context line', () => {
+  assert.equal(p.agentPrompt(jl({ type: 'user', message: { content: '  Find the bug  ' } }, { type: 'assistant', message: {} })), 'Find the bug');
+  assert.equal(p.agentPrompt(jl(
+    { type: 'fork-context-ref', agentId: 'a1', parentSessionId: 'x', contextLength: 642 },
+    { type: 'user', message: { content: [{ type: 'text', text: 'how are you?' }] } },
+  )), 'how are you?');
+  assert.equal(p.agentPrompt('{"type":"user","message":{"content":"cut'), '');
+  assert.equal(p.agentPrompt(''), '');
 });
 
 // ------------------------------------------------------------------ mcp ----
