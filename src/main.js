@@ -7,7 +7,7 @@ const os = require('os');
 const { execFile, spawn } = require('child_process');
 const pty = require('@lydell/node-pty');
 const {
-  parseGitStatus, parentPid, parseNetstat, parseLsof, parsePs, macDevName, withoutFlagValues,
+  parseGitStatus, parentPid, parseNetstat, parseMsysPs, parseLsof, parsePs, macDevName, withoutFlagValues,
   oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel,
   parseAgentFile, parseMcpList, remapSplits,
 } = require('./lib/parse');
@@ -440,6 +440,14 @@ function macScan() {
   });
 }
 
+/** Git's MSYS ps.exe beside a process's executable (first token of its command line), or null. */
+function msysPs(cmd) {
+  const m = /^\s*(?:"([^"]+)"|(\S+))/.exec(cmd || '');
+  if (!m || !/\.exe$/i.test(m[1] || m[2])) return null;
+  const ps = path.join(path.dirname(m[1] || m[2]), 'ps.exe');
+  try { return fs.statSync(ps).isFile() ? ps : null; } catch { return null; }
+}
+
 async function scanPorts() {
   const scan = await (IS_MAC ? macScan() : winScan());
   if (!scan.ok) return scan;
@@ -457,15 +465,42 @@ async function scanPorts() {
   // Not the Chats entry: it may be set to the home folder, which nearly every command line would match.
   const projectsByLength = state.projects.filter((p) => !p.chat).sort((a, b) => b.path.length - a.path.length);
 
-  const ownerOf = (pid, cmd) => {
-    // 1. Started from one of our terminals (walk up the parent chain).
+  // Walks up the parent chain: { s } = the session it was started from, else { broken } = the process whose parent is
+  // gone. Git Bash (MSYS) emulates fork/exec with new Windows processes and the one in between can exit, so a server
+  // Claude's Bash tool started (`npx vite`) has a dead Windows parent; `msys` (its own ps) still knows the real one.
+  const walk = (pid, msys) => {
     let cur = pid;
     for (let i = 0; i < 40 && cur; i++) {
       const s = sessionByPid.get(cur);
-      if (s) return { type: 'session', sessionId: s.id, projectPath: s.cwd, kind: s.kind };
+      if (s) return { s };
       const p = procs.get(cur);
-      cur = p && parentPid(procs, p);
+      if (!p) return {};
+      const next = parentPid(procs, p);
+      if (next && (procs.has(next) || sessionByPid.has(next))) cur = next;
+      else if (msys?.has(cur)) cur = msys.get(cur);
+      else return { broken: next || p.ParentProcessId ? p : null };
     }
+    return {};
+  };
+
+  // Ask MSYS only when a listener's chain breaks at one of its processes (ps.exe next to the exe), once per process table.
+  let msys = procScan?.msys || null;
+  if (!IS_MAC && !msys) {
+    for (const c of data.c || []) {
+      const { broken } = walk(c.OwningProcess);
+      const ps = broken && msysPs(broken.CommandLine);
+      if (!ps) continue;
+      const out = await run(ps, ['-l'], { timeout: 5000 });
+      msys = out ? parseMsysPs(out) : new Map();
+      if (procScan) procScan.msys = msys;
+      break;
+    }
+  }
+
+  const ownerOf = (pid, cmd) => {
+    // 1. Started from one of our terminals (walk up the parent chain).
+    const { s } = walk(pid, msys);
+    if (s) return { type: 'session', sessionId: s.id, projectPath: s.cwd, kind: s.kind };
     // 2. Its executable or a script argument points inside a known project folder (not just a --flag= value).
     const lower = withoutFlagValues(cmd);
     for (const pr of projectsByLength) {

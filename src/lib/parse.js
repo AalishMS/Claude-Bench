@@ -66,6 +66,25 @@ function parseNetstat(out) {
   return conns;
 }
 
+/**
+ * Git Bash's own `ps -l` (PID PPID PGID WINPID ...) -> Map(Windows pid -> Windows pid of its MSYS parent). MSYS emulates
+ * fork/exec with new Windows processes and the one in between can exit, so a server started from Git Bash may have a
+ * dead Windows parent; its MSYS parent (which survives the exec) is still listed here. Rows may start with a status letter.
+ */
+function parseMsysPs(out) {
+  const rows = [];
+  const winOf = new Map();
+  for (const line of out.split('\n')) {
+    const m = /^\D*?(\d+)\s+(\d+)\s+\d+\s+(\d+)\s/.exec(line);
+    if (!m) continue;
+    rows.push([+m[2], +m[3]]);
+    winOf.set(+m[1], +m[3]);
+  }
+  const parents = new Map();
+  for (const [ppid, win] of rows) if (winOf.has(ppid)) parents.set(win, winOf.get(ppid));
+  return parents;
+}
+
 /** ps etime "[[dd-]hh:]mm:ss" -> seconds */
 function etimeSeconds(s) {
   const [days, rest] = s.includes('-') ? s.split('-') : ['0', s];
@@ -315,7 +334,7 @@ function remapSplits(splits, at) {
 
 module.exports = {
   parseGitStatus,
-  parentPid, parseNetstat, etimeSeconds, parseLsof, parsePs, macDevName, withoutFlagValues,
+  parentPid, parseNetstat, parseMsysPs, etimeSeconds, parseLsof, parsePs, macDevName, withoutFlagValues,
   oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, defaultEffort, modelFamily, withLongContext, parseModelEffort,
   agentDone, lastModel, parseAgentFile,
   parseMcpList,

@@ -309,7 +309,9 @@ site/            the product page (static, open index.html or serve the folder; 
     listener appears that hasn't been listening without a gap since the last PowerShell scan (so a recycled pid gets a fresh scan), or that
     scan is 60 s old (`procScan`, `PROC_TTL`). `parseNetstat` relies on `-a` without `-q` (BOUND sockets also have a zero foreign address).
     If netstat yields nothing, the old full PowerShell scan (`Get-NetTCPConnection` too) runs. A listener
-    belongs to a tab if a session's pty pid is an ancestor; otherwise it is matched to a project if its command line contains the project path
+    belongs to a tab if a session's pty pid is an ancestor (Git Bash, which Claude's Bash tool uses, emulates fork/exec
+    and the Windows process in between exits, so `npx vite` from Claude has a dead parent: where the chain breaks at a
+    process with `ps.exe` beside its exe, that MSYS `ps -l` maps it to its real parent, `parseMsysPs`, once per process table; no Mac branch); otherwise it is matched to a project if its command line contains the project path
     outside `--flag=` values (Antigravity's `agy.exe --add-dir=<project>` is no server). Rows are status dot, short name, port; clicking a row
     copies `http://localhost:<port>`, Shift+click opens it with `openExternal` (rows without a port, or emulators, do nothing). No kill, no "Show all".
 - **Sessions and usage**: read-only from `~/.claude/projects/<cwd, non-alphanumerics -> "-">/<uuid>.jsonl`. The sidebar lists a

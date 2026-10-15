@@ -78,6 +78,23 @@ test('parentPid ignores a "parent" created after its child (recycled pid)', () =
   assert.equal(p.parentPid(procs, { ProcessId: 50, ParentProcessId: 99, T: 1 }), 99); // parent not in the table
 });
 
+test('parseMsysPs maps Windows pids to their MSYS parent\'s Windows pid', () => {
+  // `npx remotion studio` from Claude's Bash tool: Windows pid 19748's parent (the fork child) has exited.
+  const out = [
+    '      PID    PPID    PGID     WINPID   TTY         UID    STIME COMMAND',
+    '      249       1     249      10668  ?         197609 09:49:33 /usr/bin/bash',
+    '      258     250     249      20188  ?         197609 09:49:33 /c/Program Files/nodejs/node',
+    'I     316       1     316       2976  pty0      197609 09:56:18 /usr/bin/bash',
+    '      250     249     249      19748  ?         197609 09:49:33 /usr/bin/bash',
+    '',
+  ].join('\n');
+  const m = p.parseMsysPs(out);
+  assert.equal(m.get(19748), 10668);
+  assert.equal(m.get(20188), 19748);
+  assert.equal(m.has(10668), false); // PPID 1: no MSYS parent
+  assert.equal(m.has(2976), false);
+});
+
 test('etimeSeconds reads ps elapsed times', () => {
   assert.equal(p.etimeSeconds('00:05'), 5);
   assert.equal(p.etimeSeconds('01:02:03'), 3723);
