@@ -1,0 +1,8 @@
+#!/bin/sh
+# Lint + tests before every commit, the same as `npm run check` but without npm's startup (2 s instead of 7 on Windows):
+# keep it in step with "check" in package.json. Checks the working tree, not only what is staged.
+# Enable once per clone: git config core.hooksPath .githooks
+out=$( { node node_modules/eslint/bin/eslint.js . && node --test; } 2>&1 ) && exit 0
+printf '%s\n' "$out"
+echo 'pre-commit: lint or tests failed, nothing was committed (npm run check shows the same).'
+exit 1

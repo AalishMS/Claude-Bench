@@ -19,7 +19,7 @@ notes below and the README's macOS section in the same change, and tell the user
 
 ```
 npm start            # run from source (fastest loop)
-npm run check        # lint + tests; run before every commit
+npm run check        # lint + tests; the pre-commit hook runs them too
 npm run package      # build dist\win-unpacked\Stanza.exe (fails if that exe is running)
 npm run package:mac  # macOS only: dist/mac-*/Stanza.app (unsigned)
 npm run shortcut     # Desktop + Start menu shortcuts -> packaged exe
@@ -31,6 +31,9 @@ The logo master is `assets/icon-source.png` (1024 px, transparent outside the ro
 pure code in `src/lib/`; anything touching the UI, ptys or processes still needs a run of the real app (see "Testing").
 CI (`.github/workflows/check.yml`) runs `npm run check` on Windows and macOS for every push (`npm ci --ignore-scripts`:
 no Electron, no node-pty), so keep `src/lib/` and the tests free of both. Test paths must suit both platforms.
+The pre-commit hook (`.githooks/pre-commit`, enabled once per clone with `git config core.hooksPath .githooks`) runs the
+same lint + tests and refuses the commit if they fail. It calls eslint and `node --test` directly (2 s instead of npm's
+7 s on Windows), so keep it in step with `check` in package.json; it checks the working tree, not only what is staged.
 
 ## Principles: minimal and fast
 
