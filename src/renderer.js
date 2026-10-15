@@ -1271,6 +1271,18 @@ function setWebgl(t, on) {
     return;
   }
   if (t.gl) return;
+/** Take one pane out of its split; the tab keeps running and stays in the sidebar. */
+function minimizePane(id) {
+  const g = groupOf(id);
+  if (!g) return;
+  const slot = g.ids.indexOf(id);
+  const mates = removeFromSplit(id); // a group left with one tab is dropped
+  if (activeId === id) activate(mates[Math.min(slot, mates.length - 1)]); // focus moves to its neighbour
+  else syncVisible();
+  renderSidebar(true); // the split box loses the row
+  saveTabs();
+}
+
   try {
     const gl = new WebglAddon.WebglAddon();
     gl.onContextLoss(() => { gl.dispose(); if (t.gl === gl) t.gl = null; });
@@ -1498,7 +1510,7 @@ function renderSplit() {
   autoRside();
 }
 
-/** Pane headers: status dot, title, and a button that takes the pane out of the split. Key-diffed. */
+/** Pane headers: status dot, title, − (take the pane out of the split, still running) and × (close it). Key-diffed. */
 let lastPanesKey = '';
 function renderPanes() {
   const ids = curSplit()?.ids || [];
@@ -1536,6 +1548,10 @@ let autoQueued = false;
 function autoRside() {
   if (autoQueued) return;
   autoQueued = true;
+      h('button', {
+        class: 'btn ghost icon sm', title: 'Take out of split',
+        onclick: (e) => { e.stopPropagation(); minimizePane(id); },
+      }, ico('minus')),
   requestAnimationFrame(() => {
     autoQueued = false;
     const open = document.body.classList.contains('rside-open');

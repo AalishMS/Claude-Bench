@@ -238,7 +238,8 @@ site/            the product page (static, open index.html or serve the folder; 
   projects (rows then show the project name). With several groups each box has its color (`.g0`..`.g4` = `--primary`,
   `--group-1..4`, the lowest free index at creation); a lone group is always `.g0`. Its header shows it, its × `unsplit(g)`. `activeId` is the focused pane, so status bar, right sidebar and
   polling keep following one tab. `visibleIds()` = the active tab's group, else just the active tab (focusing a member of another group
-  switches the terminal area to that group). `addToSplit` adds to the visible group or starts a new one with the active tab;
+  switches the terminal area to that group). `addToSplit` adds to the visible group or starts a new one with the active tab; a pane header's `−` (`minimizePane`) takes
+  that tab out of its group (still running, focus to its neighbour);
   a tab moving in leaves its old group, and a group of one is dropped. Entry: top-bar button / `Ctrl+Shift+→` (`splitHere`, new session beside),
   Shift+click a sidebar row (`besideRow`), or drag a sidebar row onto the terminal area or the home screen: `#dropzone` (shown only while
   dragging, `rowDrag` / `wireDropZone`) previews the pane in the resulting layout (`cellRect`; the slot whose pane centre is nearest
