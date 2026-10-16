@@ -203,8 +203,10 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   only peeking slides.
 - **Peek** (collapsed, a tab open; like Zen browser's compact mode): the pointer reaching the window's left edge
   (`#peek-zone`, 6 px, below the top bar) slides the sidebar in over the terminal, from under the top bar to the bottom,
-  `--shadow-side` (a sideways shadow), same width. Nothing reflows (the terminal keeps its size). In 180 ms
-  `cubic-bezier(0.16, 1, 0.3, 1)`, out 170 ms (fast from the start) 80 ms after the pointer leaves it. A pointer that leaves
+  `--shadow-side` (a sideways shadow), same width. Nothing reflows (the terminal keeps its size). It moves on a spring
+  (`springPeek`, `PEEK_SPRING` k 600 / c 46, nearly critically damped: no overshoot), not a CSS transition, so a peek
+  cancelled on its way in slows, stops and glides back instead of reversing in one frame; in and out each look done in
+  ~200 ms. It leaves 80 ms after the pointer leaves it. A pointer that leaves
   the window through the left edge (a window that isn't maximized) also brings it out and keeps it out while it stays within
   144 px of the edge and within the window's height (main watches the cursor out there, `peekHold`). It stays while its `…`
   menu or footer popover is open or the search has focus, and leaves when a session row is dragged. Toggle / `Ctrl+S` pin

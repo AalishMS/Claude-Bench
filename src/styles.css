@@ -249,17 +249,15 @@ body.sidebar-collapsed .brand-name { display: none; }
 #rside { width: var(--rside-w); background: var(--background); border-left: 1px solid var(--sidebar-border); display: none; overflow-x: hidden; overflow-y: auto; padding-bottom: 12px; }
 /* Collapsed: the sidebar floats in over the terminal (nothing resizes) while the pointer rests on the window's left
    edge (#peek-zone), like Zen browser's compact mode. Below the top bar, so the toggle that pins it stays reachable.
-   In: 180 ms ease-out; out: 170 ms, fast from the start, then hidden (no focus or clicks while away). The home screen
-   always shows it in the layout (no sidebar-collapsed there, see sidebarShown). */
+   It slides on a spring driven by renderer.js (springPeek sets transform + visibility inline while out or moving);
+   these are the rest values: away and hidden (no focus or clicks). The home screen always shows it in the layout (no
+   sidebar-collapsed there, see sidebarShown). */
 #peek-zone { display: none; }
 body.sidebar-collapsed #peek-zone { display: block; position: fixed; z-index: 29; left: 0; top: 40px; bottom: 0; width: 6px; -webkit-app-region: no-drag; }
 body.sidebar-collapsed #sidebar {
   position: fixed; z-index: 30; left: 0; top: 40px; bottom: 0; box-shadow: var(--shadow-side);
   transform: translateX(calc(-100% - 48px)); visibility: hidden; will-change: transform;
-  transition: transform 170ms cubic-bezier(0.3, 0.7, 0.4, 1), visibility 0s linear 170ms;
 }
-body.sidebar-collapsed.sidebar-peek #sidebar { transform: none; visibility: visible; transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s; }
-@media (prefers-reduced-motion: reduce) { body.sidebar-collapsed #sidebar { transition: none; } }
 body.rside-open #rside { display: flex; }
 /* drag handles on the two dividers: 4px overlaying the panel edge, zero layout width */
 .rz { position: relative; z-index: 6; flex: none; width: 4px; cursor: col-resize; -webkit-app-region: no-drag; transition: background-color 0.15s; }

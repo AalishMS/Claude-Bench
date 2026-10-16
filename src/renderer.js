@@ -2979,12 +2979,9 @@ function syncHome() {
 function placeBrand() {
   const shown = sidebarShown();
   if (shown) setPeek(false);
-  const sb = $('#sidebar');
   if (document.body.classList.contains('sidebar-collapsed') === shown) { // only peeking slides: a layout change snaps
-    sb.style.transition = 'none';
+    stopPeekSpring();
     document.body.classList.toggle('sidebar-collapsed', !shown);
-    void sb.offsetWidth;
-    sb.style.transition = '';
   }
   if (shown) $('#sidebar').prepend($('#brand'));
   else $('#topbar').prepend($('#brand'));
@@ -3008,7 +3005,59 @@ const peeking = () => document.body.classList.contains('sidebar-peek');
 function setPeek(on) {
   clearTimeout(peekTimer);
   if (!on && holding) { holding = false; api.peekRelease(); }
-  document.body.classList.toggle('sidebar-peek', on && !sidebarShown());
+  on = on && !sidebarShown();
+  if (on === peeking()) return;
+  document.body.classList.toggle('sidebar-peek', on);
+  springPeek(on);
+}
+
+/* The peek slides on a spring instead of a CSS transition: a reversed transition flips direction in one frame (a peek
+   cancelled while still coming in snapped back), a spring keeps its speed, so it slows down, stops and drifts back
+   (Zen's bounce). x = translateX in px (0 = out), v = px/s. Frames run only while it moves. Mass 1; c = 2 * sqrt(k) is
+   critically damped (no overshoot, which would pull it off the left edge), a bit less settles faster. */
+const PEEK_SPRING = { k: 600, c: 46 };
+const spring = { x: null, v: 0, out: false, raf: 0, t: 0 };
+const peekAway = () => -($('#sidebar').offsetWidth + 48); // matches the CSS rest transform: the shadow is off screen too
+function springPeek(out) {
+  const sb = $('#sidebar');
+  spring.out = out;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    stopPeekSpring();
+    if (out) { sb.style.transform = 'none'; sb.style.visibility = 'visible'; }
+    return;
+  }
+  if (spring.x === null) spring.x = peekAway(); // from rest, away
+  sb.style.visibility = 'visible';
+  if (!spring.raf) { spring.t = 0; spring.raf = requestAnimationFrame(stepPeek); }
+}
+function stepPeek(now) {
+  const sb = $('#sidebar');
+  const goal = spring.out ? 0 : peekAway();
+  const { k, c } = PEEK_SPRING;
+  let dt = spring.t ? Math.min(Math.max(now - spring.t, 0), 34) / 1000 : 1 / 60; // a stalled frame doesn't jump
+  spring.t = now;
+  while (dt > 0) { // 4 ms steps keep the integration stable at any frame rate
+    const h = Math.min(dt, 0.004);
+    spring.v += (-k * (spring.x - goal) - c * spring.v) * h;
+    spring.x = Math.min(spring.x + spring.v * h, 0);
+    dt -= h;
+  }
+  if (Math.abs(spring.x - goal) < 0.5 && Math.abs(spring.v) < 20) { // settled
+    spring.raf = 0;
+    if (spring.out) { spring.x = 0; spring.v = 0; sb.style.transform = 'none'; }
+    else stopPeekSpring(); // back to the CSS rest state (hidden)
+    return;
+  }
+  sb.style.transform = `translateX(${spring.x}px)`;
+  spring.raf = requestAnimationFrame(stepPeek);
+}
+/** Stop at once and hand the sidebar back to the stylesheet (away, or in the layout once pinned). */
+function stopPeekSpring() {
+  cancelAnimationFrame(spring.raf);
+  Object.assign(spring, { x: null, v: 0, raf: 0 });
+  const sb = $('#sidebar');
+  sb.style.transform = '';
+  sb.style.visibility = '';
 }
 function unpeekLater(ms = 80) {
   clearTimeout(peekTimer);
