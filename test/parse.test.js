@@ -379,3 +379,19 @@ test('remapSplits follows dropped tabs and drops groups left with one member', (
   assert.deepEqual(p.remapSplits(splits, at), [{ cx: 0.4, ry: 0.5, v: true, tabs: [0, 1] }]);
   assert.deepEqual(p.remapSplits(undefined, at), []);
 });
+
+// ---------------------------------------------------------- sidebar peek ----
+
+test('edgeHold keeps the sidebar out just left of the window, inside its height', () => {
+  const b = { x: 100, y: 50, width: 800, height: 600 };
+  assert.equal(p.edgeHold({ x: 300, y: 300 }, b, 64), 'inside');
+  assert.equal(p.edgeHold({ x: 100, y: 50 }, b, 64), 'inside'); // the window's own first pixel
+  assert.equal(p.edgeHold({ x: 99, y: 300 }, b, 64), 'hold');
+  assert.equal(p.edgeHold({ x: 36, y: 300 }, b, 64), 'hold');
+  assert.equal(p.edgeHold({ x: 35, y: 300 }, b, 64), 'away'); // well past the edge
+  assert.equal(p.edgeHold({ x: 80, y: 49 }, b, 64), 'away'); // above the window
+  assert.equal(p.edgeHold({ x: 80, y: 650 }, b, 64), 'away'); // below it
+  assert.equal(p.edgeHold({ x: 950, y: 300 }, b, 64), 'away'); // right of it
+  assert.equal(p.edgeHold({ x: 80, y: 70 }, b, 64, 40), 'away'); // beside the top bar: no peek from there
+  assert.equal(p.edgeHold({ x: 80, y: 90 }, b, 64, 40), 'hold');
+});

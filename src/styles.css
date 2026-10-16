@@ -48,6 +48,7 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 30%);
   --shadow-md: 0 8px 24px -6px rgb(0 0 0 / 60%), 0 2px 6px -2px rgb(0 0 0 / 40%);
   --shadow-lg: 0 20px 40px -8px rgb(0 0 0 / 70%), 0 6px 12px -6px rgb(0 0 0 / 50%);
+  --shadow-side: 8px 0 24px -4px rgb(0 0 0 / 80%); /* a panel floating in from the left (sidebar peek) */
 }
 
 [data-theme="light"] {
@@ -76,6 +77,7 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 5%);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 10%), 0 2px 4px -2px rgb(0 0 0 / 10%);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
+  --shadow-side: 6px 0 20px -4px rgb(0 0 0 / 16%);
 }
 
 /* Claude colors (ui.claude): the Claude desktop app's palettes, picked for the resolved scheme. Dark = warm charcoal and
@@ -106,6 +108,7 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 30%);
   --shadow-md: 0 8px 24px -6px rgb(0 0 0 / 50%), 0 2px 6px -2px rgb(0 0 0 / 35%);
   --shadow-lg: 0 20px 40px -8px rgb(0 0 0 / 60%), 0 6px 12px -6px rgb(0 0 0 / 45%);
+  --shadow-side: 8px 0 24px -4px rgb(0 0 0 / 70%);
 }
 
 [data-theme="claude-light"] {
@@ -134,6 +137,7 @@
   --shadow-sm: 0 1px 2px 0 rgb(31 30 29 / 6%);
   --shadow-md: 0 4px 6px -1px rgb(31 30 29 / 10%), 0 2px 4px -2px rgb(31 30 29 / 10%);
   --shadow-lg: 0 10px 15px -3px rgb(31 30 29 / 10%), 0 4px 6px -4px rgb(31 30 29 / 10%);
+  --shadow-side: 6px 0 20px -4px rgb(31 30 29 / 16%);
 }
 
 /* Accents (ui.accent, data-accent on <html>; swatches carry their own data-accent). The only place these hues live.
@@ -243,7 +247,17 @@ body.sidebar-collapsed .brand-name { display: none; }
   background: var(--sidebar) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .008 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 #rside { width: var(--rside-w); background: var(--background); border-left: 1px solid var(--sidebar-border); display: none; overflow-x: hidden; overflow-y: auto; padding-bottom: 12px; }
-body.sidebar-collapsed #sidebar { display: none; }
+/* Collapsed: the sidebar floats in over the terminal (nothing resizes) while the pointer rests on the window's left
+   edge (#peek-zone), like Zen browser's compact mode. Below the top bar, so the toggle that pins it stays reachable.
+   It slides on a spring driven by renderer.js (springPeek sets transform + visibility inline while out or moving);
+   these are the rest values: away and hidden (no focus or clicks). The home screen always shows it in the layout (no
+   sidebar-collapsed there, see sidebarShown). */
+#peek-zone { display: none; }
+body.sidebar-collapsed #peek-zone { display: block; position: fixed; z-index: 29; left: 0; top: 40px; bottom: 0; width: 6px; -webkit-app-region: no-drag; }
+body.sidebar-collapsed #sidebar {
+  position: fixed; z-index: 30; left: 0; top: 40px; bottom: 0; box-shadow: var(--shadow-side);
+  transform: translateX(calc(-100% - 48px)); visibility: hidden; will-change: transform;
+}
 body.rside-open #rside { display: flex; }
 /* drag handles on the two dividers: 4px overlaying the panel edge, zero layout width */
 .rz { position: relative; z-index: 6; flex: none; width: 4px; cursor: col-resize; -webkit-app-region: no-drag; transition: background-color 0.15s; }
@@ -677,8 +691,17 @@ body.settings-open #settings { display: block; }
 .img-tile:focus-visible { outline: 0; }
 .img-tile:focus-visible img { box-shadow: var(--focus-ring); }
 .img-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
-.img-body { align-items: center; }
-.img-full { max-width: 100%; max-height: calc(100vh - 200px); object-fit: contain; border-radius: var(--radius-sm); }
+.ag-body.img-body { flex-direction: row; align-items: center; gap: 8px; padding-left: 8px; padding-right: 8px; }
+.img-body > .btn { flex: none; }
+.img-stage { flex: 1; min-width: 0; display: flex; justify-content: center; transition: opacity 120ms; }
+.img-stage.loading { opacity: 0.5; }
+/* lightbox: the dialog wraps the image, which shows at its own size when the window allows, else scaled to fit (never
+   scrolled). The caps are viewport units, not %, so the image's intrinsic width already honours the height cap.
+   Width: 48 window margin + 2x8 body inset + 2x(32 button + 8 gap) + 2 border. Height: 96 margin + head + 16/20 body
+   inset + 2 border. The head (long paths) takes the dialog's width instead of widening it. */
+.dialog.wide:has(.img-body) { width: fit-content; min-width: min(420px, calc(100vw - 48px)); max-width: calc(100vw - 48px); }
+.dialog.wide:has(.img-body) .ag-head { contain: inline-size; }
+.img-full { display: block; max-width: calc(100vw - 146px); max-height: calc(100vh - 192px); object-fit: contain; border-radius: var(--radius-sm); }
 /* circular status (8px): color only carries the state */
 .dot.s { width: 8px; height: 8px; margin: 0 3px; }
 .dot.ok { background: var(--success); }

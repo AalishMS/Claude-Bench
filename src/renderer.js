@@ -52,6 +52,7 @@ const ICONS = {
   power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>',
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>',
   chevron: '<polyline points="9 18 15 12 9 6"/>',
+  chevronLeft: '<polyline points="15 18 9 12 15 6"/>',
   more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
   search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
   chart: '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
@@ -360,10 +361,10 @@ function confirmDialog({ title, message, items = [], okLabel = 'OK', cancelLabel
 /**
  * Read-only popup in #modal with a title row and a body: Esc, a click on the backdrop and × close it.
  * Returns `isOpen()` for "closed while loading" checks. A new popup closes the previous one, and settles an open
- * confirmDialog as cancelled.
+ * confirmDialog as cancelled. `keys(e)` sees other keys while it is open; returning true swallows the key.
  */
 let closeModal = null;
-function openModal(title, extra, body) {
+function openModal(title, extra, body, keys) {
   closeModal?.();
   cancelDialog?.();
   const modal = $('#modal');
@@ -379,8 +380,8 @@ function openModal(title, extra, body) {
     activeTab()?.term.focus();
   };
   const onKey = (e) => {
-    if (e.key !== 'Escape') return;
-    done();
+    if (e.key === 'Escape') done();
+    else if (!keys?.(e)) return;
     e.preventDefault();
     e.stopPropagation();
   };
@@ -428,17 +429,42 @@ async function agentDialog(a, tab) {
 }
 
 /** Lightbox for an image from the session (Images section): full size is fetched only now. `session` is the transcript the
- * image came from, which stays right after /clear re-points the tab. */
-async function imageDialog(tab, session, it) {
-  const body = h('div', { class: 'ag-body img-body' }, h('div', { class: 'rnote' }, 'Loading…'));
-  const reveal = it.exists
-    ? h('button', { class: 'btn outline sm', onclick: () => api.revealImage(tab.project.path, session, it.id) }, `Show in ${FILES_APP}`)
-    : null;
-  const dlg = openModal(it.label, [h('span', { class: 'ag-model mono', title: it.file || '' }, it.file || 'Pasted image'), reveal], body);
-  let url = null;
-  try { url = await api.imageFull(tab.project.path, session, it.id); } catch { /* shown below */ }
-  if (!dlg.isOpen()) return;
-  body.replaceChildren(url ? h('img', { class: 'img-full', src: url, alt: it.label }) : h('div', { class: 'rnote' }, 'Could not read this image.'));
+ * image came from, which stays right after /clear re-points the tab. `items` is the grid as it was when clicked (newest
+ * first); the side buttons and ←/→ step through it in that order. */
+function imageDialog(tab, session, items, at) {
+  const title = document.createTextNode('');
+  const path = h('span', { class: 'ag-model mono' });
+  const reveal = h('button', { class: 'btn outline sm', onclick: () => api.revealImage(tab.project.path, session, items[at].id) }, `Show in ${FILES_APP}`);
+  const stage = h('div', { class: 'img-stage' }, h('div', { class: 'rnote' }, 'Loading…'));
+  const step = (d) => {
+    if (at + d < 0 || at + d >= items.length) return false;
+    show(at + d);
+    return true;
+  };
+  const many = items.length > 1;
+  const prev = many ? h('button', { class: 'btn ghost icon', title: 'Previous (←)', 'aria-label': 'Previous image', onclick: () => step(-1) }, ico('chevronLeft')) : null;
+  const next = many ? h('button', { class: 'btn ghost icon', title: 'Next (→)', 'aria-label': 'Next image', onclick: () => step(1) }, ico('chevron')) : null;
+  const plain = (e) => !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
+  const dlg = openModal(title, [path, reveal], h('div', { class: 'ag-body img-body' }, prev, stage, next),
+    (e) => plain(e) && (e.key === 'ArrowLeft' ? step(-1) : e.key === 'ArrowRight' ? step(1) : false));
+  let seq = 0; // a newer step wins over a slower load
+  async function show(i) {
+    at = i;
+    const it = items[i];
+    const mine = ++seq;
+    title.textContent = it.label;
+    path.textContent = it.file || 'Pasted image';
+    path.title = it.file || '';
+    reveal.style.display = it.exists ? '' : 'none';
+    if (many) { prev.disabled = i === 0; next.disabled = i === items.length - 1; }
+    stage.classList.add('loading'); // the previous image stays, dimmed, until this one arrives
+    let url = null;
+    try { url = await api.imageFull(tab.project.path, session, it.id); } catch { /* shown below */ }
+    if (!dlg.isOpen() || mine !== seq) return;
+    stage.classList.remove('loading');
+    stage.replaceChildren(url ? h('img', { class: 'img-full', src: url, alt: it.label }) : h('div', { class: 'rnote' }, 'Could not read this image.'));
+  }
+  show(at);
 }
 
 // ----------------------------------------------------------------- tabs ----
@@ -602,7 +628,8 @@ async function restoreTabs(saved) {
     bySaved.push(tab);
   }
   const made = bySaved.filter(Boolean);
-  if (!made.length) return;
+  restoring = false;
+  if (!made.length) { syncHome(); return; }
   made.forEach((t, i) => { t.seq = tabSeq - i; }); // saved newest first: the oldest keeps the lowest number
   for (const g of saved.splits || []) {
     const ids = [...new Set(g.tabs.map((i) => bySaved[i]?.id).filter((id) => id && !groupOf(id)))].slice(0, SPLIT_MAX);
@@ -1139,7 +1166,7 @@ function activate(id) {
   tab.attention = false;
   syncVisible();
   requestAnimationFrame(() => tab.term.focus());
-  document.body.classList.toggle('no-tabs', tabs.size === 0);
+  syncHome();
   if (tab.project.path !== lastActiveProject) { // entering a project reveals its sessions
     lastActiveProject = tab.project.path;
     if (!expanded.has(lastActiveProject)) { expanded.add(lastActiveProject); saveExpanded(); }
@@ -1368,7 +1395,10 @@ function rowDrag(src) {
       dragSrc = src;
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', src.resumeId || src.id || '');
-      setTimeout(() => document.body.classList.toggle('dragging-session', !!dragSrc)); // after the drag image is taken
+      setTimeout(() => { // after the drag image is taken
+        document.body.classList.toggle('dragging-session', !!dragSrc);
+        if (dragSrc) setPeek(false); // a peeking sidebar would cover the drop targets
+      });
     },
     ondragend: endDrag,
   };
@@ -1842,7 +1872,7 @@ let lastSidebarKey = '';
 let sessionsVer = 0; // bumped when sessionsBy changes, so the render key stays cheap
 function renderSidebar(force = false) {
   if (dragSrc || projDrag) return; // rebuilding rows mid-drag would drop the dragged element; the drag's end re-renders
-  document.body.classList.toggle('no-tabs', tabs.size === 0);
+  syncHome();
   const tab = activeTab();
   const activeProject = tab?.project.path;
   const key = JSON.stringify([projects, git, activeId, tab?.sessionId, sessionsVer, [...expanded], [...showMore], query,
@@ -2626,9 +2656,10 @@ function toggleRsection(id) {
 }
 
 /** One tile per image; the thumbnail arrives later (pollImages sets src on the tile already on screen). */
-function imageTile(tab, session, it) {
+function imageTile(tab, session, items, i) {
+  const it = items[i];
   const url = thumbsBy.get(tab.id)?.get(it.id);
-  return h('button', { class: 'img-tile', 'data-id': it.id, title: it.file || `Pasted image ${it.label}`, onclick: () => imageDialog(tab, session, it) },
+  return h('button', { class: 'img-tile', 'data-id': it.id, title: it.file || `Pasted image ${it.label}`, onclick: () => imageDialog(tab, session, items, i) },
     h('img', { alt: '', src: url || null }),
     h('span', { class: 'img-label' }, it.label));
 }
@@ -2751,7 +2782,7 @@ function renderRside(force = false) {
   const imgBody = tab?.kind !== 'claude' ? h('div', { class: 'rnote' }, 'Open a Claude tab to see its images.')
     : !imgs ? h('div', { class: 'rnote' }, tab.sessionId ? 'Loading…' : 'No images yet.')
     : !imgs.length ? h('div', { class: 'rnote' }, 'No images in this session.')
-    : h('div', { class: 'img-grid' }, imgs.map((it) => imageTile(tab, tab.sessionId, it)));
+    : h('div', { class: 'img-grid' }, imgs.map((_, i) => imageTile(tab, tab.sessionId, imgs, i)));
 
   const working = agents.filter((a) => a.running).length;
   // Home screen: Context and Images belong to one tab, so they're left out rather than asking for one.
@@ -2961,20 +2992,135 @@ function wireResizer(el, key, widthAt) {
   el.addEventListener('dblclick', () => { applyPanelW(key, PANEL_W[key].def); api.setUi({ [key]: ui[key] }); });
 }
 
+/** Shown in the layout: pinned (ui.sidebar), or on the home screen, which always shows it (a collapsed sidebar only applies with a tab open). */
+let restoring = false; // saved tabs are being reopened at launch: not the home screen, so the sidebar doesn't flash in
+const sidebarShown = () => ui.sidebar || (tabs.size === 0 && !restoring);
+
+/** Home screen <-> tabs: `no-tabs`, and the sidebar comes back into the layout (or leaves it) when that changes. */
+function syncHome() {
+  document.body.classList.toggle('no-tabs', tabs.size === 0);
+  if (document.body.classList.contains('sidebar-collapsed') === sidebarShown()) placeBrand();
+}
+
 /** Toggle + logo live in the sidebar's top row; while it is collapsed they move to the start of the top bar. */
 function placeBrand() {
-  document.body.classList.toggle('sidebar-collapsed', !ui.sidebar);
-  if (ui.sidebar) $('#sidebar').prepend($('#brand'));
+  const shown = sidebarShown();
+  if (shown) setPeek(false);
+  if (document.body.classList.contains('sidebar-collapsed') === shown) { // only peeking slides: a layout change snaps
+    stopPeekSpring();
+    document.body.classList.toggle('sidebar-collapsed', !shown);
+  }
+  if (shown) $('#sidebar').prepend($('#brand'));
   else $('#topbar').prepend($('#brand'));
   // New session "+": in the search row, or after the brand in the top bar while the sidebar is collapsed
   const nt = $('#new-tab');
-  nt.classList.toggle('sm', ui.sidebar);
-  if (ui.sidebar) $('.search-row').append(nt);
+  nt.classList.toggle('sm', shown);
+  if (shown) $('.search-row').append(nt);
   else $('#brand').after(nt);
   placeUpdatePop(); // the footer (its anchor) hides while collapsed
 }
 
+/* Collapsed sidebar (Zen browser's compact mode): the pointer reaching the window's left edge floats it in over the
+   terminal; it slides away 80 ms after the pointer leaves it, but not while one of its menus or popovers is open or the
+   search has focus. A pointer that leaves the window through the left edge (aiming at the sidebar of a window that
+   isn't maximized) also brings it out and keeps it out: the page can't see the cursor out there, so main watches it
+   (peek:hold) and says when it has gone well past the edge or above / below the window (peek:away). */
+let peekTimer = 0;
+let pointer = null; // last pointer position in the window, null once it has left it
+let holding = false; // the pointer is just outside the left edge, main is watching it
+const peeking = () => document.body.classList.contains('sidebar-peek');
+function setPeek(on) {
+  clearTimeout(peekTimer);
+  if (!on && holding) { holding = false; api.peekRelease(); }
+  on = on && !sidebarShown();
+  if (on === peeking()) return;
+  document.body.classList.toggle('sidebar-peek', on);
+  springPeek(on);
+}
+
+/* The peek slides on a spring instead of a CSS transition: a reversed transition flips direction in one frame (a peek
+   cancelled while still coming in snapped back), a spring keeps its speed, so it slows down, stops and drifts back
+   (Zen's bounce). x = translateX in px (0 = out), v = px/s. Frames run only while it moves. Mass 1; c = 2 * sqrt(k) is
+   critically damped (no overshoot, which would pull it off the left edge), a bit less settles faster. */
+const PEEK_SPRING = { k: 600, c: 46 };
+const spring = { x: null, v: 0, out: false, raf: 0, t: 0 };
+const peekAway = () => -($('#sidebar').offsetWidth + 48); // matches the CSS rest transform: the shadow is off screen too
+function springPeek(out) {
+  const sb = $('#sidebar');
+  spring.out = out;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    stopPeekSpring();
+    if (out) { sb.style.transform = 'none'; sb.style.visibility = 'visible'; }
+    return;
+  }
+  if (spring.x === null) spring.x = peekAway(); // from rest, away
+  sb.style.visibility = 'visible';
+  if (!spring.raf) { spring.t = 0; spring.raf = requestAnimationFrame(stepPeek); }
+}
+function stepPeek(now) {
+  const sb = $('#sidebar');
+  const goal = spring.out ? 0 : peekAway();
+  const { k, c } = PEEK_SPRING;
+  let dt = spring.t ? Math.min(Math.max(now - spring.t, 0), 34) / 1000 : 1 / 60; // a stalled frame doesn't jump
+  spring.t = now;
+  while (dt > 0) { // 4 ms steps keep the integration stable at any frame rate
+    const h = Math.min(dt, 0.004);
+    spring.v += (-k * (spring.x - goal) - c * spring.v) * h;
+    spring.x = Math.min(spring.x + spring.v * h, 0);
+    dt -= h;
+  }
+  if (Math.abs(spring.x - goal) < 0.5 && Math.abs(spring.v) < 20) { // settled
+    spring.raf = 0;
+    if (spring.out) { spring.x = 0; spring.v = 0; sb.style.transform = 'none'; }
+    else stopPeekSpring(); // back to the CSS rest state (hidden)
+    return;
+  }
+  sb.style.transform = `translateX(${spring.x}px)`;
+  spring.raf = requestAnimationFrame(stepPeek);
+}
+/** Stop at once and hand the sidebar back to the stylesheet (away, or in the layout once pinned). */
+function stopPeekSpring() {
+  cancelAnimationFrame(spring.raf);
+  Object.assign(spring, { x: null, v: 0, raf: 0 });
+  const sb = $('#sidebar');
+  sb.style.transform = '';
+  sb.style.visibility = '';
+}
+function unpeekLater(ms = 80) {
+  clearTimeout(peekTimer);
+  peekTimer = setTimeout(() => {
+    if (!peeking()) return;
+    // the position, not :hover: a pointer resting where the sidebar slid in under it isn't :hover until it moves
+    const r = $('#sidebar').getBoundingClientRect();
+    const over = pointer && pointer.x < r.right && pointer.y >= r.top;
+    const keep = holding || over || !$('#menu').hidden || !$('#detail').hidden || document.activeElement === $('#session-search');
+    if (keep) unpeekLater(120);
+    else setPeek(false);
+  }, ms);
+}
+function wirePeek() {
+  document.addEventListener('mousemove', (e) => {
+    pointer = { x: e.clientX, y: e.clientY };
+    if (holding) { holding = false; api.peekRelease(); } // back in the window: its own events take over
+  }, { passive: true });
+  document.documentElement.addEventListener('mouseleave', async () => {
+    pointer = null;
+    if (sidebarShown()) return;
+    const held = await api.peekHold($('#peek-zone').getBoundingClientRect().top);
+    if (!held) { if (peeking()) unpeekLater(); return; }
+    if (pointer || sidebarShown()) { api.peekRelease(); return; } // came back (or pinned it) while main was asked
+    holding = true;
+    setPeek(true);
+    unpeekLater();
+  });
+  api.onPeekAway(() => { holding = false; setPeek(false); });
+  api.onPeekInside(() => { holding = false; if (peeking()) unpeekLater(); }); // e.g. back over the top bar, which sends no mousemove
+  $('#peek-zone').addEventListener('mouseenter', () => { setPeek(true); unpeekLater(); });
+  $('#sidebar').addEventListener('mouseleave', () => { if (peeking()) unpeekLater(); });
+}
+
 function setSidebar(open) {
+  setPeek(false);
   ui.sidebar = open;
   if (!open && detailKind) setDetail(null);
   if (!open) closeMenu();
@@ -3133,7 +3279,7 @@ function renderUpdatePop() {
 function placeUpdatePop() {
   const pop = $('#update-pop');
   if (pop.hidden) return;
-  const r = $('#update-slot')?.getBoundingClientRect();
+  const r = sidebarShown() ? $('#update-slot')?.getBoundingClientRect() : null; // collapsed: the footer is away (or only peeking)
   const left = r?.width ? r.left - 4 : 8;
   pop.style.left = `${Math.max(8, Math.min(left, window.innerWidth - pop.offsetWidth - 8))}px`;
   pop.style.bottom = `${r?.height ? window.innerHeight - r.top + 6 : 8}px`;
@@ -3427,6 +3573,7 @@ function wireGlobalEvents() {
   $('#toggle-rside').addEventListener('click', () => setServers(!rsideShown()));
   $('#close-tab').addEventListener('click', () => { if (activeId) closeTab(activeId); });
   $('#split-tab').addEventListener('click', () => (curSplit() ? unsplit() : splitHere()));
+  wirePeek();
   wireDropZone();
   wireDivider($('#pz-v'), 'x');
   wireDivider($('#pz-h'), 'y');
@@ -3469,6 +3616,7 @@ async function init() {
   applyKeyTitles();
   for (const key of Object.keys(PANEL_W)) applyPanelW(key, ui[key]);
   for (const p of ui.expanded || []) expanded.add(p);
+  restoring = !!state.restore?.tabs?.length;
   placeBrand();
   document.body.classList.toggle('rside-open', ui.servers);
   $('#toggle-rside').classList.toggle('on', ui.servers);

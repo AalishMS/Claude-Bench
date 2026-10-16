@@ -144,6 +144,9 @@ site/            the product page (static, open index.html or serve the folder; 
     A minimal app menu (appMenu + editMenu) replaces Electron's default, whose Cmd+W/R/= would clash; the Edit roles
     give Cmd+C/V/A to xterm and inputs. VS Code opens via `open -a "Visual Studio Code"`.
   - File links: `openFileAt` tries `code -g` (after `shellEnvReady`), then `open -a "Visual Studio Code" <file>`, then `shell.openPath`.
+  - Sidebar peek (`wirePeek`, collapsed sidebar slides in from the left edge; DESIGN.md "Peek"): no Mac branch; its edge
+    zone starts below the top bar, so it never sits under the traffic lights. Main's `peekHold` (cursor just outside the
+    left edge keeps it out) uses `screen.getCursorScreenPoint` + content bounds, both in points on macOS too.
   - First-run projects (`recentProjects`): no Mac branch (same `~/.claude/projects` layout and `cwd` field).
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.

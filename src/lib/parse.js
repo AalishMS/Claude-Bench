@@ -383,6 +383,19 @@ function remapSplits(splits, at) {
   })).filter((g) => g.tabs.length >= 2);
 }
 
+// ---------------------------------------------------------- sidebar peek ----
+
+/**
+ * The collapsed sidebar stays out while the pointer is just past the window's left edge (it overshot on its way to the
+ * sidebar). All in screen px: `p` = cursor, `b` = the window's content bounds, `slack` = how far left of the window still
+ * counts, `top` = how far below the window's top it must be. 'inside' = back in the window (the page's own events take
+ * over), 'hold' = keep the sidebar out, 'away' = let it go.
+ */
+function edgeHold(p, b, slack, top = 0) {
+  if (p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height) return 'inside';
+  return p.x < b.x && p.x >= b.x - slack && p.y >= b.y + top && p.y < b.y + b.height ? 'hold' : 'away';
+}
+
 module.exports = {
   parseGitStatus,
   parentPid, parseNetstat, parseMsysPs, etimeSeconds, parseLsof, parsePs, macDevName, withoutFlagValues,
@@ -390,4 +403,5 @@ module.exports = {
   agentDone, lastModel, agentPrompt, parseAgentFile,
   parseMcpList,
   remapSplits,
+  edgeHold,
 };

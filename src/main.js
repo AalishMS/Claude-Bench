@@ -9,7 +9,7 @@ const pty = require('@lydell/node-pty');
 const {
   parseGitStatus, parentPid, parseNetstat, parseMsysPs, parseLsof, parsePs, macDevName, withoutFlagValues,
   oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel, agentPrompt,
-  parseAgentFile, parseMcpList, remapSplits,
+  parseAgentFile, parseMcpList, remapSplits, edgeHold,
 } = require('./lib/parse');
 const { scanImages } = require('./lib/images');
 
@@ -253,6 +253,33 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 function send(channel, ...args) {
   const win = mainWindow;
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
+}
+
+// Sidebar peek: a pointer that left the window through its left edge keeps the collapsed sidebar out while it stays
+// within PEEK_SLACK px of that edge and within the window's height. The page can't see the cursor out there, so main
+// polls it (only while it is there) and tells the page when it has moved on (edgeHold).
+const PEEK_SLACK = 144; // CSS px
+let peekWatch = null;
+function peekState(top) {
+  const z = mainWindow.webContents.getZoomFactor();
+  return edgeHold(screen.getCursorScreenPoint(), mainWindow.getContentBounds(), PEEK_SLACK * z, top * z);
+}
+function stopPeekWatch() {
+  clearInterval(peekWatch);
+  peekWatch = null;
+}
+/** The pointer just left the window: is it beside the left edge, below the top bar (`top`, CSS px)? Then watch it. */
+function peekHold(top) {
+  stopPeekWatch();
+  if (!mainWindow || mainWindow.isDestroyed() || peekState(top) !== 'hold') return false;
+  peekWatch = setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) return stopPeekWatch();
+    const s = peekState(0);
+    if (s === 'hold') return;
+    stopPeekWatch();
+    send(s === 'away' ? 'peek:away' : 'peek:inside');
+  }, 40);
+  return true;
 }
 
 function flushSession(id) {
@@ -1637,6 +1664,8 @@ function registerIpc() {
   });
 
   ipcMain.on('notify', (_e, msg) => notify(msg));
+  ipcMain.handle('peek:hold', (_e, top) => peekHold(Number(top) || 0));
+  ipcMain.on('peek:release', stopPeekWatch);
 
   ipcMain.on('win:flash', () => {
     if (!mainWindow || mainWindow.isFocused()) return;
