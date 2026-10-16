@@ -261,7 +261,11 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   **Images** (last, never folded: the panel scrolls): a grid of tiles (`.img-grid`, auto-fill, min 84 px, gap 8, 16 px inset). Tile =
   4:3 thumbnail, `object-fit: cover`, 1 px `--border`, `rounded-sm`, `--muted` while loading or undecodable; hover border `--ring`;
   under it an 11 px `--mono` `--faint` label (`#n` or file name, ellipsis). Click opens the lightbox: the wide dialog (same head as the
-  subagent popup: title, faint one-line path, `btn outline sm` "Show in Explorer/Finder" for files, ×), the image centered, contained.
+  subagent popup: title, faint one-line path, `btn outline sm` "Show in Explorer/Finder" for files, ×), the image centered, contained. Unlike the other wide dialogs it
+  wraps the image (min 420 px, max the window less 48): an image shows at its own size when it fits, else scaled down to fit
+  the window, never scrolled; the head takes the dialog's width (long paths ellipsize). With 2+ images a `btn ghost icon`
+  chevron sits on each side (disabled at the ends, 8 px body inset); they and ←/→ step through the grid's order, the old image
+  dimmed to 50 % until the next one loads.
 
 ### DropdownMenu: shadcn `DropdownMenu` (`#menu`)
 - On the Popover recipe: bg `--popover`, 1 px `--border`, `rounded-lg`, `shadow-md`, padding 4, min-width 210.

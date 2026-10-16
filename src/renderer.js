@@ -52,6 +52,7 @@ const ICONS = {
   power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>',
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>',
   chevron: '<polyline points="9 18 15 12 9 6"/>',
+  chevronLeft: '<polyline points="15 18 9 12 15 6"/>',
   more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
   search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
   chart: '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
@@ -360,10 +361,10 @@ function confirmDialog({ title, message, items = [], okLabel = 'OK', cancelLabel
 /**
  * Read-only popup in #modal with a title row and a body: Esc, a click on the backdrop and × close it.
  * Returns `isOpen()` for "closed while loading" checks. A new popup closes the previous one, and settles an open
- * confirmDialog as cancelled.
+ * confirmDialog as cancelled. `keys(e)` sees other keys while it is open; returning true swallows the key.
  */
 let closeModal = null;
-function openModal(title, extra, body) {
+function openModal(title, extra, body, keys) {
   closeModal?.();
   cancelDialog?.();
   const modal = $('#modal');
@@ -379,8 +380,8 @@ function openModal(title, extra, body) {
     activeTab()?.term.focus();
   };
   const onKey = (e) => {
-    if (e.key !== 'Escape') return;
-    done();
+    if (e.key === 'Escape') done();
+    else if (!keys?.(e)) return;
     e.preventDefault();
     e.stopPropagation();
   };
@@ -428,17 +429,42 @@ async function agentDialog(a, tab) {
 }
 
 /** Lightbox for an image from the session (Images section): full size is fetched only now. `session` is the transcript the
- * image came from, which stays right after /clear re-points the tab. */
-async function imageDialog(tab, session, it) {
-  const body = h('div', { class: 'ag-body img-body' }, h('div', { class: 'rnote' }, 'Loading…'));
-  const reveal = it.exists
-    ? h('button', { class: 'btn outline sm', onclick: () => api.revealImage(tab.project.path, session, it.id) }, `Show in ${FILES_APP}`)
-    : null;
-  const dlg = openModal(it.label, [h('span', { class: 'ag-model mono', title: it.file || '' }, it.file || 'Pasted image'), reveal], body);
-  let url = null;
-  try { url = await api.imageFull(tab.project.path, session, it.id); } catch { /* shown below */ }
-  if (!dlg.isOpen()) return;
-  body.replaceChildren(url ? h('img', { class: 'img-full', src: url, alt: it.label }) : h('div', { class: 'rnote' }, 'Could not read this image.'));
+ * image came from, which stays right after /clear re-points the tab. `items` is the grid as it was when clicked (newest
+ * first); the side buttons and ←/→ step through it in that order. */
+function imageDialog(tab, session, items, at) {
+  const title = document.createTextNode('');
+  const path = h('span', { class: 'ag-model mono' });
+  const reveal = h('button', { class: 'btn outline sm', onclick: () => api.revealImage(tab.project.path, session, items[at].id) }, `Show in ${FILES_APP}`);
+  const stage = h('div', { class: 'img-stage' }, h('div', { class: 'rnote' }, 'Loading…'));
+  const step = (d) => {
+    if (at + d < 0 || at + d >= items.length) return false;
+    show(at + d);
+    return true;
+  };
+  const many = items.length > 1;
+  const prev = many ? h('button', { class: 'btn ghost icon', title: 'Previous (←)', 'aria-label': 'Previous image', onclick: () => step(-1) }, ico('chevronLeft')) : null;
+  const next = many ? h('button', { class: 'btn ghost icon', title: 'Next (→)', 'aria-label': 'Next image', onclick: () => step(1) }, ico('chevron')) : null;
+  const plain = (e) => !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
+  const dlg = openModal(title, [path, reveal], h('div', { class: 'ag-body img-body' }, prev, stage, next),
+    (e) => plain(e) && (e.key === 'ArrowLeft' ? step(-1) : e.key === 'ArrowRight' ? step(1) : false));
+  let seq = 0; // a newer step wins over a slower load
+  async function show(i) {
+    at = i;
+    const it = items[i];
+    const mine = ++seq;
+    title.textContent = it.label;
+    path.textContent = it.file || 'Pasted image';
+    path.title = it.file || '';
+    reveal.style.display = it.exists ? '' : 'none';
+    if (many) { prev.disabled = i === 0; next.disabled = i === items.length - 1; }
+    stage.classList.add('loading'); // the previous image stays, dimmed, until this one arrives
+    let url = null;
+    try { url = await api.imageFull(tab.project.path, session, it.id); } catch { /* shown below */ }
+    if (!dlg.isOpen() || mine !== seq) return;
+    stage.classList.remove('loading');
+    stage.replaceChildren(url ? h('img', { class: 'img-full', src: url, alt: it.label }) : h('div', { class: 'rnote' }, 'Could not read this image.'));
+  }
+  show(at);
 }
 
 // ----------------------------------------------------------------- tabs ----
@@ -2630,9 +2656,10 @@ function toggleRsection(id) {
 }
 
 /** One tile per image; the thumbnail arrives later (pollImages sets src on the tile already on screen). */
-function imageTile(tab, session, it) {
+function imageTile(tab, session, items, i) {
+  const it = items[i];
   const url = thumbsBy.get(tab.id)?.get(it.id);
-  return h('button', { class: 'img-tile', 'data-id': it.id, title: it.file || `Pasted image ${it.label}`, onclick: () => imageDialog(tab, session, it) },
+  return h('button', { class: 'img-tile', 'data-id': it.id, title: it.file || `Pasted image ${it.label}`, onclick: () => imageDialog(tab, session, items, i) },
     h('img', { alt: '', src: url || null }),
     h('span', { class: 'img-label' }, it.label));
 }
@@ -2755,7 +2782,7 @@ function renderRside(force = false) {
   const imgBody = tab?.kind !== 'claude' ? h('div', { class: 'rnote' }, 'Open a Claude tab to see its images.')
     : !imgs ? h('div', { class: 'rnote' }, tab.sessionId ? 'Loading…' : 'No images yet.')
     : !imgs.length ? h('div', { class: 'rnote' }, 'No images in this session.')
-    : h('div', { class: 'img-grid' }, imgs.map((it) => imageTile(tab, tab.sessionId, it)));
+    : h('div', { class: 'img-grid' }, imgs.map((_, i) => imageTile(tab, tab.sessionId, imgs, i)));
 
   const working = agents.filter((a) => a.running).length;
   // Home screen: Context and Images belong to one tab, so they're left out rather than asking for one.

@@ -691,8 +691,17 @@ body.settings-open #settings { display: block; }
 .img-tile:focus-visible { outline: 0; }
 .img-tile:focus-visible img { box-shadow: var(--focus-ring); }
 .img-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
-.img-body { align-items: center; }
-.img-full { max-width: 100%; max-height: calc(100vh - 200px); object-fit: contain; border-radius: var(--radius-sm); }
+.ag-body.img-body { flex-direction: row; align-items: center; gap: 8px; padding-left: 8px; padding-right: 8px; }
+.img-body > .btn { flex: none; }
+.img-stage { flex: 1; min-width: 0; display: flex; justify-content: center; transition: opacity 120ms; }
+.img-stage.loading { opacity: 0.5; }
+/* lightbox: the dialog wraps the image, which shows at its own size when the window allows, else scaled to fit (never
+   scrolled). The caps are viewport units, not %, so the image's intrinsic width already honours the height cap.
+   Width: 48 window margin + 2x8 body inset + 2x(32 button + 8 gap) + 2 border. Height: 96 margin + head + 16/20 body
+   inset + 2 border. The head (long paths) takes the dialog's width instead of widening it. */
+.dialog.wide:has(.img-body) { width: fit-content; min-width: min(420px, calc(100vw - 48px)); max-width: calc(100vw - 48px); }
+.dialog.wide:has(.img-body) .ag-head { contain: inline-size; }
+.img-full { display: block; max-width: calc(100vw - 146px); max-height: calc(100vh - 192px); object-fit: contain; border-radius: var(--radius-sm); }
 /* circular status (8px): color only carries the state */
 .dot.s { width: 8px; height: 8px; margin: 0 3px; }
 .dot.ok { background: var(--success); }
