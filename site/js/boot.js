@@ -3,6 +3,8 @@
   'use strict';
 
   var root = document.documentElement;
-  root.dataset.os = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? 'mac' : 'win';
+  var uad = navigator.userAgentData;
+  var platform = (uad && uad.platform) || navigator.platform || navigator.userAgent;
+  root.dataset.os = /mac|iphone|ipad|ios/i.test(platform) ? 'mac' : 'win';
   root.classList.add('js');
 })();
