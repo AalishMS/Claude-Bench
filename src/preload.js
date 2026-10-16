@@ -16,6 +16,10 @@ contextBridge.exposeInMainWorld('api', {
   reorderProjects: (paths) => ipcRenderer.invoke('projects:reorder', paths),
   setUi: (patch) => ipcRenderer.invoke('ui:set', patch),
   saveTabs: (payload) => ipcRenderer.send('tabs:set', payload),
+  peekHold: (top) => ipcRenderer.invoke('peek:hold', top),
+  peekRelease: () => ipcRenderer.send('peek:release'),
+  onPeekAway: (cb) => on('peek:away', cb),
+  onPeekInside: (cb) => on('peek:inside', cb),
 
   ptyCreate: (opts) => ipcRenderer.invoke('pty:create', opts),
   ptyWrite: (id, data) => ipcRenderer.send('pty:write', id, data),

@@ -602,7 +602,8 @@ async function restoreTabs(saved) {
     bySaved.push(tab);
   }
   const made = bySaved.filter(Boolean);
-  if (!made.length) return;
+  restoring = false;
+  if (!made.length) { syncHome(); return; }
   made.forEach((t, i) => { t.seq = tabSeq - i; }); // saved newest first: the oldest keeps the lowest number
   for (const g of saved.splits || []) {
     const ids = [...new Set(g.tabs.map((i) => bySaved[i]?.id).filter((id) => id && !groupOf(id)))].slice(0, SPLIT_MAX);
@@ -1139,7 +1140,7 @@ function activate(id) {
   tab.attention = false;
   syncVisible();
   requestAnimationFrame(() => tab.term.focus());
-  document.body.classList.toggle('no-tabs', tabs.size === 0);
+  syncHome();
   if (tab.project.path !== lastActiveProject) { // entering a project reveals its sessions
     lastActiveProject = tab.project.path;
     if (!expanded.has(lastActiveProject)) { expanded.add(lastActiveProject); saveExpanded(); }
@@ -1368,7 +1369,10 @@ function rowDrag(src) {
       dragSrc = src;
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', src.resumeId || src.id || '');
-      setTimeout(() => document.body.classList.toggle('dragging-session', !!dragSrc)); // after the drag image is taken
+      setTimeout(() => { // after the drag image is taken
+        document.body.classList.toggle('dragging-session', !!dragSrc);
+        if (dragSrc) setPeek(false); // a peeking sidebar would cover the drop targets
+      });
     },
     ondragend: endDrag,
   };
@@ -1842,7 +1846,7 @@ let lastSidebarKey = '';
 let sessionsVer = 0; // bumped when sessionsBy changes, so the render key stays cheap
 function renderSidebar(force = false) {
   if (dragSrc || projDrag) return; // rebuilding rows mid-drag would drop the dragged element; the drag's end re-renders
-  document.body.classList.toggle('no-tabs', tabs.size === 0);
+  syncHome();
   const tab = activeTab();
   const activeProject = tab?.project.path;
   const key = JSON.stringify([projects, git, activeId, tab?.sessionId, sessionsVer, [...expanded], [...showMore], query,
@@ -2961,20 +2965,86 @@ function wireResizer(el, key, widthAt) {
   el.addEventListener('dblclick', () => { applyPanelW(key, PANEL_W[key].def); api.setUi({ [key]: ui[key] }); });
 }
 
+/** Shown in the layout: pinned (ui.sidebar), or on the home screen, which always shows it (a collapsed sidebar only applies with a tab open). */
+let restoring = false; // saved tabs are being reopened at launch: not the home screen, so the sidebar doesn't flash in
+const sidebarShown = () => ui.sidebar || (tabs.size === 0 && !restoring);
+
+/** Home screen <-> tabs: `no-tabs`, and the sidebar comes back into the layout (or leaves it) when that changes. */
+function syncHome() {
+  document.body.classList.toggle('no-tabs', tabs.size === 0);
+  if (document.body.classList.contains('sidebar-collapsed') === sidebarShown()) placeBrand();
+}
+
 /** Toggle + logo live in the sidebar's top row; while it is collapsed they move to the start of the top bar. */
 function placeBrand() {
-  document.body.classList.toggle('sidebar-collapsed', !ui.sidebar);
-  if (ui.sidebar) $('#sidebar').prepend($('#brand'));
+  const shown = sidebarShown();
+  if (shown) setPeek(false);
+  const sb = $('#sidebar');
+  if (document.body.classList.contains('sidebar-collapsed') === shown) { // only peeking slides: a layout change snaps
+    sb.style.transition = 'none';
+    document.body.classList.toggle('sidebar-collapsed', !shown);
+    void sb.offsetWidth;
+    sb.style.transition = '';
+  }
+  if (shown) $('#sidebar').prepend($('#brand'));
   else $('#topbar').prepend($('#brand'));
   // New session "+": in the search row, or after the brand in the top bar while the sidebar is collapsed
   const nt = $('#new-tab');
-  nt.classList.toggle('sm', ui.sidebar);
-  if (ui.sidebar) $('.search-row').append(nt);
+  nt.classList.toggle('sm', shown);
+  if (shown) $('.search-row').append(nt);
   else $('#brand').after(nt);
   placeUpdatePop(); // the footer (its anchor) hides while collapsed
 }
 
+/* Collapsed sidebar (Zen browser's compact mode): the pointer reaching the window's left edge floats it in over the
+   terminal; it slides away 80 ms after the pointer leaves it, but not while one of its menus or popovers is open or the
+   search has focus. A pointer that leaves the window through the left edge (aiming at the sidebar of a window that
+   isn't maximized) also brings it out and keeps it out: the page can't see the cursor out there, so main watches it
+   (peek:hold) and says when it has gone well past the edge or above / below the window (peek:away). */
+let peekTimer = 0;
+let pointer = null; // last pointer position in the window, null once it has left it
+let holding = false; // the pointer is just outside the left edge, main is watching it
+const peeking = () => document.body.classList.contains('sidebar-peek');
+function setPeek(on) {
+  clearTimeout(peekTimer);
+  if (!on && holding) { holding = false; api.peekRelease(); }
+  document.body.classList.toggle('sidebar-peek', on && !sidebarShown());
+}
+function unpeekLater(ms = 80) {
+  clearTimeout(peekTimer);
+  peekTimer = setTimeout(() => {
+    if (!peeking()) return;
+    // the position, not :hover: a pointer resting where the sidebar slid in under it isn't :hover until it moves
+    const r = $('#sidebar').getBoundingClientRect();
+    const over = pointer && pointer.x < r.right && pointer.y >= r.top;
+    const keep = holding || over || !$('#menu').hidden || !$('#detail').hidden || document.activeElement === $('#session-search');
+    if (keep) unpeekLater(120);
+    else setPeek(false);
+  }, ms);
+}
+function wirePeek() {
+  document.addEventListener('mousemove', (e) => {
+    pointer = { x: e.clientX, y: e.clientY };
+    if (holding) { holding = false; api.peekRelease(); } // back in the window: its own events take over
+  }, { passive: true });
+  document.documentElement.addEventListener('mouseleave', async () => {
+    pointer = null;
+    if (sidebarShown()) return;
+    const held = await api.peekHold($('#peek-zone').getBoundingClientRect().top);
+    if (!held) { if (peeking()) unpeekLater(); return; }
+    if (pointer || sidebarShown()) { api.peekRelease(); return; } // came back (or pinned it) while main was asked
+    holding = true;
+    setPeek(true);
+    unpeekLater();
+  });
+  api.onPeekAway(() => { holding = false; setPeek(false); });
+  api.onPeekInside(() => { holding = false; if (peeking()) unpeekLater(); }); // e.g. back over the top bar, which sends no mousemove
+  $('#peek-zone').addEventListener('mouseenter', () => { setPeek(true); unpeekLater(); });
+  $('#sidebar').addEventListener('mouseleave', () => { if (peeking()) unpeekLater(); });
+}
+
 function setSidebar(open) {
+  setPeek(false);
   ui.sidebar = open;
   if (!open && detailKind) setDetail(null);
   if (!open) closeMenu();
@@ -3133,7 +3203,7 @@ function renderUpdatePop() {
 function placeUpdatePop() {
   const pop = $('#update-pop');
   if (pop.hidden) return;
-  const r = $('#update-slot')?.getBoundingClientRect();
+  const r = sidebarShown() ? $('#update-slot')?.getBoundingClientRect() : null; // collapsed: the footer is away (or only peeking)
   const left = r?.width ? r.left - 4 : 8;
   pop.style.left = `${Math.max(8, Math.min(left, window.innerWidth - pop.offsetWidth - 8))}px`;
   pop.style.bottom = `${r?.height ? window.innerHeight - r.top + 6 : 8}px`;
@@ -3427,6 +3497,7 @@ function wireGlobalEvents() {
   $('#toggle-rside').addEventListener('click', () => setServers(!rsideShown()));
   $('#close-tab').addEventListener('click', () => { if (activeId) closeTab(activeId); });
   $('#split-tab').addEventListener('click', () => (curSplit() ? unsplit() : splitHere()));
+  wirePeek();
   wireDropZone();
   wireDivider($('#pz-v'), 'x');
   wireDivider($('#pz-h'), 'y');
@@ -3469,6 +3540,7 @@ async function init() {
   applyKeyTitles();
   for (const key of Object.keys(PANEL_W)) applyPanelW(key, ui[key]);
   for (const p of ui.expanded || []) expanded.add(p);
+  restoring = !!state.restore?.tabs?.length;
   placeBrand();
   document.body.classList.toggle('rside-open', ui.servers);
   $('#toggle-rside').classList.toggle('on', ui.servers);

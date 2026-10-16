@@ -198,6 +198,17 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   open-session count, a bordered list of tabs where Claude is working, `Back` outline sm / `Update and restart`
   primary sm, destructive when a tab is working) and then a progress view (spinner + "Updating Stanza…"). There is no
   separate update dialog. It stays until dismissed: no outside-click or Escape close, so it can't vanish unseen while typing in a terminal.
+- **Home screen** (no tabs): the sidebar is always in the layout, even when collapsed (`sidebarShown`); collapsing applies
+  once a tab is open. The toggle still flips the saved choice there. Layout changes (pin, unpin, home <-> tab, launch) snap;
+  only peeking slides.
+- **Peek** (collapsed, a tab open; like Zen browser's compact mode): the pointer reaching the window's left edge
+  (`#peek-zone`, 6 px, below the top bar) slides the sidebar in over the terminal, from under the top bar to the bottom,
+  `--shadow-side` (a sideways shadow), same width. Nothing reflows (the terminal keeps its size). In 180 ms
+  `cubic-bezier(0.16, 1, 0.3, 1)`, out 170 ms (fast from the start) 80 ms after the pointer leaves it. A pointer that leaves
+  the window through the left edge (a window that isn't maximized) also brings it out and keeps it out while it stays within
+  144 px of the edge and within the window's height (main watches the cursor out there, `peekHold`). It stays while its `…`
+  menu or footer popover is open or the search has focus, and leaves when a session row is dragged. Toggle / `Ctrl+S` pin
+  it as usual. No transition under `prefers-reduced-motion`.
 - Search: a plain 32 px row (search icon + "Search" placeholder), no border; hover/focus = `--sidebar-hover`. Its right end
   shows the shortcut as a quiet outlined `kbd` (`--faint`) while empty and a 20 px ghost × (clears) once there is text.
   The row ends with "add project" and `+`; `+` opens a DropdownMenu: "No project" (chat icon), a separator, then
