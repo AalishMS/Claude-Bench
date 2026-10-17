@@ -246,7 +246,17 @@ body.sidebar-collapsed .brand-name { display: none; }
   width: var(--sidebar-w); border-right: 1px solid var(--sidebar-border);
   background: var(--sidebar) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .008 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
-#rside { width: var(--rside-w); background: var(--background); border-left: 1px solid var(--sidebar-border); display: none; overflow-x: hidden; overflow-y: auto; padding-bottom: 12px; }
+#rside { position: relative; width: var(--rside-w); background: var(--background); border-left: 1px solid var(--sidebar-border); display: none; overflow: hidden; }
+/* Tabs (renderer.js "markdown tabs"): the panel's own content, or a markdown file's page at --rside-doc-w (a share of the
+   window). The width only animates during a tab switch (rside-sliding); the page keeps its final width meanwhile, so it
+   slides in with the edge instead of re-wrapping on every frame. */
+body.rside-doc #rside { width: var(--rside-doc-w); }
+body.rside-sliding #rside { transition: width 280ms cubic-bezier(0.32, 0.72, 0, 1); }
+body.rside-sliding #rside-doc { min-width: calc(var(--rside-doc-w) - 1px); }
+#rside-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-x: hidden; overflow-y: auto; padding-bottom: 12px; }
+#rside:has(#rside-pill:not([hidden])) #rside-panel { padding-bottom: 60px; }
+#rside-doc { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#rside-panel[hidden], #rside-doc[hidden], #rside-pill[hidden] { display: none; }
 /* Collapsed: the sidebar floats in over the terminal (nothing resizes) while the pointer rests on the window's left
    edge (#peek-zone), like Zen browser's compact mode. Below the top bar, so the toggle that pins it stays reachable.
    It slides on a spring driven by renderer.js (springPeek sets transform + visibility inline while out or moving);
@@ -691,6 +701,90 @@ body.settings-open #settings { display: block; }
 .img-tile:focus-visible { outline: 0; }
 .img-tile:focus-visible img { box-shadow: var(--focus-ring); }
 .img-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+.rsub { padding: 6px 16px 2px; font-size: 11px; color: var(--faint); }
+
+/* The tab pill floating at the bottom of the right sidebar (DESIGN.md "Tab pill", a deliberate exception to "no pills"):
+   the sidebar's own tab as an icon, then a dot per markdown file. The active dot stretches into a bar; a hovered dot
+   widens to show its ×. */
+#rside-pill { position: absolute; z-index: 5; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; max-width: calc(100% - 24px); padding: 3px; overflow-x: auto; scrollbar-width: none; background: var(--popover); border: 1px solid var(--border); border-radius: 999px; box-shadow: var(--shadow-md); }
+#rside-pill.enter { animation: pill-in 240ms cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes pill-in { from { opacity: 0; transform: translate(-50%, 10px) scale(0.94); } }
+#rside-pill button { flex: none; display: inline-flex; align-items: center; justify-content: center; height: 26px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--faint); font: inherit; cursor: pointer; transition: background-color 0.15s, color 0.15s; }
+#rside-pill button:hover { background: var(--accent); color: var(--foreground); }
+#rside-pill button:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+#rside-pill button.on { color: var(--foreground); }
+.pill-home { width: 30px; }
+.pill-home .ico { width: 14px; height: 14px; }
+#rside-pill .pill-dot { min-width: 22px; padding: 0 8px; }
+.pill-dot i { display: block; flex: none; width: 6px; height: 6px; border-radius: 3px; background: currentColor; transition: width 260ms cubic-bezier(0.34, 1.4, 0.64, 1); }
+.pill-dot.on i { width: 18px; }
+.pill-dot.enter { animation: dot-in 300ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes dot-in { from { transform: scale(0); opacity: 0; } }
+.pill-x { display: inline-flex; width: 0; margin-left: 0; overflow: hidden; color: var(--muted-foreground); transition: width 0.15s, margin-left 0.15s; }
+.pill-x .ico { width: 12px; height: 12px; }
+.pill-dot:hover .pill-x, .pill-dot:focus-visible .pill-x { width: 12px; margin-left: 6px; }
+.pill-x:hover { color: var(--foreground); }
+
+/* A markdown file's page: a header (name, path, actions) over the scrolling article. */
+.doc-head { flex: none; display: flex; align-items: center; gap: 2px; height: 52px; padding: 0 8px 0 20px; border-bottom: 1px solid var(--border); }
+.doc-titles { flex: 1; min-width: 0; margin-right: 6px; }
+.doc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; line-height: 1.4; }
+.doc-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1.4; color: var(--faint); }
+.doc-body { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 18px 24px 72px; outline: 0; user-select: text; }
+.doc-missing { font-size: 13px; color: var(--muted-foreground); }
+.doc-missing-path { margin-top: 4px; font: 11px var(--mono); color: var(--faint); overflow-wrap: anywhere; }
+
+/* Markdown typography: the UI's compact scale (13 px body), roomier line height for prose. */
+.md { font-size: 13px; line-height: 1.65; color: var(--foreground); overflow-wrap: break-word; }
+.md > :first-child { margin-top: 0; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { margin: 24px 0 8px; font-weight: 600; line-height: 1.3; scroll-margin-top: 12px; }
+.md h1 { padding-bottom: 8px; border-bottom: 1px solid var(--border); font-size: 20px; letter-spacing: -0.01em; }
+.md h2 { padding-bottom: 6px; border-bottom: 1px solid var(--border); font-size: 16px; }
+.md h3 { font-size: 14px; }
+.md h4, .md h5 { font-size: 13px; }
+.md h6 { font-size: 12px; color: var(--muted-foreground); }
+.md p, .md ul, .md ol, .md blockquote, .md pre, .md .md-table, .md .md-front { margin: 0 0 12px; }
+.md p.tight { margin: 0; }
+.md ul, .md ol { padding-left: 22px; }
+.md li + li { margin-top: 2px; }
+.md li > ul, .md li > ol { margin: 2px 0 0; }
+.md li::marker { color: var(--faint); }
+.md li.task { position: relative; list-style: none; }
+.md-check { position: absolute; left: -21px; top: 4px; width: 14px; height: 14px; border: 1px solid var(--input); border-radius: 4px; background: color-mix(in srgb, var(--input) 30%, transparent); }
+.md-check.on { border-color: var(--primary); background: var(--primary); }
+.md-check.on::after { content: ""; position: absolute; inset: 0; background: var(--primary-foreground); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center / 10px no-repeat; }
+.md a { color: color-mix(in srgb, var(--primary) 55%, var(--foreground)); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 2px; cursor: pointer; }
+.md a:hover { text-decoration-color: currentColor; }
+.md a:focus-visible { outline: 0; border-radius: 2px; box-shadow: var(--focus-ring); }
+.md a.broken { color: var(--destructive); text-decoration-style: dashed; }
+.md strong { font-weight: 600; }
+.md del { color: var(--muted-foreground); }
+.md code { padding: 1px 5px; border-radius: var(--radius-sm); background: var(--muted); font: 12px var(--mono); }
+.md pre { padding: 10px 12px; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: color-mix(in srgb, var(--muted) 40%, transparent); line-height: 1.55; }
+.md pre code { padding: 0; background: none; white-space: pre; }
+.md blockquote { padding: 2px 0 2px 12px; border-left: 3px solid var(--border); color: var(--muted-foreground); }
+.md blockquote > :last-child { margin-bottom: 0; }
+.md blockquote.alert { border-left-color: var(--primary); color: var(--foreground); }
+.md blockquote.warning { border-left-color: var(--warning); }
+.md blockquote.caution { border-left-color: var(--destructive); }
+.md .alert-title { margin-bottom: 2px; font-size: 12px; font-weight: 600; color: color-mix(in srgb, var(--primary) 55%, var(--foreground)); }
+.md .warning .alert-title { color: var(--warning); }
+.md .caution .alert-title { color: var(--destructive); }
+.md hr { height: 1px; margin: 20px 0; border: 0; background: var(--border); }
+.md .md-table { overflow-x: auto; }
+.md table { border-collapse: collapse; font-size: 12px; }
+.md th, .md td { padding: 6px 10px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+.md th { background: color-mix(in srgb, var(--muted) 50%, transparent); font-weight: 600; }
+.md img { max-width: 100%; height: auto; border-radius: var(--radius-sm); vertical-align: middle; }
+.md .md-img-missing, .md .md-img-link { display: inline-block; padding: 0 6px; border: 1px dashed var(--border); border-radius: var(--radius-sm); font-size: 12px; color: var(--faint); text-decoration: none; }
+.md .md-img-link:hover { color: var(--foreground); }
+.md .md-front { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 12px; }
+.md-front dt { font-family: var(--mono); color: var(--muted-foreground); }
+.md-front dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+  body.rside-sliding #rside, .pill-dot i, .pill-x { transition: none; }
+  #rside-pill.enter, .pill-dot.enter { animation: none; }
+}
 .ag-body.img-body { flex-direction: row; align-items: center; gap: 8px; padding-left: 8px; padding-right: 8px; }
 .img-body > .btn { flex: none; }
 .img-stage { flex: 1; min-width: 0; display: flex; justify-content: center; transition: opacity 120ms; }

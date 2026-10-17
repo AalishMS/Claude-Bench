@@ -55,6 +55,10 @@ split panes, git status and a list of the dev servers your sessions started.
   those of every session). Click to copy the URL, Shift+click to open it.
 - **Clickable file paths.** Ctrl+click `src/main.js:123` in Claude's output to open it in VS Code at that line.
   Images, videos, PDFs and other binary files open in their default app.
+- **Markdown reader.** Ctrl+click a `.md` path (a plan, `CLAUDE.md`, notes Claude just wrote) and it opens as a tab in
+  the right sidebar, which widens to fit it and updates live while the file changes. The pill at the bottom of the
+  sidebar switches between its own content and the open files; each project keeps its own. The sidebar's Docs section
+  lists the files the session wrote or edited and the project's own `.md` files.
 - **Notifications.** A background session tells you when it needs input or has finished a longer task.
 - **Plan limits.** Session and weekly usage in the footer.
 
@@ -129,6 +133,7 @@ Things that differ on a Mac:
 - Notifications go through Notification Center. Allow them when asked (under `npm start` they show as Electron).
 - Settings > Appearance > System follows macOS light/dark mode, and the traffic lights and menus follow the chosen theme.
 - Interface zoom (`⌘=` / `⌘-` outside a terminal) moves the traffic lights to stay centred in the taller or shorter top bar.
+- Markdown tabs work the same; their folder button opens Finder.
 
 If something goes wrong:
 
@@ -174,7 +179,8 @@ projects, tabs and settings. On macOS, a Claude Bench icon kept in the Dock need
 | `Ctrl+T` / `Ctrl+W` | New session / close session |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous session |
 | `Alt+1`..`9` | Jump to a session |
-| `Ctrl+Shift+→` / `Ctrl+Shift+↓` or `↑` | New session beside / below |
+| `Ctrl+Shift+→` / `Ctrl+Shift+↓` / `Ctrl+Shift+↑` | New session beside / below / above |
+| `Ctrl+Shift+/` | Take the focused session out of the split (it keeps running) |
 | `Ctrl+Shift+\` | Back to one terminal |
 | `Alt+arrows` / `Ctrl+Alt+arrows` | Move focus / resize panes (while split) |
 | `Ctrl+S` / `Ctrl+Shift+S` | Toggle left / right sidebar |

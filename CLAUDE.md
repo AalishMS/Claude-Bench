@@ -78,7 +78,8 @@ src/main.js      window, ptys, git status, port scan, persistence, IPC handlers
 src/preload.js   window.api bridge (contextIsolation on, sandbox on, no nodeIntegration)
 src/renderer.js  all UI: tabs (as sidebar rows), sidebar, servers panel, status bar, dialogs, polling
 src/lib/parse.js pure parsers for main (git, netstat, lsof/ps, transcripts, mcp list, split remap); no Electron, no fs
-src/lib/images.js  transcript image index (scanImages) for main; fs only
+src/lib/images.js  transcript image index (scanImages) for main, plus the .md files a session wrote (`docs`); fs only
+src/lib/md.js    markdown -> plain data (parseMarkdown) for the reader; a <script> before renderer.js like lib/ui.js
 src/lib/ui.js    pure renderer helpers (contextWindow, shortcuts matching, distinctParent, dialogOpen, file links);
                  a <script> before renderer.js (shared globals, listed in renderer.js's `/* global ... -- lib/ui.js */`)
 test/            node:test files, one per lib module
@@ -150,6 +151,8 @@ site/            the product page (static, open index.html or serve the folder; 
   - First-run projects (`recentProjects`): no Mac branch (same `~/.claude/projects` layout and `cwd` field).
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
+  - Markdown tabs (right sidebar): no Mac branch. `fs.watch` on the file's folder; macOS may report no file name, then
+    every open file in that folder is re-read. "Show in Finder" via `FILES_APP`, Open in VS Code via `openFileAt`.
   - Images (right sidebar): no Mac branch. `nativeImage` decodes the thumbnails, `shell.showItemInFolder` backs "Show in Finder"
     (label via `FILES_APP`); transcript paths are the same as on Windows.
   - Zoom: `setWindowButtonPosition` (y scaled with the zoom) keeps the traffic lights centred; `#brand`'s 72 px padding divides by `--zoom`.
@@ -280,7 +283,7 @@ site/            the product page (static, open index.html or serve the folder; 
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\com.local.stanza` to reset it.
 - **Right sidebar** (`#rside`, toggled by the top-bar button or `Ctrl+Shift+S`, saved as `ui.servers`; `renderRside`): the active tab's
   **Context** (`x / yk` + %; the last reply's usage, or after a `/compact` with no reply yet the `compact_boundary` line's
-  `postTokens`, `parseTail`'s `compacted`), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**, **Images**.
+  `postTokens`, `parseTail`'s `compacted`), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**, **Docs** (see "Markdown tabs"), **Images**. The sidebar has tabs ("Markdown tabs"); all of this is its own tab, `#rside-panel`.
   Subagents and Running show `RSIDE_SHOWN` (5) rows, then "Show N more" / "Show less" (`foldRows`, `rsideMore`, runtime only;
   collapsing the section clears it, so reopening shows 5 again). Images is last and never folded.
   Home screen (no active tab): Context and Images are left out; with no `currentProject()` MCPs and Subagents show the
@@ -322,6 +325,27 @@ site/            the product page (static, open index.html or serve the folder; 
     process with `ps.exe` beside its exe, that MSYS `ps -l` maps it to its real parent, `parseMsysPs`, once per process table; no Mac branch); otherwise it is matched to a project if its command line contains the project path
     outside `--flag=` values (Antigravity's `agy.exe --add-dir=<project>` is no server). Rows are status dot, short name, port; clicking a row
     copies `http://localhost:<port>`, Shift+click opens it with `openExternal` (rows without a port, or emulators, do nothing). No kill, no "Show all".
+- **Markdown tabs** (right sidebar, "markdown tabs" in renderer.js; DESIGN.md "Tab pill" / "Markdown page"): the right
+  sidebar has tabs, its own content (`#rside-panel`) and one page per open `.md` / `.markdown` file (`#rside-doc`), kept per
+  project in `docsBy` (`{ files, active }`, -1 = its own tab; the active tab's project, so the home screen has none) and saved
+  as `state.docs` (`docs:set`; `restorableDocs` drops files and projects that are gone, `active` follows its file). No limit
+  on files. Opened by Ctrl+click on a `.md` path in a terminal (`fileLinks`; other files still go to VS Code), a Docs section
+  row, "Open CLAUDE.md / README.md" in a project's `…` menu (only while the project has a tab open: that tab is focused), or a
+  relative link in a page (`md:resolve`; an `#anchor` scrolls to the heading, `data-anchor` not `id`, which could clash with the
+  app's own ids; web links open in the browser; other files in VS Code). `#rside-pill` switches tabs (`renderPill`; elements
+  kept in `pillEls`, so transitions run). A file tab sets `body.rside-doc`: width `--rside-doc-w` = `ui.rsideDocPct` (20-75,
+  default 40) of the window (`docWidth`, recomputed on resize and when the left sidebar changes); the right `.rz` handle
+  sets it while one shows. Switching animates the width (`slideRside`: `rside-sliding` holds the transition, `fitActive`
+  returns early until 30 ms after it ends, then fits once and runs `autoRside`): a pty resize per frame would have Claude
+  repaint its screen each time. `applyRside` slides open from 0 onto a file tab; a launch restore (`docBoot`) never slides.
+  `autoRside` never hides the sidebar while a file tab shows (and brings it back), its own tab keeps the old rule. Main reads
+  only markdown (`md:read`, 2 MB cap) and images by extension (`md:image`, 10 MB, data URL; remote images are never fetched),
+  and watches the open files' folders (`md:watch` -> `md:changed` after 150 ms); the page on screen re-reads in place with its
+  scroll kept, others when shown (`docPages` cache, `docScroll` per file). `lib/md.js` parses (GFM tables, task lists,
+  strikethrough, autolinks, alerts, front matter; raw HTML stays text) in linear time (bounded lookahead + memoised misses:
+  the renderer would freeze on a big odd file); the DOM is built with `h()`. Docs section (`pollDocs` after `pollInfo`,
+  `docs:list`): files the session wrote or edited (Write/Edit/MultiEdit in its transcript, scanned with the images) that still
+  exist, then the project's top-level `.md` files.
 - **Sessions and usage**: read-only from `~/.claude/projects/<cwd, non-alphanumerics -> "-">/<uuid>.jsonl`. The sidebar lists a
   project's sessions under it (title as in Claude Code: the `/rename` name, `custom-title`, which Claude re-appends like the
   AI title and which is looked for in the head too, else the last `ai-title`, else the first prompt); clicking one focuses its tab or opens

@@ -2,8 +2,9 @@
 
 // Images in a session (right sidebar): pasted images and images Claude got from the Read tool. An image makes a line of
 // hundreds of KB, so the transcript is scanned incrementally by byte offset and only an index is kept (where each image's
-// line sits); thumbnails and full images are decoded from that byte range on demand (main.js). Subagent transcripts are
-// not read. No Electron here, so `npm test` covers it (test/images.test.js).
+// line sits); thumbnails and full images are decoded from that byte range on demand (main.js). The same scan collects
+// the markdown files Claude wrote or edited (`docs`, the right sidebar's Docs section). Subagent transcripts are not
+// read. No Electron here, so `npm test` covers it (test/images.test.js).
 
 const fs = require('fs');
 const path = require('path');
@@ -11,8 +12,11 @@ const path = require('path');
 const IMAGE_KEEP = 20; // newest images indexed per session
 const PENDING_KEEP = 50; // Read calls waiting for their result (a failed Read never gets an image result)
 const SESSIONS_KEEP = 20; // transcripts whose image index is kept (LRU)
+const DOCS_KEEP = 50; // markdown files written or edited, newest last
 const SCAN_CHUNK = 1024 * 1024;
-const imageCache = new Map(); // transcript file -> { offset, sig, pending: Map(tool_use_id -> path), items, scan }
+const imageCache = new Map(); // transcript file -> { offset, sig, pending: Map(tool_use_id -> path), items, docs: Map(path -> true), scan }
+const DOC_TOOLS = new Set(['Write', 'Edit', 'MultiEdit']);
+const isDoc = (f) => typeof f === 'string' && /\.(?:md|markdown)$/i.test(f);
 
 const isB64Image = (b) => b?.type === 'image' && b.source?.type === 'base64' && typeof b.source.data === 'string';
 
@@ -21,7 +25,14 @@ function imagesFromLine(j, off, len, st) {
   if (!Array.isArray(c)) return;
   if (j.type === 'assistant') {
     for (const b of c) {
-      if (b?.type !== 'tool_use' || b.name !== 'Read' || typeof b.input?.file_path !== 'string') continue;
+      if (b?.type !== 'tool_use' || typeof b.input?.file_path !== 'string') continue;
+      if (DOC_TOOLS.has(b.name) && isDoc(b.input.file_path)) {
+        st.docs.delete(b.input.file_path); // moves to the end: newest
+        st.docs.set(b.input.file_path, true);
+        if (st.docs.size > DOCS_KEEP) st.docs.delete(st.docs.keys().next().value);
+        continue;
+      }
+      if (b.name !== 'Read') continue;
       st.pending.set(b.id, b.input.file_path);
       if (st.pending.size > PENDING_KEEP) st.pending.delete(st.pending.keys().next().value);
     }
@@ -49,6 +60,8 @@ function imagesFromLine(j, off, len, st) {
   });
 }
 
+const DOC_MARKS = ['"name":"Read"', '"name":"Write"', '"name":"Edit"', '"name":"MultiEdit"'];
+
 /** Reads what was appended since the last scan. Offsets are bytes; a line still being written is left for the next scan. */
 async function scanImages(file) {
   let stat;
@@ -59,7 +72,7 @@ async function scanImages(file) {
   if (st?.sig === sig) return st;
   if (st?.scan) return st.scan;
   if (!st || stat.size < st.offset) { // new, or the file was replaced
-    st = { offset: 0, sig: '', pending: new Map(), items: [], scan: null };
+    st = { offset: 0, sig: '', pending: new Map(), items: [], docs: new Map(), scan: null };
     imageCache.set(file, st);
     if (imageCache.size > SESSIONS_KEEP) imageCache.delete(imageCache.keys().next().value);
   }
@@ -85,7 +98,7 @@ async function scanImages(file) {
           const off = parts.length ? partStart : base + a;
           parts = [];
           cur.offset = base + nl + 1;
-          if (!line.includes('"type":"base64"') && !line.includes('"name":"Read"')) continue; // big text results stay unparsed
+          if (!line.includes('"type":"base64"') && !DOC_MARKS.some((m) => line.includes(m))) continue; // big text results stay unparsed
           try { imagesFromLine(JSON.parse(line.toString('utf8')), off, line.length, cur); } catch { /* foreign line */ }
         }
         if (a < buf.length) {
