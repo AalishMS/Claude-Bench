@@ -35,6 +35,8 @@
     terminal: { kind: 'shell', status: ['green', '1 running'], sessions: '1 session running', git: GIT.hot },
     'needs-input': { kind: 'claude', status: ['green', '1 running'], sessions: '1 session running', git: GIT.gym, model: 'Sonnet 5.5' },
     panel: { kind: 'claude', status: ['amber', '1 working'], sessions: '1 session running', git: GIT.claude, model: 'Opus 5.5' },
+    // The split stage: page/quad.js rewrites the two counts as panes come and go
+    quad: { kind: 'split', status: ['amber', '<span data-quad-status>3 working</span>'], sessions: '<span data-quad-sessions>4 sessions running</span>', git: GIT.claude, model: 'Haiku 5.5' },
   };
 
   /* The app's own accent hues (--hue-* in src/styles.css). */

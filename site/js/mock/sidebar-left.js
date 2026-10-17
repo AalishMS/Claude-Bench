@@ -11,12 +11,20 @@
     { title: 'File summar...', project: 'Claude Termi...' },
     { title: 'Project layou...', project: 'gymapp-offli...' },
   ];
+  /* The split stage's four panes; rows past the pane count are hidden by CSS (data-panes on the window). */
+  const QUAD_ROWS = [
+    ...SPLIT_ROWS,
+    { title: 'PowerShell', project: 'Hot garbage', idle: true },
+    { title: 'Desktop scr...', project: 'Chats' },
+  ];
 
   function leftSidebar(screen, ctx) {
     if (ctx.live && !state.leftSidebarOpen) return '';
 
-    const isSplit = screen === 'split' || screen === 'split-working';
-    const isSplitWorking = screen === 'split-working';
+    const isQuad = screen === 'quad';
+    const isSplit = screen === 'split' || screen === 'split-working' || isQuad;
+    const isSplitWorking = screen === 'split-working' || isQuad;
+    const rows = isQuad ? QUAD_ROWS : SPLIT_ROWS;
     const isMain = screen === 'main';
     const isMainWorking = screen === 'main-working';
     const isSettings = screen.startsWith('settings-');
@@ -26,21 +34,22 @@
     const isPanel = screen === 'panel';
 
     const splitBoxHtml = isSplit ? `
-      <div class="mx-2 mb-2 p-1.5 rounded-lg border transition-colors" style="background: var(--bg-split-box); border-color: var(--border-split-box);">
+      <div class="split-box mx-2 mb-2 p-1.5 rounded-lg border transition-colors" style="background: var(--bg-split-box); border-color: var(--border-split-box);">
         <div class="flex items-center justify-between px-1.5 py-1 text-[11px] font-medium" style="color: var(--text-secondary);">
           <span class="flex items-center gap-1.5">
             ${ICONS.splitCols}
             <span>Split view</span>
           </span>
-          <span class="px-1.5 rounded-full text-[10px] font-semibold" style="background: var(--bg-Split-badge); color: var(--text-secondary);">2</span>
+          <span ${isQuad ? 'data-quad-count' : ''} class="px-1.5 rounded-full text-[10px] font-semibold" style="background: var(--bg-Split-badge); color: var(--text-secondary);">${rows.length}</span>
         </div>
         <div class="mt-0.5 space-y-0.5">
-          ${SPLIT_ROWS.map((row, i) => {
+          ${rows.map((row, i) => {
             const focused = (ctx.live ? state.focusedSplitPane : 0) === i;
+            const working = isSplitWorking && !row.idle;
             return `
-              <div data-act="setSplitFocus" data-arg="${i}" class="flex items-center justify-between px-2 py-1 rounded-md cursor-pointer transition-colors ${focused ? '' : 'stanza-row-hover'}" style="${focused ? 'background: var(--bg-active-row);' : ''}">
+              <div data-act="setSplitFocus" data-arg="${i}" data-row="${i}" class="flex items-center justify-between px-2 py-1 rounded-md cursor-pointer transition-colors ${focused ? '' : 'stanza-row-hover'}" style="${focused ? 'background: var(--bg-active-row);' : ''}">
                 <span class="flex items-center gap-2 min-w-0">
-                  <span class="w-1.5 h-1.5 rounded-full shrink-0 ${isSplitWorking ? 'dot-working-pulse' : ''}" style="background: ${isSplitWorking ? 'var(--dot-amber)' : 'var(--dot-green)'};"></span>
+                  <span class="w-1.5 h-1.5 rounded-full shrink-0 ${working ? 'dot-working-pulse' : ''}" style="background: ${working ? 'var(--dot-amber)' : 'var(--dot-green)'};"></span>
                   <span class="text-[11.5px] truncate ${focused ? 'font-semibold' : ''}" style="color: ${focused ? 'var(--text-primary)' : 'var(--text-secondary)'};">${row.title}</span>
                 </span>
                 <span class="text-[10.5px] truncate ml-1" style="color: var(--text-muted);">${row.project}</span>
@@ -160,7 +169,7 @@
     const showGitSub = isMain || isMainWorking || isSplit || isPanel;
     const claudeFolderDot = isMain ? 'green' : (isMainWorking || isSplitWorking || isPanel ? 'amber' : (screen === 'split' ? 'green' : null));
     const gymFolderDot = isMainWorking || isSplitWorking ? 'amber' : (isInput || screen === 'split' ? 'green' : null);
-    const hotFolderDot = isTerminal ? 'green' : null;
+    const hotFolderDot = isTerminal || isQuad ? 'green' : null;
     const folderDot = dot => dot ? `<span class="w-1.5 h-1.5 rounded-full mr-1 ${dot === 'amber' ? 'dot-working-pulse' : ''}" style="background: ${dot === 'green' ? 'var(--dot-green)' : 'var(--dot-amber)'};"></span>` : '';
 
     const renderItemRow = (item) => {

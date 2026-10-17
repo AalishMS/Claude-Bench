@@ -24,16 +24,18 @@
     });
   }
 
-  /* Copies the command of the OS that is showing. */
+  /* Copies the command of the OS that is showing: the hero's code line, or the close's prompt input. */
   function onCopy(button) {
     const label = S.$('span', button);
-    const command = S.$$('.term__cmd', button.closest('.term')).find(el => el.offsetParent !== null);
-    copyText(command.textContent.trim()).then(() => {
+    const command = S.$$('.term__cmd, [data-cmd]', button.closest('.term, .prompt')).find(el => el.offsetParent !== null);
+    const isField = command.matches('input');
+    copyText((isField ? command.value : command.textContent).trim()).then(() => {
       label.textContent = 'Copied';
       button.classList.add('is-done');
     }, () => {
       label.textContent = 'Select and copy';
-      window.getSelection().selectAllChildren(command);
+      if (isField) command.select();
+      else window.getSelection().selectAllChildren(command);
     }).then(() => setTimeout(() => {
       label.textContent = 'Copy';
       button.classList.remove('is-done');
@@ -79,6 +81,15 @@
   function init() {
     S.$$('[data-os-tab]').forEach(button => button.addEventListener('click', () => setOs(button.dataset.osTab)));
     S.$$('[data-copy]').forEach(button => button.addEventListener('click', () => onCopy(button)));
+    // The close's prompt: focusing it selects the command, Enter copies it like the Copy button.
+    S.$$('[data-cmd]').forEach(field => {
+      field.addEventListener('focus', () => field.select());
+      field.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        onCopy(S.$('[data-copy]', field.closest('.prompt')));
+      });
+    });
     S.$$('.term__cmd').forEach(cmd => cmd.addEventListener('wheel', onWheel, { passive: false }));
     window.addEventListener('wheel', onPageWheel, { passive: true });
     setOs(root.dataset.os);

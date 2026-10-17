@@ -174,6 +174,37 @@
 .stanza-root .split-drag:hover::after,
 .stanza-root .split-drag.is-dragging::after { opacity: 1; }
 
+/* The split stage (screens/quad.js). data-panes on the window (1-4) picks the layout the app uses for that many
+   panes; the 1px gaps show the grid's background as the dividers. A pane that comes into view wipes in from the side
+   it arrives on (the animation restarts whenever display: none lifts). */
+.stanza-root .qgrid { gap: 1px; background: var(--border-color); grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.stanza-root .qp-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-main); color: var(--text-primary); }
+[data-panes="1"] .qp-pane:not([data-q="0"]),
+[data-panes="2"] .qp-pane[data-q="2"],
+[data-panes="2"] .qp-pane[data-q="3"],
+[data-panes="3"] .qp-pane[data-q="3"] { display: none; }
+[data-panes="2"] .stanza-root .qgrid,
+[data-panes="3"] .stanza-root .qgrid,
+[data-panes="4"] .stanza-root .qgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+[data-panes="3"] .stanza-root .qgrid,
+[data-panes="4"] .stanza-root .qgrid { grid-template-rows: repeat(2, minmax(0, 1fr)); }
+[data-panes="3"] .qp-pane[data-q="0"] { grid-row: 1 / span 2; }
+[data-panes="4"] .qp-pane[data-q="2"] { grid-area: 2 / 1; }
+[data-panes="4"] .qp-pane[data-q="3"] { grid-area: 2 / 2; }
+/* Alone, pane A is a plain terminal: no header, the welcome banner and an empty prompt. Rules that hide an element
+   with a Tailwind display class name .stanza-root, since tailwind.css scopes its utilities to it and loads later. */
+[data-panes="1"] .stanza-root .qp-head, [data-panes="1"] .qp-work { display: none; }
+.window:not([data-panes="1"]) .qp-idle { display: none; }
+[data-panes="1"] .stanza-root .split-box,
+[data-panes="1"] .stanza-root [data-row="1"], [data-panes="1"] .stanza-root [data-row="2"], [data-panes="1"] .stanza-root [data-row="3"],
+[data-panes="2"] .stanza-root [data-row="2"], [data-panes="2"] .stanza-root [data-row="3"],
+[data-panes="3"] .stanza-root [data-row="3"] { display: none; }
+.stanza-root .qp-pane[data-q="1"], .stanza-root .qp-pane[data-q="3"] { animation: quad-from-right 0.55s cubic-bezier(0.23, 1, 0.32, 1); }
+.stanza-root .qp-pane[data-q="2"] { animation: quad-from-below 0.55s cubic-bezier(0.23, 1, 0.32, 1); }
+.stanza-root .qp-work, [data-panes] .split-box [data-row] { animation: mock-fade 0.4s cubic-bezier(0.23, 1, 0.32, 1); }
+@keyframes quad-from-right { from { clip-path: inset(0 0 0 100%); } to { clip-path: inset(0); } }
+@keyframes quad-from-below { from { clip-path: inset(100% 0 0 0); } to { clip-path: inset(0); } }
+
 /* Animations: working dots, terminal cursor, the new-session menu, screen changes, the Claude mascot */
 .stanza-root .dot-working-pulse { animation: mock-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 .stanza-root .term-cursor { animation: mock-blink 1.05s steps(1) infinite; }
@@ -200,5 +231,8 @@
   .stanza-root .crab-idle:hover,
   .stanza-root .toast-in,
   .stanza-root .dialog-fade,
-  .stanza-root .dialog-pop { animation: none; }
+  .stanza-root .dialog-pop,
+  .stanza-root .qp-pane,
+  .stanza-root .qp-work,
+  .stanza-root .split-box [data-row] { animation: none; }
 }
