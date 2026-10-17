@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('api', {
   resolveFiles: (cwd, list) => ipcRenderer.invoke('files:resolve', cwd, list),
   openFile: (file, line, col) => ipcRenderer.invoke('shell:openFile', file, line, col),
   readDoc: (file) => ipcRenderer.invoke('md:read', file),
+  writeDoc: (file, text) => ipcRenderer.invoke('md:write', file, text),
   resolveDocLink: (base, href) => ipcRenderer.invoke('md:resolve', base, href),
   docImage: (base, src) => ipcRenderer.invoke('md:image', base, src),
   revealDoc: (file) => ipcRenderer.invoke('md:reveal', file),

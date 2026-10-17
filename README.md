@@ -58,7 +58,8 @@ split panes, git status and a list of the dev servers your sessions started.
 - **Markdown reader.** Ctrl+click a `.md` path (a plan, `CLAUDE.md`, notes Claude just wrote) and it opens as a tab in
   the right sidebar, which widens to fit it and updates live while the file changes. The pill at the bottom of the
   sidebar switches between its own content and the open files; each project keeps its own. The sidebar's Docs section
-  lists the files the session wrote or edited and the project's own `.md` files.
+  lists the files the session wrote or edited and the project's own `.md` files. The pencil in a file's header switches
+  to its raw markdown for quick edits, saved automatically as you type (Ctrl+S saves at once).
 - **Notifications.** A background session tells you when it needs input or has finished a longer task.
 - **Plan limits.** Session and weekly usage in the footer.
 
@@ -133,7 +134,7 @@ Things that differ on a Mac:
 - Notifications go through Notification Center. Allow them when asked (under `npm start` they show as Electron).
 - Settings > Appearance > System follows macOS light/dark mode, and the traffic lights and menus follow the chosen theme.
 - Interface zoom (`⌘=` / `⌘-` outside a terminal) moves the traffic lights to stay centred in the taller or shorter top bar.
-- Markdown tabs work the same; their folder button opens Finder.
+- Markdown tabs work the same; their folder button opens Finder, and Cmd+S saves the editor at once.
 
 If something goes wrong:
 

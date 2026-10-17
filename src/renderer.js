@@ -1,7 +1,7 @@
 'use strict';
 
 /* global Terminal, FitAddon, WebLinksAddon, WebglAddon, api */
-/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions -- lib/ui.js */
+/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol -- lib/ui.js */
 /* global parseMarkdown -- lib/md.js */
 
 // ------------------------------------------------------------- helpers ----
@@ -77,6 +77,7 @@ const ICONS = {
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
   fileText: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>',
   code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+  pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
   box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
 };
 const ico = (name) =>
@@ -2939,6 +2940,7 @@ async function pollImages() {
 // (--rside-doc-w, see docWidth) and the sidebar's own tab narrows it back to ui.rsideW, animated (`rside-sliding`).
 // Terminals are refitted once the slide has settled, not on every frame: each resize makes Claude repaint its screen.
 // Files are read and watched by main (md:read, md:watch) and parsed here (lib/md.js); text only becomes text nodes.
+// The head's pencil swaps a page for a plain textarea with the raw markdown, saved by itself (md:write, see saveDocEdit).
 
 const docsBy = new Map(); // project path -> { files: [absolute path], active: index into files | -1 (the sidebar's own tab) }
 const docPages = new Map(); // docKey -> { ok, doc | error } as last read, dropped when the file changes on disk
@@ -2946,6 +2948,9 @@ const docLoads = new Map(); // docKey -> pending read
 const docScroll = new Map(); // docKey -> scroll position of its page (runtime only)
 const docImgs = new Map(); // `${file}\n${src}` -> data URL | null (an image a page shows, read by main)
 const docListBy = new Map(); // tab id -> { session: [path], project: [path] } for the Docs section
+const docEditing = new Set(); // docKeys whose page shows the editor (runtime only)
+let docEdit = null; // the editor on screen: { file, ta, saved: the file's text as last read or written, clean: the textarea's value for it, eol, timer, saving }
+const DOC_SAVE_MS = 600; // autosave after this long without typing
 const DOC_RE = /\.(?:md|markdown)$/i;
 const DOC_MIN_W = 320; // px: the narrowest a file tab makes the sidebar
 const DOC_MIN_MAIN = 360; // px the terminal keeps beside a file tab
@@ -3053,7 +3058,7 @@ function syncDocs() {
   const p = docProject();
   const file = activeDoc();
   const body = document.body;
-  if (!file && docShown) { keepDocScroll(); docShown = null; } // before it hides: a hidden page has no scroll position
+  if (!file && docShown) { keepDocScroll(); docShown = null; dropDocEdit(); } // before it hides: a hidden page has no scroll position
   if (body.classList.contains('rside-doc') !== !!file) {
     const set = () => body.classList.toggle('rside-doc', !!file);
     if (rsideShown() && !docBoot) slideRside(set);
@@ -3068,8 +3073,9 @@ function syncDocs() {
 }
 
 const docBody = () => $('#rside-doc .doc-body');
+const docScroller = () => docEdit?.ta || docBody(); // the editor scrolls itself
 function keepDocScroll() {
-  if (docShown && docBody()) docScroll.set(docKey(docShown), docBody().scrollTop);
+  if (docShown && docScroller()) docScroll.set(docKey(docShown), docScroller().scrollTop);
 }
 
 function loadDoc(file) {
@@ -3077,7 +3083,7 @@ function loadDoc(file) {
   if (docPages.has(k)) return Promise.resolve(docPages.get(k));
   if (!docLoads.has(k)) {
     docLoads.set(k, api.readDoc(file)
-      .then((r) => (r.ok ? { ok: true, doc: parseMarkdown(r.text) } : { ok: false, error: r.error }), () => ({ ok: false, error: 'Could not read the file.' }))
+      .then((r) => (r.ok ? { ok: true, text: r.text, doc: parseMarkdown(r.text) } : { ok: false, error: r.error }), () => ({ ok: false, error: 'Could not read the file.' }))
       .then((v) => { docLoads.delete(k); docPages.set(k, v); return v; }));
   }
   return docLoads.get(k);
@@ -3090,28 +3096,112 @@ async function showDocPage(file, reread = false) {
   const host = $('#rside-doc');
   const same = docShown && docKey(docShown) === docKey(file);
   if (!same) keepDocScroll();
-  const top = same ? docBody()?.scrollTop || 0 : docScroll.get(docKey(file)) || 0;
+  const top = same ? docScroller()?.scrollTop || 0 : docScroll.get(docKey(file)) || 0;
+  dropDocEdit(); // the page is rebuilt: what was typed is saved first
   docShown = file;
   const p = docProject();
   if (!same && !docPages.has(docKey(file))) host.replaceChildren(docHead(p, file), h('div', { class: 'doc-body' }, h('div', { class: 'rnote' }, 'Loading…')));
   const v = await loadDoc(file);
   if (seq !== docSeq) return; // another page was asked for meanwhile
-  const page = h('div', { class: 'doc-body', tabindex: '-1', onclick: (e) => docClick(e, file), onkeydown: (e) => { if (e.key === 'Enter') docClick(e, file); } },
-    v.ok ? h('article', { class: 'md' }, mdPage(v.doc, file))
-      : h('div', { class: 'doc-missing' }, h('div', {}, v.error), h('div', { class: 'doc-missing-path' }, file)));
-  host.replaceChildren(docHead(p, file), page);
-  page.scrollTop = reread || !docAnchor ? top : 0;
-  if (docAnchor) { scrollToAnchor(docAnchor); docAnchor = null; }
+  const editing = v.ok && docEditing.has(docKey(file));
+  const page = editing ? h('div', { class: 'doc-body editing' }, docEditor(file, v.text).ta)
+    : h('div', { class: 'doc-body', tabindex: '-1', onclick: (e) => docClick(e, file), onkeydown: (e) => { if (e.key === 'Enter') docClick(e, file); } },
+      v.ok ? h('article', { class: 'md' }, mdPage(v.doc || parseMarkdown(v.text), file))
+        : h('div', { class: 'doc-missing' }, h('div', {}, v.error), h('div', { class: 'doc-missing-path' }, file)));
+  host.replaceChildren(docHead(p, file, v.ok), page);
+  (editing ? docEdit.ta : page).scrollTop = reread || !docAnchor ? top : 0;
+  if (docAnchor && !editing) scrollToAnchor(docAnchor);
+  docAnchor = null;
 }
 
-function docHead(p, file) {
+function docHead(p, file, ok = false) {
+  const editing = ok && docEditing.has(docKey(file));
   return h('div', { class: 'doc-head' },
     h('div', { class: 'doc-titles', title: file },
       h('div', { class: 'doc-title' }, docName(file)),
       h('div', { class: 'doc-path' }, docWhere(p, file))),
+    editing ? h('span', { class: 'doc-save', 'aria-live': 'polite' }) : null,
+    ok ? h('button', { class: `btn ghost icon sm${editing ? ' on' : ''}`, title: editing ? 'Back to preview' : 'Edit', 'aria-pressed': String(editing), onclick: () => toggleDocEdit(file) }, ico('pencil')) : null,
     h('button', { class: 'btn ghost icon sm', title: 'Open in VS Code', onclick: () => api.openFile(file) }, ico('code')),
     h('button', { class: 'btn ghost icon sm', title: `Show in ${FILES_APP}`, onclick: () => api.revealDoc(file) }, ico('folder')),
     h('button', { class: 'btn ghost icon sm', title: 'Close', onclick: () => { if (p) closeDoc(p, file); } }, ico('x')));
+}
+
+/** The editor for the page being shown (becomes docEdit): a textarea with the raw text, saved DOC_SAVE_MS after typing stops and on blur. */
+function docEditor(file, text) {
+  const ta = h('textarea', { class: 'doc-edit', spellcheck: 'false', 'aria-label': `Edit ${docName(file)}` });
+  ta.value = text;
+  const e = (docEdit = { file, ta, saved: text, clean: ta.value, eol: eolOf(text), timer: 0, saving: Promise.resolve() });
+  ta.addEventListener('input', () => {
+    docSaveStatus(e, '');
+    clearTimeout(e.timer);
+    e.timer = setTimeout(() => saveDocEdit(e), DOC_SAVE_MS);
+  });
+  ta.addEventListener('blur', () => saveDocEdit(e));
+  return e;
+}
+
+/** Write the editor's text if it differs from the file (one write at a time; each reads the textarea when it runs). */
+function saveDocEdit(e) {
+  clearTimeout(e.timer);
+  e.timer = 0;
+  e.saving = e.saving.then(async () => {
+    const value = e.ta.value;
+    if (value === e.clean) return;
+    const text = withEol(value, e.eol); // a textarea has only \n
+    docSaveStatus(e, 'Saving…');
+    const r = await api.writeDoc(e.file, text).catch(() => ({ ok: false, error: 'Could not save.' }));
+    if (r.ok) {
+      e.saved = text;
+      e.clean = value;
+      docPages.set(docKey(e.file), { ok: true, text, doc: null }); // parsed when the preview shows it
+    }
+    docSaveStatus(e, r.ok ? 'Saved' : r.error, !r.ok);
+  });
+  return e.saving;
+}
+const flushDocEdit = () => (docEdit ? saveDocEdit(docEdit) : Promise.resolve());
+/** The editor leaves the screen: save what was typed. */
+function dropDocEdit() {
+  const e = docEdit;
+  docEdit = null;
+  if (e) saveDocEdit(e);
+}
+
+function docSaveStatus(e, text, error = false) {
+  const el = docEdit === e && $('#rside-doc .doc-save');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('error', error);
+}
+
+/** The head's pencil: preview <-> editor. Back to the preview after the last save has landed, so it shows the new text. */
+async function toggleDocEdit(file) {
+  const k = docKey(file);
+  if (!docEditing.has(k)) {
+    docEditing.add(k);
+    await showDocPage(file);
+    docEdit?.ta.focus({ preventScroll: true });
+    return;
+  }
+  docEditing.delete(k);
+  await flushDocEdit();
+  showDocPage(file);
+}
+
+/** The file being edited changed on disk: our own save is ignored, anything else replaces the text unless typing is pending. */
+async function reloadDocEdit(e) {
+  const v = await loadDoc(e.file);
+  if (docEdit !== e || !v.ok || v.text === e.saved) return;
+  if (e.ta.value !== e.clean) { saveDocEdit(e); return; } // typed since the last save: that wins
+  const { scrollTop, selectionStart, selectionEnd } = e.ta;
+  e.saved = v.text;
+  e.eol = eolOf(v.text);
+  e.ta.value = v.text;
+  e.clean = e.ta.value;
+  const n = e.ta.value.length;
+  e.ta.setSelectionRange(Math.min(selectionStart, n), Math.min(selectionEnd, n));
+  e.ta.scrollTop = scrollTop;
 }
 
 function scrollToAnchor(id) {
@@ -3208,7 +3298,9 @@ function onDocChanged(file) {
   const k = docKey(file);
   docPages.delete(k);
   for (const key of docImgs.keys()) if (docKey(key.split('\n')[0]) === k) docImgs.delete(key);
-  if (docShown && docKey(docShown) === k && !$('#rside-doc').hidden) showDocPage(docShown, true);
+  if (!docShown || docKey(docShown) !== k || $('#rside-doc').hidden) return;
+  if (docEdit && docKey(docEdit.file) === k) reloadDocEdit(docEdit);
+  else showDocPage(docShown, true);
 }
 
 // The pill: the sidebar's own tab (an icon), then a dot per file; the active dot stretches into a bar. Elements are kept
@@ -3553,6 +3645,7 @@ async function onCloseRequest() {
   if (closeAsked) return;
   closeAsked = true;
   try {
+    await flushDocEdit();
     const working = [...tabs.values()].filter(isWorking);
 
     // Dev servers started from our tabs die with the app. Reuse the last scan unless it is stale.
@@ -3915,6 +4008,8 @@ function wireGlobalEvents() {
     else if (e.key === 'Escape' && detailKind) setDetail(null);
     else if (e.key === 'Escape' && settingsOpen && $('#modal').hidden) toggleSettings(false);
     else if (!$('#modal').hidden) handled = false; // a dialog is open: no shortcuts (Ctrl+W again would stack a second one)
+    else if (e.target.classList?.contains('doc-edit') && e.code.startsWith('Arrow')) handled = false; // the markdown editor: word selection, not panes
+    else if (e.target.classList?.contains('doc-edit') && mod(e) && e.code === 'KeyS' && !e.altKey && !e.shiftKey) flushDocEdit(); // habit: save now, not the sidebar
     else handled = runShortcut(e);
     if (handled) { e.preventDefault(); e.stopPropagation(); }
   }, true);

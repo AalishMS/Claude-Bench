@@ -258,3 +258,14 @@ test('matchSessions: a fresh tab nothing was typed in doesn\'t hold back /clear 
   assert.deepEqual(ui.matchSessions([{ ...fresh, enters: [30000] }, { ...a, enters: [] }], sessionsBy, new Set()),
     [{ id: 'n', sessionId: 's-new', followed: false }]);
 });
+
+test('eolOf / withEol: the editor saves with the file\'s own line ending', () => {
+  assert.equal(ui.eolOf('a\nb'), '\n');
+  assert.equal(ui.eolOf('a\r\nb'), '\r\n');
+  assert.equal(ui.eolOf('a\nb\r\nc'), '\r\n');
+  assert.equal(ui.eolOf(''), '\n');
+  assert.equal(ui.withEol('a\nb\n', '\r\n'), 'a\r\nb\r\n');
+  assert.equal(ui.withEol('a\r\nb\n', '\r\n'), 'a\r\nb\r\n');
+  assert.equal(ui.withEol('a\r\nb\n', '\n'), 'a\nb\n');
+  assert.equal(ui.withEol('', '\r\n'), '');
+});

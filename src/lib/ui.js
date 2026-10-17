@@ -237,9 +237,15 @@
     return out;
   }
 
+  // ------------------------------------------------------- markdown edit ----
+  // A textarea turns every CRLF into LF, so the markdown editor saves with the file's own line ending (else a CRLF
+  // file would be rewritten whole). A file with any CRLF counts as CRLF.
+  const eolOf = (text) => (/\r\n/.test(text) ? '\r\n' : '\n');
+  const withEol = (text, eol) => (eol === '\r\n' ? text.replace(/\r?\n/g, '\r\n') : text.replace(/\r\n/g, '\n'));
+
   const helpers = {
     contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches,
-    jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions,
+    jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol,
   };
   if (typeof module === 'object' && module.exports) module.exports = helpers;
   else Object.assign(globalThis, helpers);

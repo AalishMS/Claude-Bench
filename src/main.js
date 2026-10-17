@@ -1562,7 +1562,8 @@ app.on('before-quit', () => {
 // The right sidebar's markdown tabs (renderer.js parses with lib/md.js and builds the page). Reads only .md / .markdown
 // files, images only by image extension; the renderer never gets anything else from these. Open files are watched
 // through their folder (editors and Claude may replace a file, which ends a watch on the file itself); a change is
-// sent as `md:changed` after 150 ms of quiet, and the renderer re-reads the file.
+// sent as `md:changed` after 150 ms of quiet, and the renderer re-reads the file. The editor writes back (md:write) only
+// to a markdown file that already exists.
 const MD_RE = /\.(?:md|markdown)$/i;
 const MD_MAX = 2 * 1024 * 1024;
 const DOC_IMAGE_MAX = 10 * 1024 * 1024;
@@ -1577,6 +1578,19 @@ async function readDoc(file) {
     return { ok: true, text: await fs.promises.readFile(file, 'utf8') };
   } catch {
     return { ok: false, error: 'File not found' };
+  }
+}
+
+/** The editor's autosave: only an existing markdown file, written in place (keeps its mode, and works while another editor has it open). */
+async function writeDoc(file, text) {
+  if (typeof file !== 'string' || !MD_RE.test(file) || typeof text !== 'string') return { ok: false, error: 'Not a markdown file' };
+  if (Buffer.byteLength(text) > MD_MAX) return { ok: false, error: 'Too large to save here' };
+  try {
+    if (!(await fs.promises.stat(file)).isFile()) return { ok: false, error: 'File not found' };
+    await fs.promises.writeFile(file, text, 'utf8');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.code === 'ENOENT' ? 'File not found' : `Could not save (${e.code || e.message})` };
   }
 }
 
@@ -1810,6 +1824,7 @@ function registerIpc() {
   ipcMain.handle('shell:openFile', (_e, file, line, col) => openFileAt(file, line, col));
 
   ipcMain.handle('md:read', (_e, file) => readDoc(file));
+  ipcMain.handle('md:write', (_e, file, text) => writeDoc(file, text));
   ipcMain.handle('md:resolve', (_e, base, href) => resolveDocLink(base, href));
   ipcMain.handle('md:image', (_e, base, src) => docImage(base, src));
   ipcMain.handle('md:reveal', (_e, file) => {

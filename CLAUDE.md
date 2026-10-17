@@ -153,6 +153,7 @@ site/            the product page (static, open index.html or serve the folder; 
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
   - Markdown tabs (right sidebar): no Mac branch. `fs.watch` on the file's folder; macOS may report no file name, then
     every open file in that folder is re-read. "Show in Finder" via `FILES_APP`, Open in VS Code via `openFileAt`.
+    The editor: Cmd+S saves now (`mod(e)`), Cmd+C/V/Z come from the Edit menu roles.
   - Images (right sidebar): no Mac branch. `nativeImage` decodes the thumbnails, `shell.showItemInFolder` backs "Show in Finder"
     (label via `FILES_APP`); transcript paths are the same as on Windows.
   - Zoom: `setWindowButtonPosition` (y scaled with the zoom) keeps the traffic lights centred; `#brand`'s 72 px padding divides by `--zoom`.
@@ -346,6 +347,15 @@ site/            the product page (static, open index.html or serve the folder; 
   the renderer would freeze on a big odd file); the DOM is built with `h()`. Docs section (`pollDocs` after `pollInfo`,
   `docs:list`): files the session wrote or edited (Write/Edit/MultiEdit in its transcript, scanned with the images) that still
   exist, then the project's top-level `.md` files.
+  **Editing**: the head's pencil (`toggleDocEdit`) swaps the page for a plain `textarea.doc-edit` with the raw markdown
+  (`docEditor`; edit mode per file in `docEditing`, runtime only; the one on screen is `docEdit`). It saves itself
+  (`saveDocEdit` -> `md:write`, which writes in place and only to an existing markdown file, 2 MB cap): 600 ms after typing
+  stops, on blur, when the page is replaced or hidden (`dropDocEdit` in `showDocPage` / `syncDocs`: switching or closing
+  tabs), back to preview, `mod+S` in the editor (instead of the sidebar toggle; arrow-key shortcuts pass through to the
+  textarea there) and in `onCloseRequest`. A textarea only has `\n`, so it saves with the file's own ending (`eolOf` /
+  `withEol` in lib/ui.js; dirty = value differs from `clean`, so a mixed-ending file isn't rewritten unedited). On
+  `md:changed` (`reloadDocEdit`): our own write is ignored (text equals `saved`), anything else replaces the text in place
+  (selection and scroll kept) unless typing is pending, then the local text wins and is saved.
 - **Sessions and usage**: read-only from `~/.claude/projects/<cwd, non-alphanumerics -> "-">/<uuid>.jsonl`. The sidebar lists a
   project's sessions under it (title as in Claude Code: the `/rename` name, `custom-title`, which Claude re-appends like the
   AI title and which is looked for in the head too, else the last `ai-title`, else the first prompt); clicking one focuses its tab or opens

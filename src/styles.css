@@ -731,7 +731,14 @@ body.settings-open #settings { display: block; }
 .doc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; line-height: 1.4; }
 .doc-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1.4; color: var(--faint); }
 .doc-body { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 18px 24px 72px; outline: 0; user-select: text; }
-.doc-missing { font-size: 13px; color: var(--muted-foreground); }
+.doc-save { flex: none; margin-right: 6px; font-size: 11px; color: var(--faint); white-space: nowrap; }
+.doc-save.error { color: var(--destructive); }
+/* The editor: the raw markdown in a borderless textarea that fills the page and scrolls itself. */
+.doc-body.editing { display: flex; padding: 0; overflow: hidden; }
+.doc-edit {
+  flex: 1; min-width: 0; margin: 0; padding: 18px 24px 72px; border: 0; outline: 0; resize: none; background: transparent;
+  color: var(--foreground); caret-color: var(--primary); font: 12px/1.6 var(--mono); tab-size: 2; white-space: pre-wrap; overflow-wrap: anywhere;
+}.doc-missing { font-size: 13px; color: var(--muted-foreground); }
 .doc-missing-path { margin-top: 4px; font: 11px var(--mono); color: var(--faint); overflow-wrap: anywhere; }
 
 /* Markdown typography: the UI's compact scale (13 px body), roomier line height for prose. */

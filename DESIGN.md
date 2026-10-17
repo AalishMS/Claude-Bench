@@ -287,7 +287,11 @@ slides (it travels with the edge, no re-wrapping), and terminals keep their size
 
 ### Markdown page (`#rside-doc`)
 - Head (52 px, 1 px `--border` under it): file name 13 px/600 over its path 11 px `--faint` (`project\docs\PLAN.md`, the full
-  path outside the project), then ghost `icon sm` buttons: `code` (Open in VS Code), `folder` (Show in Explorer/Finder), ×.
+  path outside the project), then ghost `icon sm` buttons: `pencil` (Edit; `.on` while editing), `code` (Open in VS Code),
+  `folder` (Show in Explorer/Finder), ×. While editing, an 11 px `--faint` status sits left of them ("Saving…" / "Saved",
+  an error in `--destructive`).
+- Editor: the raw markdown in a borderless, transparent textarea filling the body (same 18 / 24 / 72 padding), 12 px
+  `--mono`, line height 1.6, `--foreground`, caret `--primary`, wraps; no toolbar, no line numbers, no save button.
 - Body scrolls, padding 18 / 24 (72 at the bottom, room for the pill), text selectable. The UI's compact scale: 13 px body,
   line height 1.65; h1 20 px and h2 16 px (both 600 with a 1 px `--border` rule under), h3 14, h4/h5 13, h6 12 muted.
   Blocks 12 px apart; tight lists have no paragraph gaps.
