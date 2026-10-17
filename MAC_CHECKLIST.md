@@ -34,7 +34,7 @@ everything that needs checking there. Tick what works. For anything that fails, 
 ## Keys
 
 - [ ] ⌘T new session, ⌘W close, ⌘S sidebar, ⌘⇧S right sidebar
-- [ ] ⌘⇧→ split beside, ⌘⇧↓ / ⌘⇧↑ split below, ⌘⇧\ unsplit, ⌘⌥← / ⌘⌥→ move between panes
+- [ ] ⌘⇧→ split beside, ⌘⇧↓ split below, ⌘⇧↑ split above, ⌘⇧/ takes the focused pane out of the split, ⌘⇧\ unsplit, ⌘⌥← / ⌘⌥→ move between panes
 - [ ] ⌘1–9 jump to a tab, Ctrl+Tab next tab
 - [ ] ⌘= / ⌘- / ⌘0 font size
 - [ ] ⌘C / ⌘V copy and paste in the terminal and in the search box

@@ -127,7 +127,10 @@ const SHORTCUTS = [
   { id: 'gotoSession', group: 'Sessions', label: 'Go to session 1–9', pattern: 'Digits', keys: [`${JUMP}+Digits`],
     run: (n) => { const id = [...tabs.keys()][n - 1]; if (id) activate(id); } },
   { id: 'splitRight', group: 'Split view', label: 'New session beside', keys: [`${M}+Shift+ArrowRight`], run: () => splitHere(false) },
-  { id: 'splitDown', group: 'Split view', label: 'New session below', keys: [`${M}+Shift+ArrowDown`, `${M}+Shift+ArrowUp`], run: () => splitHere(true) },
+  { id: 'splitDown', group: 'Split view', label: 'New session below', keys: [`${M}+Shift+ArrowDown`], run: () => splitHere(true) },
+  { id: 'splitUp', group: 'Split view', label: 'New session above', keys: [`${M}+Shift+ArrowUp`], run: () => splitHere(true, true) },
+  { id: 'minimizePane', group: 'Split view', label: 'Take session out of split', hint: 'Keeps it running; only while split',
+    keys: [`${M}+Shift+Slash`], run: () => (curSplit() ? minimizePane(activeId) : false) },
   { id: 'unsplit', group: 'Split view', label: 'Back to one terminal', keys: [`${M}+Shift+Backslash`], run: () => unsplit() },
   { id: 'focusPane', group: 'Split view', label: 'Move focus to the pane in that direction', hint: 'Only while split, otherwise the keys reach the terminal',
     pattern: 'Arrows', keys: [`${JUMP}+Arrows`], run: (dir) => focusPane(dir) },
@@ -1342,12 +1345,12 @@ function syncVisible() {
   });
 }
 
-/** A new session of the active tab's project beside it (`below`: under it, for a new split). */
-function splitHere(below = false) {
+/** A new session of the active tab's project beside it (`below`: under it, for a new split; `above`: stacked, placed first). */
+function splitHere(below = false, above = false) {
   const tab = activeTab();
   if (!tab) return newSessionHere();
   if (visibleIds().length >= SPLIT_MAX) return;
-  openSession(tab.project, { beside: true, below });
+  openSession(tab.project, { beside: true, below, at: above ? 0 : undefined });
 }
 
 /**
@@ -1557,7 +1560,7 @@ function renderPanes() {
       h('span', { class: 's-mark' }, tabDot(t) ? h('i', { class: `dot ${tabDot(t)}` }) : null),
       h('span', { class: 'ph-title' }, paneTitle(t)),
       h('button', {
-        class: 'btn ghost icon sm', title: 'Take out of split',
+        class: 'btn ghost icon sm', title: tip('Take out of split', 'minimizePane'),
         onclick: (e) => { e.stopPropagation(); minimizePane(id); },
       }, ico('minus')),
       h('button', {
