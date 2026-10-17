@@ -204,7 +204,7 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - **Peek** (collapsed, a tab open; like Zen browser's compact mode): the pointer reaching the window's left edge
   (`#peek-zone`, 6 px, below the top bar) slides the sidebar in over the terminal, from under the top bar to the bottom,
   `--shadow-side` (a sideways shadow), same width. Nothing reflows (the terminal keeps its size). It moves on a spring
-  (`springPeek`, `PEEK_SPRING` k 600 / c 46, nearly critically damped: no overshoot), not a CSS transition, so a peek
+  (`makePeek`, `PEEK_SPRING` k 600 / c 46, nearly critically damped: no overshoot), not a CSS transition, so a peek
   cancelled on its way in slows, stops and glides back instead of reversing in one frame; in and out each look done in
   ~200 ms. It leaves 80 ms after the pointer leaves it. A pointer that leaves
   the window through the left edge (a window that isn't maximized) also brings it out and keeps it out while it stays within
@@ -249,6 +249,16 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - **Resizing**: both sidebars are drag-resizable (`.rz` handles, 4 px overlaying the divider with no layout width; hover/drag = `--primary` tint; double-click resets). Left 180–480 (default 232), right 240–600 (default 300), saved as `ui.sidebarW` / `ui.rsideW` and applied to `--sidebar-w` / `--rside-w`. While a markdown tab shows, the right handle sets that width instead: 20–75 % of the window (default 40), `ui.rsideDocPct` -> `--rside-doc-w`, never under 320 px and always leaving the terminal 360 px. Content sits 4 px from the left edge of the sidebar (8 px right).
 - The right sidebar (`#rside`, 300 px by default) uses the `--background` surface (same as the terminal) with a 1 px `--sidebar-border` on its terminal side.
   It has tabs (see "Tab pill"): its own content below, and one page per open markdown file ("Markdown page").
+- **Right peek** (the right sidebar closed: by hand, by a cramped split, or on the home screen): the left sidebar's "Peek",
+  mirrored, with the same spring, timings and outside-the-window hold (144 px past the right edge). The zone is
+  `#rpeek-zone`, 2 px on the window's right edge (not 6: the terminal's `.vbar` sits 2-10 px from that edge). The sidebar
+  floats in over the terminal between the top bar and the status bar, where it sits when open, with `--shadow-side-r` (shadow on its left side).
+  It shows its active tab (a markdown tab at `--rside-doc-w`). A file opened while it is closed (Ctrl+click in a terminal,
+  "Open CLAUDE.md") floats it in the same way and never pins it or resizes the terminal. Since the pointer isn't on it, it
+  stays until the pointer has been in it and left, or a click or Esc outside it. A Docs row opens the file inside the peek without pinning,
+  and switching tabs in the pill still slides the width. Coming out renders the panel and polls it (nothing is polled while it is closed).
+  It stays while `#menu` or a dialog (`#modal`) is open or its editor or another field has focus, and leaves when a session row is
+  dragged. The toggle / `Ctrl+Shift+S` pin it, which snaps.
   Top: **Context** header (12 px muted title + `150k / 200k`, the % at 20 px/600 colored only at warn/crit, a `.meter.big`).
   Then collapsible sections (32 px muted 12 px/500 header with a chevron and a faint count; open by default): **MCPs**,
   **Subagents**, **Running**, **Docs**, **Images**. Rows are the same flat 30 px inset rows: 8 px circular status dot (or a 14 px check for finished

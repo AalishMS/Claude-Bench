@@ -145,9 +145,10 @@ site/            the product page (static, open index.html or serve the folder; 
     A minimal app menu (appMenu + editMenu) replaces Electron's default, whose Cmd+W/R/= would clash; the Edit roles
     give Cmd+C/V/A to xterm and inputs. VS Code opens via `open -a "Visual Studio Code"`.
   - File links: `openFileAt` tries `code -g` (after `shellEnvReady`), then `open -a "Visual Studio Code" <file>`, then `shell.openPath`.
-  - Sidebar peek (`wirePeek`, collapsed sidebar slides in from the left edge; DESIGN.md "Peek"): no Mac branch; its edge
-    zone starts below the top bar, so it never sits under the traffic lights. Main's `peekHold` (cursor just outside the
-    left edge keeps it out) uses `screen.getCursorScreenPoint` + content bounds, both in points on macOS too.
+  - Sidebar peek (`wirePeek` / `makePeek`, a collapsed left sidebar slides in from the left edge, a closed right one from
+    the right edge; DESIGN.md "Peek" / "Right peek"): no Mac branch; the edge zones start below the top bar, so the left
+    one never sits under the traffic lights. Main's `peekHold` (cursor just outside that edge keeps it out) uses
+    `screen.getCursorScreenPoint` + content bounds, both in points on macOS too.
   - First-run projects (`recentProjects`): no Mac branch (same `~/.claude/projects` layout and `cwd` field).
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
@@ -285,6 +286,12 @@ site/            the product page (static, open index.html or serve the folder; 
 - **Right sidebar** (`#rside`, toggled by the top-bar button or `Ctrl+Shift+S`, saved as `ui.servers`; `renderRside`): the active tab's
   **Context** (`x / yk` + %; the last reply's usage, or after a `/compact` with no reply yet the `compact_boundary` line's
   `postTokens`, `parseTail`'s `compacted`), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**, **Docs** (see "Markdown tabs"), **Images**. The sidebar has tabs ("Markdown tabs"); all of this is its own tab, `#rside-panel`.
+  While closed (by hand, by `autoRside`, or on the home screen) it **peeks** from the right edge like the left sidebar
+  (`rightPeek` = `makePeek`, `#rpeek-zone`, `body.rside-peek`; DESIGN.md "Right peek"). Closed, it is still laid out
+  (fixed, off screen, hidden), not `display: none`. `rsideShown()` = in the layout (the toggle, `autoRside`);
+  `rsideOnScreen()` = in the layout or peeking, which gates the polls and the tab-switch slide. `openDoc` never pins:
+  while the sidebar is closed it floats it in as a **sticky** peek (`rightPeek.sticky`; Ctrl+click in a terminal, a project's
+  "Open CLAUDE.md"), which stays until the pointer has been in it and left, or a click (capture mousedown) or Esc outside it.
   Subagents and Running show `RSIDE_SHOWN` (5) rows, then "Show N more" / "Show less" (`foldRows`, `rsideMore`, runtime only;
   collapsing the section clears it, so reopening shows 5 again). Images is last and never folded.
   Home screen (no active tab): Context and Images are left out; with no `currentProject()` MCPs and Subagents show the
@@ -339,7 +346,8 @@ site/            the product page (static, open index.html or serve the folder; 
   sets it while one shows. Switching animates the width (`slideRside`: `rside-sliding` holds the transition, `fitActive`
   returns early until 30 ms after it ends, then fits once and runs `autoRside`): a pty resize per frame would have Claude
   repaint its screen each time. `applyRside` slides open from 0 onto a file tab; a launch restore (`docBoot`) never slides.
-  `autoRside` never hides the sidebar while a file tab shows (and brings it back), its own tab keeps the old rule. Main reads
+  `autoRside` never hides the sidebar while a file tab shows (but doesn't bring a hidden one back for it: it peeks over the
+  panes instead), its own tab keeps the old rule. Main reads
   only markdown (`md:read`, 2 MB cap) and images by extension (`md:image`, 10 MB, data URL; remote images are never fetched),
   and watches the open files' folders (`md:watch` -> `md:changed` after 150 ms); the page on screen re-reads in place with its
   scroll kept, others when shown (`docPages` cache, `docScroll` per file). `lib/md.js` parses (GFM tables, task lists,

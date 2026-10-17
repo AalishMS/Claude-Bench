@@ -49,6 +49,7 @@
   --shadow-md: 0 8px 24px -6px rgb(0 0 0 / 60%), 0 2px 6px -2px rgb(0 0 0 / 40%);
   --shadow-lg: 0 20px 40px -8px rgb(0 0 0 / 70%), 0 6px 12px -6px rgb(0 0 0 / 50%);
   --shadow-side: 8px 0 24px -4px rgb(0 0 0 / 80%); /* a panel floating in from the left (sidebar peek) */
+  --shadow-side-r: -8px 0 24px -4px rgb(0 0 0 / 80%); /* ...and from the right (right sidebar peek) */
 }
 
 [data-theme="light"] {
@@ -78,6 +79,7 @@
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 10%), 0 2px 4px -2px rgb(0 0 0 / 10%);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
   --shadow-side: 6px 0 20px -4px rgb(0 0 0 / 16%);
+  --shadow-side-r: -6px 0 20px -4px rgb(0 0 0 / 16%);
 }
 
 /* Claude colors (ui.claude): the Claude desktop app's palettes, picked for the resolved scheme. Dark = warm charcoal and
@@ -109,6 +111,7 @@
   --shadow-md: 0 8px 24px -6px rgb(0 0 0 / 50%), 0 2px 6px -2px rgb(0 0 0 / 35%);
   --shadow-lg: 0 20px 40px -8px rgb(0 0 0 / 60%), 0 6px 12px -6px rgb(0 0 0 / 45%);
   --shadow-side: 8px 0 24px -4px rgb(0 0 0 / 70%);
+  --shadow-side-r: -8px 0 24px -4px rgb(0 0 0 / 70%);
 }
 
 [data-theme="claude-light"] {
@@ -138,6 +141,7 @@
   --shadow-md: 0 4px 6px -1px rgb(31 30 29 / 10%), 0 2px 4px -2px rgb(31 30 29 / 10%);
   --shadow-lg: 0 10px 15px -3px rgb(31 30 29 / 10%), 0 4px 6px -4px rgb(31 30 29 / 10%);
   --shadow-side: 6px 0 20px -4px rgb(31 30 29 / 16%);
+  --shadow-side-r: -6px 0 20px -4px rgb(31 30 29 / 16%);
 }
 
 /* Accents (ui.accent, data-accent on <html>; swatches carry their own data-accent). The only place these hues live.
@@ -259,7 +263,7 @@ body.rside-sliding #rside-doc { min-width: calc(var(--rside-doc-w) - 1px); }
 #rside-panel[hidden], #rside-doc[hidden], #rside-pill[hidden] { display: none; }
 /* Collapsed: the sidebar floats in over the terminal (nothing resizes) while the pointer rests on the window's left
    edge (#peek-zone), like Zen browser's compact mode. Below the top bar, so the toggle that pins it stays reachable.
-   It slides on a spring driven by renderer.js (springPeek sets transform + visibility inline while out or moving);
+   It slides on a spring driven by renderer.js (makePeek sets transform + visibility inline while out or moving);
    these are the rest values: away and hidden (no focus or clicks). The home screen always shows it in the layout (no
    sidebar-collapsed there, see sidebarShown). */
 #peek-zone { display: none; }
@@ -269,6 +273,16 @@ body.sidebar-collapsed #sidebar {
   transform: translateX(calc(-100% - 48px)); visibility: hidden; will-change: transform;
 }
 body.rside-open #rside { display: flex; }
+/* The right sidebar's peek, the same way: while it is closed (by hand, by autoRside, or on the home screen), the pointer on
+   the window's right edge (#rpeek-zone) floats it in from the right, between the top bar and the status bar, where it sits
+   when open; a file tab keeps its wider width. The zone is 2 px, clear of the terminal's .vbar (2-10 px from the edge).
+   Rest values: away and hidden; its spring in renderer.js (makePeek) moves it. */
+#rpeek-zone { display: none; }
+body:not(.rside-open) #rpeek-zone { display: block; position: fixed; z-index: 29; right: 0; top: 40px; bottom: 24px; width: 2px; -webkit-app-region: no-drag; }
+body:not(.rside-open) #rside {
+  display: flex; position: fixed; z-index: 30; right: 0; top: 40px; bottom: 24px; box-shadow: var(--shadow-side-r);
+  transform: translateX(calc(100% + 48px)); visibility: hidden; will-change: transform;
+}
 /* drag handles on the two dividers: 4px overlaying the panel edge, zero layout width */
 .rz { position: relative; z-index: 6; flex: none; width: 4px; cursor: col-resize; -webkit-app-region: no-drag; transition: background-color 0.15s; }
 #rz-left { margin-left: -4px; }

@@ -1410,7 +1410,7 @@ function rowDrag(src) {
       e.dataTransfer.setData('text/plain', src.resumeId || src.id || '');
       setTimeout(() => { // after the drag image is taken
         document.body.classList.toggle('dragging-session', !!dragSrc);
-        if (dragSrc) setPeek(false); // a peeking sidebar would cover the drop targets
+        if (dragSrc) { leftPeek.set(false); rightPeek.set(false); } // a peeking sidebar would cover the drop targets
       });
     },
     ondragend: endDrag,
@@ -1604,8 +1604,10 @@ function autoRside() {
     const open = document.body.classList.contains('rside-open');
     const panes = visibleIds().map((id) => tabs.get(id)).filter((t) => t?.host.offsetWidth);
     const cramped = panes.length >= 2;
-    const doc = !!activeDoc(); // a markdown tab on show counts as asked for: never hidden for room
-    if ((!cramped || doc) && rsideAuto) { rsideAuto = false; applyRside(ui.servers); return; }
+    // A markdown tab on show counts as asked for: never hidden for room. One shown while it is hidden doesn't bring it
+    // back (that would squeeze the panes): it peeks over them instead (openDoc).
+    const doc = !!activeDoc();
+    if (!cramped && rsideAuto) { rsideAuto = false; applyRside(ui.servers); return; }
     if (!cramped || rsideForced || doc) return;
     const cols = Math.min(...panes.map((t) => t.term.cols));
     if (open && ui.servers && cols < RSIDE_MIN_COLS) {
@@ -2828,7 +2830,7 @@ const rsideBusy = new Set();
 // Without a project (home screen) main lists the user-level ones: `claude mcp list` in the home folder, ~/.claude/agents.
 async function pollMcp() {
   const key = currentProject()?.path || GLOBAL;
-  if (!rsideShown() || document.hidden || rsideBusy.has(key)) return;
+  if (!rsideOnScreen() || document.hidden || rsideBusy.has(key)) return;
   rsideBusy.add(key);
   try {
     const next = await api.mcpList(key || null);
@@ -2840,7 +2842,7 @@ async function pollMcp() {
 
 async function pollDefinedAgents() {
   const key = currentProject()?.path || GLOBAL;
-  if (!rsideShown() || document.hidden) return;
+  if (!rsideOnScreen() || document.hidden) return;
   const next = await api.definedAgents(key || null);
   if (JSON.stringify(next) !== JSON.stringify(definedBy.get(key))) { definedBy.set(key, next); renderRside(); }
 }
@@ -2908,7 +2910,7 @@ async function pollInfo() {
 const imagesBusy = new Set();
 async function pollImages() {
   const tab = activeTab();
-  if (!tab || tab.kind !== 'claude' || !tab.sessionId || !rsideShown() || ui.collapsed.includes('images') || document.hidden || imagesBusy.has(tab.id)) return;
+  if (!tab || tab.kind !== 'claude' || !tab.sessionId || !rsideOnScreen() || ui.collapsed.includes('images') || document.hidden || imagesBusy.has(tab.id)) return;
   imagesBusy.add(tab.id);
   try {
     const session = tab.sessionId;
@@ -2996,7 +2998,9 @@ function openDoc(project, file, anchor = null) {
   docAnchor = anchor;
   saveDocs();
   syncDocs();
-  if (!rsideShown()) setServers(true); // slides open at the doc width; also when a cramped split had hidden it
+  // Closed (by hand or by a cramped split): it floats in over the terminal instead of taking room, and stays until used
+  // (sticky). A peek stays a peek, a pinned sidebar just switches tabs.
+  if (!rsideOnScreen()) { rightPeek.set(true); rightPeek.sticky = true; }
 }
 
 /** Switch the active project's sidebar to one of its file tabs (index), or to its own tab (-1). */
@@ -3061,7 +3065,7 @@ function syncDocs() {
   if (!file && docShown) { keepDocScroll(); docShown = null; dropDocEdit(); } // before it hides: a hidden page has no scroll position
   if (body.classList.contains('rside-doc') !== !!file) {
     const set = () => body.classList.toggle('rside-doc', !!file);
-    if (rsideShown() && !docBoot) slideRside(set);
+    if (rsideOnScreen() && !docBoot) slideRside(set);
     else { set(); requestAnimationFrame(fitActive); }
     autoRside();
   }
@@ -3347,7 +3351,7 @@ function renderPill(p, d) {
 const docsBusy = new Set();
 async function pollDocs() {
   const tab = activeTab();
-  if (!tab || !rsideShown() || ui.collapsed.includes('docs') || document.hidden || docsBusy.has(tab.id)) return;
+  if (!tab || !rsideOnScreen() || ui.collapsed.includes('docs') || document.hidden || docsBusy.has(tab.id)) return;
   docsBusy.add(tab.id);
   try {
     const next = await api.docsList(tab.project.path, tab.kind === 'claude' ? tab.sessionId : null);
@@ -3492,9 +3496,9 @@ function syncHome() {
 /** Toggle + logo live in the sidebar's top row; while it is collapsed they move to the start of the top bar. */
 function placeBrand() {
   const shown = sidebarShown();
-  if (shown) setPeek(false);
+  if (shown) leftPeek.set(false);
   if (document.body.classList.contains('sidebar-collapsed') === shown) { // only peeking slides: a layout change snaps
-    stopPeekSpring();
+    leftPeek.stop();
     document.body.classList.toggle('sidebar-collapsed', !shown);
   }
   if (shown) $('#sidebar').prepend($('#brand'));
@@ -3508,107 +3512,151 @@ function placeBrand() {
   applyDocW(); // the room a file tab may take depends on the left sidebar
 }
 
-/* Collapsed sidebar (Zen browser's compact mode): the pointer reaching the window's left edge floats it in over the
-   terminal; it slides away 80 ms after the pointer leaves it, but not while one of its menus or popovers is open or the
-   search has focus. A pointer that leaves the window through the left edge (aiming at the sidebar of a window that
-   isn't maximized) also brings it out and keeps it out: the page can't see the cursor out there, so main watches it
-   (peek:hold) and says when it has gone well past the edge or above / below the window (peek:away). */
-let peekTimer = 0;
+/* Peek (Zen browser's compact mode): a sidebar that isn't in the layout floats in over the terminal when the pointer
+   reaches the window's edge on its side; it slides away 80 ms after the pointer leaves it, but not while something it
+   opened is still open or one of its fields has focus. A pointer that leaves the window through that edge (aiming at the
+   sidebar of a window that isn't maximized) also brings it out and keeps it out: the page can't see the cursor out there,
+   so main watches it (peek:hold) and says when it has gone well past the edge or above / below the window (peek:away).
+   The left sidebar peeks while collapsed with a tab open, the right one whenever it is closed (by hand, by autoRside in a
+   cramped split, or on the home screen). */
 let pointer = null; // last pointer position in the window, null once it has left it
-let holding = false; // the pointer is just outside the left edge, main is watching it
-const peeking = () => document.body.classList.contains('sidebar-peek');
-function setPeek(on) {
-  clearTimeout(peekTimer);
-  if (!on && holding) { holding = false; api.peekRelease(); }
-  on = on && !sidebarShown();
-  if (on === peeking()) return;
-  document.body.classList.toggle('sidebar-peek', on);
-  springPeek(on);
-}
 
-/* The peek slides on a spring instead of a CSS transition: a reversed transition flips direction in one frame (a peek
+/* A peek slides on a spring instead of a CSS transition: a reversed transition flips direction in one frame (a peek
    cancelled while still coming in snapped back), a spring keeps its speed, so it slows down, stops and drifts back
    (Zen's bounce). x = translateX in px (0 = out), v = px/s. Frames run only while it moves. Mass 1; c = 2 * sqrt(k) is
-   critically damped (no overshoot, which would pull it off the left edge), a bit less settles faster. */
+   critically damped (no overshoot, which would pull it off the window's edge), a bit less settles faster. */
 const PEEK_SPRING = { k: 600, c: 46 };
-const spring = { x: null, v: 0, out: false, raf: 0, t: 0 };
-const peekAway = () => -($('#sidebar').offsetWidth + 48); // matches the CSS rest transform: the shadow is off screen too
-function springPeek(out) {
-  const sb = $('#sidebar');
-  spring.out = out;
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    stopPeekSpring();
-    if (out) { sb.style.transform = 'none'; sb.style.visibility = 'visible'; }
-    return;
+
+/**
+ * One sidebar's peek. `el` / `zone` = selectors of the sidebar and its edge zone, `cls` = the body class while it is out,
+ * `inLayout()` = it is part of the layout (then it never peeks), `keep()` = something of it is in use, `onOut()` runs as it
+ * comes out. `holding` = the pointer is just outside its edge and main is watching it. `sticky` = brought out by an
+ * action, not the pointer (a file opened from the terminal): it stays until the pointer has been in it and left, or a click
+ * or Esc outside it (wirePeek).
+ */
+function makePeek({ side, el, zone, cls, inLayout, keep, onOut }) {
+  const dir = side === 'right' ? 1 : -1; // the way it slides away
+  const spring = { x: null, v: 0, out: false, raf: 0, t: 0 };
+  const pk = { side, el, zone, inLayout, holding: false, sticky: false, timer: 0 };
+  const peeking = () => document.body.classList.contains(cls);
+  const away = () => dir * ($(el).offsetWidth + 48); // matches the CSS rest transform: the shadow is off screen too
+  function set(on) {
+    clearTimeout(pk.timer);
+    if (!on) pk.sticky = false;
+    if (!on && pk.holding) { pk.holding = false; api.peekRelease(); }
+    on = on && !inLayout();
+    if (on === peeking()) return;
+    document.body.classList.toggle(cls, on);
+    if (on) onOut?.();
+    slide(on);
   }
-  if (spring.x === null) spring.x = peekAway(); // from rest, away
-  sb.style.visibility = 'visible';
-  if (!spring.raf) { spring.t = 0; spring.raf = requestAnimationFrame(stepPeek); }
-}
-function stepPeek(now) {
-  const sb = $('#sidebar');
-  const goal = spring.out ? 0 : peekAway();
-  const { k, c } = PEEK_SPRING;
-  let dt = spring.t ? Math.min(Math.max(now - spring.t, 0), 34) / 1000 : 1 / 60; // a stalled frame doesn't jump
-  spring.t = now;
-  while (dt > 0) { // 4 ms steps keep the integration stable at any frame rate
-    const h = Math.min(dt, 0.004);
-    spring.v += (-k * (spring.x - goal) - c * spring.v) * h;
-    spring.x = Math.min(spring.x + spring.v * h, 0);
-    dt -= h;
+  function slide(out) {
+    const sb = $(el);
+    spring.out = out;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      stop();
+      if (out) { sb.style.transform = 'none'; sb.style.visibility = 'visible'; }
+      return;
+    }
+    if (spring.x === null) spring.x = away(); // from rest, away
+    sb.style.visibility = 'visible';
+    if (!spring.raf) { spring.t = 0; spring.raf = requestAnimationFrame(step); }
   }
-  if (Math.abs(spring.x - goal) < 0.5 && Math.abs(spring.v) < 20) { // settled
-    spring.raf = 0;
-    if (spring.out) { spring.x = 0; spring.v = 0; sb.style.transform = 'none'; }
-    else stopPeekSpring(); // back to the CSS rest state (hidden)
-    return;
+  function step(now) {
+    const sb = $(el);
+    const goal = spring.out ? 0 : away();
+    const { k, c } = PEEK_SPRING;
+    let dt = spring.t ? Math.min(Math.max(now - spring.t, 0), 34) / 1000 : 1 / 60; // a stalled frame doesn't jump
+    spring.t = now;
+    while (dt > 0) { // 4 ms steps keep the integration stable at any frame rate
+      const h = Math.min(dt, 0.004);
+      spring.v += (-k * (spring.x - goal) - c * spring.v) * h;
+      const x = spring.x + spring.v * h;
+      spring.x = dir < 0 ? Math.min(x, 0) : Math.max(x, 0); // never past the window's edge
+      dt -= h;
+    }
+    if (Math.abs(spring.x - goal) < 0.5 && Math.abs(spring.v) < 20) { // settled
+      spring.raf = 0;
+      if (spring.out) { spring.x = 0; spring.v = 0; sb.style.transform = 'none'; }
+      else stop(); // back to the CSS rest state (hidden)
+      return;
+    }
+    sb.style.transform = `translateX(${spring.x}px)`;
+    spring.raf = requestAnimationFrame(step);
   }
-  sb.style.transform = `translateX(${spring.x}px)`;
-  spring.raf = requestAnimationFrame(stepPeek);
+  /** Stop at once and hand the sidebar back to the stylesheet (away, or in the layout once pinned). */
+  function stop() {
+    cancelAnimationFrame(spring.raf);
+    Object.assign(spring, { x: null, v: 0, raf: 0 });
+    const sb = $(el);
+    sb.style.transform = '';
+    sb.style.visibility = '';
+  }
+  function later(ms = 80) {
+    clearTimeout(pk.timer);
+    pk.timer = setTimeout(() => {
+      if (!peeking()) return;
+      // the position, not :hover: a pointer resting where the sidebar slid in under it isn't :hover until it moves
+      const r = $(el).getBoundingClientRect();
+      const over = pointer && (dir < 0 ? pointer.x < r.right : pointer.x >= r.left) && pointer.y >= r.top && pointer.y < r.bottom;
+      if (pk.holding || pk.sticky || over || keep()) later(120);
+      else set(false);
+    }, ms);
+  }
+  /** Its edge zone's distance from the window's top and bottom in CSS px, for main's peek:hold. */
+  function insets() {
+    const r = $(zone).getBoundingClientRect();
+    return [r.top, window.innerHeight - r.bottom];
+  }
+  return Object.assign(pk, { peeking, set, stop, later, insets });
 }
-/** Stop at once and hand the sidebar back to the stylesheet (away, or in the layout once pinned). */
-function stopPeekSpring() {
-  cancelAnimationFrame(spring.raf);
-  Object.assign(spring, { x: null, v: 0, raf: 0 });
-  const sb = $('#sidebar');
-  sb.style.transform = '';
-  sb.style.visibility = '';
-}
-function unpeekLater(ms = 80) {
-  clearTimeout(peekTimer);
-  peekTimer = setTimeout(() => {
-    if (!peeking()) return;
-    // the position, not :hover: a pointer resting where the sidebar slid in under it isn't :hover until it moves
-    const r = $('#sidebar').getBoundingClientRect();
-    const over = pointer && pointer.x < r.right && pointer.y >= r.top;
-    const keep = holding || over || !$('#menu').hidden || !$('#detail').hidden || document.activeElement === $('#session-search');
-    if (keep) unpeekLater(120);
-    else setPeek(false);
-  }, ms);
-}
+
+const leftPeek = makePeek({
+  side: 'left', el: '#sidebar', zone: '#peek-zone', cls: 'sidebar-peek', inLayout: () => sidebarShown(),
+  keep: () => !$('#menu').hidden || !$('#detail').hidden || document.activeElement === $('#session-search'),
+});
+const rightPeek = makePeek({
+  side: 'right', el: '#rside', zone: '#rpeek-zone', cls: 'rside-peek', inLayout: () => rsideShown(),
+  // a menu, an agent or image dialog opened from it, or the markdown editor in use
+  keep: () => !$('#menu').hidden || !$('#modal').hidden || (document.activeElement?.matches('textarea, input') && $('#rside').contains(document.activeElement)),
+  onOut: () => { renderRside(); pollPorts(); pollMcp(); pollDefinedAgents(); pollInfo(); }, // closed, nothing was polled
+});
+const peeks = [leftPeek, rightPeek];
+
 function wirePeek() {
   document.addEventListener('mousemove', (e) => {
     pointer = { x: e.clientX, y: e.clientY };
-    if (holding) { holding = false; api.peekRelease(); } // back in the window: its own events take over
+    for (const pk of peeks) if (pk.holding) { pk.holding = false; api.peekRelease(); } // back in the window: its own events take over
   }, { passive: true });
   document.documentElement.addEventListener('mouseleave', async () => {
     pointer = null;
-    if (sidebarShown()) return;
-    const held = await api.peekHold($('#peek-zone').getBoundingClientRect().top);
-    if (!held) { if (peeking()) unpeekLater(); return; }
-    if (pointer || sidebarShown()) { api.peekRelease(); return; } // came back (or pinned it) while main was asked
-    holding = true;
-    setPeek(true);
-    unpeekLater();
+    const free = peeks.filter((pk) => !pk.inLayout());
+    if (!free.length) return;
+    const side = await api.peekHold(Object.fromEntries(free.map((pk) => [pk.side, pk.insets()])));
+    for (const pk of free) {
+      if (pk.side !== side) { if (pk.peeking()) pk.later(); continue; }
+      if (pointer || pk.inLayout()) { api.peekRelease(); continue; } // came back (or pinned it) while main was asked
+      pk.holding = true;
+      pk.set(true);
+      pk.later();
+    }
   });
-  api.onPeekAway(() => { holding = false; setPeek(false); });
-  api.onPeekInside(() => { holding = false; if (peeking()) unpeekLater(); }); // e.g. back over the top bar, which sends no mousemove
-  $('#peek-zone').addEventListener('mouseenter', () => { setPeek(true); unpeekLater(); });
-  $('#sidebar').addEventListener('mouseleave', () => { if (peeking()) unpeekLater(); });
+  const of = (side) => (side === 'right' ? rightPeek : leftPeek);
+  api.onPeekAway((side) => { const pk = of(side); pk.holding = false; pk.set(false); });
+  api.onPeekInside((side) => { const pk = of(side); pk.holding = false; if (pk.peeking()) pk.later(); }); // e.g. back over the top bar, which sends no mousemove
+  for (const pk of peeks) {
+    $(pk.zone).addEventListener('mouseenter', () => { pk.set(true); pk.later(); });
+    $(pk.el).addEventListener('mouseenter', () => { pk.sticky = false; }); // from now on it leaves with the pointer
+    $(pk.el).addEventListener('mouseleave', () => { if (pk.peeking()) pk.later(); });
+  }
+  // a sticky peek goes on a click anywhere else (capture: the terminal keeps its mousedowns to itself); Esc is in the keydown handler
+  document.addEventListener('mousedown', (e) => {
+    for (const pk of peeks) if (pk.sticky && !e.target.closest(`${pk.el}, #menu, #modal`)) pk.set(false);
+  }, true);
 }
 
 function setSidebar(open) {
-  setPeek(false);
+  leftPeek.set(false);
   ui.sidebar = open;
   if (!open && detailKind) setDetail(null);
   if (!open) closeMenu();
@@ -3617,12 +3665,15 @@ function setSidebar(open) {
   requestAnimationFrame(fitActive);
 }
 
-const rsideShown = () => document.body.classList.contains('rside-open');
+const rsideShown = () => document.body.classList.contains('rside-open'); // in the layout
+const rsideOnScreen = () => rsideShown() || rightPeek.peeking(); // in the layout or peeking: worth polling and animating
 
 /** Show or hide the right sidebar without touching the saved choice (autoRside uses this directly). */
 function applyRside(open) {
   const el = $('#rside');
-  if (open && !rsideShown() && document.body.classList.contains('rside-doc') && !docBoot) {
+  const peeked = rightPeek.peeking();
+  if (open && !rsideShown()) { rightPeek.set(false); rightPeek.stop(); } // pinning a peek snaps, only peeking slides
+  if (open && !rsideShown() && document.body.classList.contains('rside-doc') && !docBoot && !peeked) {
     // opening onto a file tab slides it out from the edge (a plain open is instant, as it always was)
     slideRside(() => { document.body.classList.add('rside-open'); el.style.width = '0px'; void el.offsetWidth; el.style.width = ''; });
   } else document.body.classList.toggle('rside-open', open);
@@ -3944,7 +3995,7 @@ let portsBusy = false;
 let portsAt = 0;
 async function pollPorts() {
   // Only the right sidebar shows ports; closeTab / onCloseRequest rescan themselves when the last scan is stale.
-  if (portsBusy || document.hidden || !rsideShown()) return;
+  if (portsBusy || document.hidden || !rsideOnScreen()) return;
   portsBusy = true;
   try {
     const next = await api.listPorts();
@@ -4008,6 +4059,7 @@ function wireGlobalEvents() {
     else if (e.key === 'Escape' && detailKind) setDetail(null);
     else if (e.key === 'Escape' && settingsOpen && $('#modal').hidden) toggleSettings(false);
     else if (!$('#modal').hidden) handled = false; // a dialog is open: no shortcuts (Ctrl+W again would stack a second one)
+    else if (e.key === 'Escape' && rightPeek.sticky && !$('#rside').contains(e.target)) rightPeek.set(false); // a file floated in from the terminal
     else if (e.target.classList?.contains('doc-edit') && e.code.startsWith('Arrow')) handled = false; // the markdown editor: word selection, not panes
     else if (e.target.classList?.contains('doc-edit') && mod(e) && e.code === 'KeyS' && !e.altKey && !e.shiftKey) flushDocEdit(); // habit: save now, not the sidebar
     else handled = runShortcut(e);

@@ -294,31 +294,37 @@ function send(channel, ...args) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
 }
 
-// Sidebar peek: a pointer that left the window through its left edge keeps the collapsed sidebar out while it stays
-// within PEEK_SLACK px of that edge and within the window's height. The page can't see the cursor out there, so main
-// polls it (only while it is there) and tells the page when it has moved on (edgeHold).
+// Sidebar peek: a pointer that left the window through the edge of a collapsed sidebar (left, or the right sidebar)
+// keeps it out while it stays within PEEK_SLACK px of that edge and within the window's height. The page can't see the
+// cursor out there, so main polls it (only while it is there) and tells the page when it has moved on (edgeHold).
 const PEEK_SLACK = 144; // CSS px
 let peekWatch = null;
-function peekState(top) {
+function peekState(side, top = 0, bottom = 0) {
   const z = mainWindow.webContents.getZoomFactor();
-  return edgeHold(screen.getCursorScreenPoint(), mainWindow.getContentBounds(), PEEK_SLACK * z, top * z);
+  return edgeHold(screen.getCursorScreenPoint(), mainWindow.getContentBounds(), PEEK_SLACK * z, top * z, side, bottom * z);
 }
 function stopPeekWatch() {
   clearInterval(peekWatch);
   peekWatch = null;
 }
-/** The pointer just left the window: is it beside the left edge, below the top bar (`top`, CSS px)? Then watch it. */
-function peekHold(top) {
+/**
+ * The pointer just left the window: is it beside the edge of one of the collapsed sidebars in `zones` (`{ left, right }`,
+ * each `[top, bottom]` in CSS px: its edge zone's distance from the window's top and bottom)? Then watch it and return
+ * that side, else null.
+ */
+function peekHold(zones) {
   stopPeekWatch();
-  if (!mainWindow || mainWindow.isDestroyed() || peekState(top) !== 'hold') return false;
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const side = ['left', 'right'].find((s) => zones[s] && peekState(s, ...zones[s]) === 'hold');
+  if (!side) return null;
   peekWatch = setInterval(() => {
     if (!mainWindow || mainWindow.isDestroyed()) return stopPeekWatch();
-    const s = peekState(0);
+    const s = peekState(side);
     if (s === 'hold') return;
     stopPeekWatch();
-    send(s === 'away' ? 'peek:away' : 'peek:inside');
+    send(s === 'away' ? 'peek:away' : 'peek:inside', side);
   }, 40);
-  return true;
+  return side;
 }
 
 function flushSession(id) {
@@ -1842,7 +1848,10 @@ function registerIpc() {
   });
 
   ipcMain.on('notify', (_e, msg) => notify(msg));
-  ipcMain.handle('peek:hold', (_e, top) => peekHold(Number(top) || 0));
+  ipcMain.handle('peek:hold', (_e, zones) => {
+    const zone = (z) => (Array.isArray(z) ? [Number(z[0]) || 0, Number(z[1]) || 0] : null);
+    return peekHold({ left: zone(zones?.left), right: zone(zones?.right) });
+  });
   ipcMain.on('peek:release', stopPeekWatch);
 
   ipcMain.on('win:flash', () => {

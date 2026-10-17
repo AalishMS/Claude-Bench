@@ -395,3 +395,18 @@ test('edgeHold keeps the sidebar out just left of the window, inside its height'
   assert.equal(p.edgeHold({ x: 80, y: 70 }, b, 64, 40), 'away'); // beside the top bar: no peek from there
   assert.equal(p.edgeHold({ x: 80, y: 90 }, b, 64, 40), 'hold');
 });
+
+test('edgeHold on the right keeps the right sidebar out just right of the window, between top bar and status bar', () => {
+  const b = { x: 100, y: 50, width: 800, height: 600 }; // right edge at x 900, bottom at y 650
+  assert.equal(p.edgeHold({ x: 899, y: 300 }, b, 64, 0, 'right'), 'inside'); // the window's own last pixel
+  assert.equal(p.edgeHold({ x: 900, y: 300 }, b, 64, 0, 'right'), 'hold');
+  assert.equal(p.edgeHold({ x: 963, y: 300 }, b, 64, 0, 'right'), 'hold');
+  assert.equal(p.edgeHold({ x: 964, y: 300 }, b, 64, 0, 'right'), 'away'); // well past the edge
+  assert.equal(p.edgeHold({ x: 80, y: 300 }, b, 64, 0, 'right'), 'away'); // past the other edge
+  assert.equal(p.edgeHold({ x: 920, y: 49 }, b, 64, 0, 'right'), 'away'); // above the window
+  assert.equal(p.edgeHold({ x: 920, y: 650 }, b, 64, 0, 'right'), 'away'); // below it
+  assert.equal(p.edgeHold({ x: 920, y: 70 }, b, 64, 40, 'right', 24), 'away'); // beside the top bar
+  assert.equal(p.edgeHold({ x: 920, y: 630 }, b, 64, 40, 'right', 24), 'away'); // beside the status bar
+  assert.equal(p.edgeHold({ x: 920, y: 625 }, b, 64, 40, 'right', 24), 'hold');
+  assert.equal(p.edgeHold({ x: 920, y: 640 }, b, 64), 'away'); // left is still the default side
+});
