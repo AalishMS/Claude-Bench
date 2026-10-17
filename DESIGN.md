@@ -121,7 +121,7 @@ Class names are short and composable. These recipes mirror shadcn's components.
 - Sizes: default h 32 / px 14; `sm` h 28 / px 12; `icon` 32 square; `icon sm` 24 square (14 px icon).
 - `.danger` on a ghost icon button = `--destructive` on hover (row delete, kill server).
 - `.on` = toggled state (bg `--accent`, `--foreground`).
-- **No pill buttons.** Pills were the old design.
+- **No pill buttons.** Pills were the old design. One exception: the right sidebar's tab pill (see "Tab pill").
 
 ### No tab strip
 There is no horizontal tab strip: the sidebar's session rows are the tabs. Every open tab has a row (a transcript
@@ -246,11 +246,12 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   "Couldn't check for updates" + the reason, one `OK` button, closes itself after 5 s). When the app's own repo has new
   commits (from the 30 min poll or that check) it becomes `download`, tinted `color-mix(--primary 60%, --foreground)`,
   pulsing while updating; click opens the update popover's confirm step.
-- **Resizing**: both sidebars are drag-resizable (`.rz` handles, 4 px overlaying the divider with no layout width; hover/drag = `--primary` tint; double-click resets). Left 180–480 (default 232), right 240–600 (default 300), saved as `ui.sidebarW` / `ui.rsideW` and applied to `--sidebar-w` / `--rside-w`. Content sits 4 px from the left edge of the sidebar (8 px right).
+- **Resizing**: both sidebars are drag-resizable (`.rz` handles, 4 px overlaying the divider with no layout width; hover/drag = `--primary` tint; double-click resets). Left 180–480 (default 232), right 240–600 (default 300), saved as `ui.sidebarW` / `ui.rsideW` and applied to `--sidebar-w` / `--rside-w`. While a markdown tab shows, the right handle sets that width instead: 20–75 % of the window (default 40), `ui.rsideDocPct` -> `--rside-doc-w`, never under 320 px and always leaving the terminal 360 px. Content sits 4 px from the left edge of the sidebar (8 px right).
 - The right sidebar (`#rside`, 300 px by default) uses the `--background` surface (same as the terminal) with a 1 px `--sidebar-border` on its terminal side.
+  It has tabs (see "Tab pill"): its own content below, and one page per open markdown file ("Markdown page").
   Top: **Context** header (12 px muted title + `150k / 200k`, the % at 20 px/600 colored only at warn/crit, a `.meter.big`).
   Then collapsible sections (32 px muted 12 px/500 header with a chevron and a faint count; open by default): **MCPs**,
-  **Subagents**, **Running**, **Images**. Rows are the same flat 30 px inset rows: 8 px circular status dot (or a 14 px check for finished
+  **Subagents**, **Running**, **Docs**, **Images**. Rows are the same flat 30 px inset rows: 8 px circular status dot (or a 14 px check for finished
   subagents), name, and a 12 px meta on the right (status word, model in `--mono`, `:port`).
   Only connected MCPs are listed; the rest sit behind a muted `Show N more` row (same pattern as the session list), and the count reads `connected/total`.
   MCP status colors: connected `--success`, failed / needs_client_registration `--destructive`, needs_auth `--warning`,
@@ -266,6 +267,37 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   the window, never scrolled; the head takes the dialog's width (long paths ellipsize). With 2+ images a `btn ghost icon`
   chevron sits on each side (disabled at the ends, 8 px body inset); they and ←/→ step through the grid's order, the old image
   dimmed to 50 % until the next one loads.
+  **Docs** (not on the home screen): rows with a 14 px file icon, the file name and its folder as meta, under two 11 px
+  `--faint` sub-labels: "Written in this session" (folded after 5 like Subagents) and "Project" (top-level files).
+  Clicking a row opens the file as a tab.
+
+### Tab pill (`#rside-pill`)
+The right sidebar's tab switcher, the one pill in the app (a deliberate exception to "no pills"): floating 14 px above the
+bottom edge, centered, `--popover` with a 1 px `--border`, fully rounded, `shadow-md`, 3 px padding. Shown only while the
+active tab's project has a markdown file open. Slots are 26 px high, fully rounded, `--faint`, hover bg `--accent` +
+`--foreground`: first the sidebar's own tab as a 14 px `panelRight` icon (30 px wide), then a 6 px dot per file in open order.
+The active slot is `--foreground`, and its dot stretches into an 18 px bar (width transitions with a slight overshoot, so the
+bar seems to travel). A hovered dot widens to show a 12 px × that closes it; the file name is the native tooltip. The pill
+rises in (240 ms) when it appears and a new dot pops in (300 ms); no other motion. Too many dots scroll sideways.
+
+Switching tabs animates the sidebar's width (280 ms, `cubic-bezier(0.32, 0.72, 0, 1)`): out to the doc width for a file, back
+to `--rside-w` for its own tab; opening the sidebar onto a file tab slides it out from 0. The page keeps its final width while it
+slides (it travels with the edge, no re-wrapping), and terminals keep their size until it has settled. No motion with
+`prefers-reduced-motion`.
+
+### Markdown page (`#rside-doc`)
+- Head (52 px, 1 px `--border` under it): file name 13 px/600 over its path 11 px `--faint` (`project\docs\PLAN.md`, the full
+  path outside the project), then ghost `icon sm` buttons: `code` (Open in VS Code), `folder` (Show in Explorer/Finder), ×.
+- Body scrolls, padding 18 / 24 (72 at the bottom, room for the pill), text selectable. The UI's compact scale: 13 px body,
+  line height 1.65; h1 20 px and h2 16 px (both 600 with a 1 px `--border` rule under), h3 14, h4/h5 13, h6 12 muted.
+  Blocks 12 px apart; tight lists have no paragraph gaps.
+- Inline code: `--muted` bg, `rounded-sm`, 12 px `--mono`. Code blocks: 1 px `--border`, `rounded-md`, `--muted` 40 %, scroll
+  sideways. Tables: 12 px, 1 px `--border` cells, header row `--muted` 50 %, scroll sideways.
+- Links: `color-mix(--primary 55%, --foreground)`, underline at 35 %, full on hover; a link whose file is missing turns
+  `--destructive`, dashed. Quotes: 3 px `--border` rule, muted text. GitHub alerts (`> [!NOTE]`): the rule and a 12 px/600 title
+  in the link color; WARNING `--warning`, CAUTION `--destructive` (color = meaning).
+- Task items: the Checkbox recipe at 14 px, read-only, in the bullet's place. Front matter: a bordered grid, keys in
+  `--mono` muted. Remote images are never fetched: a dashed `--faint` chip with the alt text links to them; a missing local image is the same chip.
 
 ### DropdownMenu: shadcn `DropdownMenu` (`#menu`)
 - On the Popover recipe: bg `--popover`, 1 px `--border`, `rounded-lg`, `shadow-md`, padding 4, min-width 210.

@@ -76,7 +76,8 @@ if (IS_MAC && !process.env.LANG) process.env.LANG = 'en_US.UTF-8'; // Finder lau
 
 const defaults = {
   projects: [], // [{ path, name }]
-  ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, fontSize: 14, zoom: 1, theme: 'dark', claude: false, accent: 'blue', expanded: [], collapsed: [], keys: {} }, // theme: dark | light | system; claude: Claude desktop's palette over that theme; accent: ACCENTS; expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut; keys: shortcut overrides (action id -> combos)
+  ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, rsideDocPct: 40, fontSize: 14, zoom: 1, theme: 'dark', claude: false, accent: 'blue', expanded: [], collapsed: [], keys: {} }, // theme: dark | light | system; claude: Claude desktop's palette over that theme; accent: ACCENTS; expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut; keys: shortcut overrides (action id -> combos); rsideDocPct: right sidebar width (% of the window) while a markdown tab shows
+  docs: {}, // markdown tabs in the right sidebar, per project: { [project path]: { files: [absolute path], active: index | -1 } }
   bounds: null,
   maximized: false,
   tabs: [], // open tabs in tab order, reopened at launch: [{ project: path, kind: 'claude' | 'shell', sessionId }]
@@ -166,6 +167,44 @@ function saveTabs(payload) {
   saveState();
 }
 
+/**
+ * The saved markdown tabs that can be reopened: the project is still listed and the file still exists. `active` follows
+ * its file, since a dropped file shifts the ones after it; a dropped active file leaves the sidebar's own tab active.
+ */
+function restorableDocs() {
+  const out = {};
+  const saved = state.docs && typeof state.docs === 'object' ? state.docs : {};
+  for (const [proj, d] of Object.entries(saved)) {
+    try {
+      const p = state.projects.find((x) => samePath(x.path, proj));
+      if (!p || !Array.isArray(d?.files)) continue;
+      const files = d.files.filter((f) => typeof f === 'string' && MD_RE.test(f) && isFile(f));
+      if (!files.length) continue;
+      const active = Number.isInteger(d.active) ? d.files[d.active] : null;
+      out[p.path] = { files, active: active ? files.indexOf(active) : -1 };
+    } catch { /* skip this project */ }
+  }
+  return out;
+}
+
+function saveDocs(payload) {
+  const out = {};
+  for (const [proj, d] of Object.entries(payload && typeof payload === 'object' ? payload : {}).slice(0, 200)) {
+    const files = (Array.isArray(d?.files) ? d.files : []).filter((f) => typeof f === 'string' && f.length < 1000 && MD_RE.test(f)).slice(0, 500);
+    if (!files.length) continue;
+    out[proj] = { files, active: Number.isInteger(d.active) && d.active >= 0 && d.active < files.length ? d.active : -1 };
+  }
+  state.docs = out;
+  saveState();
+}
+
+const isFile = (p) => {
+  try {
+    return fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
+};
 const isDir = (p) => {
   try {
     return fs.statSync(p).isDirectory();
@@ -1519,11 +1558,125 @@ app.on('before-quit', () => {
   for (const s of sessions.values()) endSession(s);
 });
 
+// ------------------------------------------------------- markdown reader ----
+// The right sidebar's markdown tabs (renderer.js parses with lib/md.js and builds the page). Reads only .md / .markdown
+// files, images only by image extension; the renderer never gets anything else from these. Open files are watched
+// through their folder (editors and Claude may replace a file, which ends a watch on the file itself); a change is
+// sent as `md:changed` after 150 ms of quiet, and the renderer re-reads the file.
+const MD_RE = /\.(?:md|markdown)$/i;
+const MD_MAX = 2 * 1024 * 1024;
+const DOC_IMAGE_MAX = 10 * 1024 * 1024;
+const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp', ico: 'image/x-icon', avif: 'image/avif' };
+
+async function readDoc(file) {
+  if (typeof file !== 'string' || !MD_RE.test(file)) return { ok: false, error: 'Not a markdown file' };
+  try {
+    const st = await fs.promises.stat(file);
+    if (!st.isFile()) return { ok: false, error: 'File not found' };
+    if (st.size > MD_MAX) return { ok: false, error: `Too large to show here (${(st.size / 1048576).toFixed(1)} MB). Open it in VS Code instead.` };
+    return { ok: true, text: await fs.promises.readFile(file, 'utf8') };
+  } catch {
+    return { ok: false, error: 'File not found' };
+  }
+}
+
+/** A link or image path in a markdown file -> the absolute path it names (relative to that file's folder), else null. */
+function docTarget(base, href) {
+  if (typeof base !== 'string' || typeof href !== 'string' || !href || href.length > 2000) return null;
+  try {
+    let p = href;
+    if (/^file:/i.test(p)) p = require('url').fileURLToPath(p);
+    else try { p = decodeURIComponent(p); } catch { /* keep it as written */ }
+    return path.resolve(path.dirname(base), p);
+  } catch {
+    return null;
+  }
+}
+
+async function resolveDocLink(base, href) {
+  const abs = docTarget(base, href);
+  return abs && (await fs.promises.stat(abs).then((st) => st.isFile(), () => false)) ? abs : null;
+}
+
+async function docImage(base, src) {
+  const abs = docTarget(base, src);
+  const type = abs && IMAGE_TYPES[path.extname(abs).slice(1).toLowerCase()];
+  if (!type) return null;
+  try {
+    const st = await fs.promises.stat(abs);
+    if (!st.isFile() || st.size > DOC_IMAGE_MAX) return null;
+    return `data:${type};base64,${(await fs.promises.readFile(abs)).toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
+/** The Docs section: markdown files this session wrote or edited (newest first, still on disk), and the project's top-level ones. */
+async function docsList(cwd, sessionId) {
+  const out = { session: [], project: [] };
+  if (typeof cwd !== 'string') return out;
+  try {
+    const file = sessionFile(cwd, sessionId);
+    const st = file && (await scanImages(file));
+    if (st) {
+      const list = [...st.docs.keys()].reverse().map((f) => path.resolve(cwd, f));
+      const ok = await Promise.all(list.map((f) => fs.promises.stat(f).then((s) => s.isFile(), () => false)));
+      out.session = list.filter((_, i) => ok[i]);
+    }
+  } catch { /* no transcript yet */ }
+  try {
+    const rank = (n) => (/^claude\.md$/i.test(n) ? 0 : /^readme\.md$/i.test(n) ? 1 : 2);
+    out.project = (await fs.promises.readdir(cwd, { withFileTypes: true }))
+      .filter((d) => d.isFile() && MD_RE.test(d.name)).map((d) => d.name)
+      .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b, undefined, { sensitivity: 'base' }))
+      .slice(0, 30).map((n) => path.join(cwd, n));
+  } catch { /* folder gone */ }
+  return out;
+}
+
+const docWatchers = new Map(); // folder (lower case) -> { watcher, names: Map(lower-case file name -> path), timers: Map(path -> timeout) }
+function watchDocs(files) {
+  const want = new Map();
+  for (const f of (Array.isArray(files) ? files : []).slice(0, 1000)) {
+    if (typeof f !== 'string' || !MD_RE.test(f)) continue;
+    const dir = path.dirname(f);
+    const k = dir.toLowerCase();
+    if (!want.has(k)) want.set(k, { dir, names: new Map() });
+    want.get(k).names.set(path.basename(f).toLowerCase(), f);
+  }
+  for (const [k, w] of docWatchers) {
+    if (want.has(k)) continue;
+    w.watcher.close();
+    for (const t of w.timers.values()) clearTimeout(t);
+    docWatchers.delete(k);
+  }
+  for (const [k, { dir, names }] of want) {
+    const w = docWatchers.get(k);
+    if (w) { w.names = names; continue; }
+    try {
+      const watcher = fs.watch(dir, { persistent: false }, (_ev, name) => docChanged(k, name));
+      watcher.on('error', () => { watcher.close(); docWatchers.delete(k); });
+      docWatchers.set(k, { watcher, names, timers: new Map() });
+    } catch { /* folder gone: nothing to watch */ }
+  }
+}
+function docChanged(k, name) {
+  const w = docWatchers.get(k);
+  if (!w) return;
+  // macOS may report no file name: then every open file in that folder is re-read
+  const files = name ? [w.names.get(String(name).toLowerCase())].filter(Boolean) : [...w.names.values()];
+  for (const f of files) {
+    clearTimeout(w.timers.get(f));
+    w.timers.set(f, setTimeout(() => { w.timers.delete(f); send('md:changed', f); }, 150));
+  }
+}
+
 // ------------------------------------------------------------------ ipc ----
 
 function registerIpc() {
-  ipcMain.handle('state:get', () => ({ projects: state.projects, ui: state.ui, restore: restorableTabs(), chat: chatInfo() }));
+  ipcMain.handle('state:get', () => ({ projects: state.projects, ui: state.ui, restore: restorableTabs(), docs: restorableDocs(), chat: chatInfo() }));
   ipcMain.on('tabs:set', (_e, payload) => saveTabs(payload));
+  ipcMain.on('docs:set', (_e, payload) => saveDocs(payload));
 
   ipcMain.handle('projects:add', async () => {
     const r = await dialog.showOpenDialog(mainWindow, {
@@ -1575,6 +1728,7 @@ function registerIpc() {
       state.ui.expanded = patch.expanded.filter((p) => typeof p === 'string').slice(0, 200);
     }
     state.ui.fontSize = Math.min(24, Math.max(10, Math.round(state.ui.fontSize) || 14));
+    state.ui.rsideDocPct = Math.min(75, Math.max(20, Math.round(state.ui.rsideDocPct * 10) / 10 || 40));
     state.ui.zoom = zoom();
     if (patch?.theme || patch?.accent || typeof patch?.claude === 'boolean') applyTheme();
     if (patch?.zoom) applyZoom();
@@ -1654,6 +1808,15 @@ function registerIpc() {
     });
   });
   ipcMain.handle('shell:openFile', (_e, file, line, col) => openFileAt(file, line, col));
+
+  ipcMain.handle('md:read', (_e, file) => readDoc(file));
+  ipcMain.handle('md:resolve', (_e, base, href) => resolveDocLink(base, href));
+  ipcMain.handle('md:image', (_e, base, src) => docImage(base, src));
+  ipcMain.handle('md:reveal', (_e, file) => {
+    if (typeof file === 'string' && MD_RE.test(file) && isFile(file)) shell.showItemInFolder(path.normalize(file));
+  });
+  ipcMain.on('md:watch', (_e, files) => watchDocs(files));
+  ipcMain.handle('docs:list', (_e, cwd, sessionId) => docsList(cwd, sessionId));
 
   ipcMain.handle('clipboard:read', () => clipboard.readText());
   ipcMain.on('clipboard:write', (_e, text) => clipboard.writeText(String(text)));

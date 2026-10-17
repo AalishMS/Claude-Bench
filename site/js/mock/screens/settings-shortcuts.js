@@ -72,7 +72,9 @@
 
               ${renderShortcutGroup('Split view', [
                 { name: 'New session beside', keys: ['Ctrl+Shift+→'] },
-                { name: 'New session below', keys: ['Ctrl+Shift+↓', 'Ctrl+Shift+↑'] },
+                { name: 'New session below', keys: ['Ctrl+Shift+↓'] },
+                { name: 'New session above', keys: ['Ctrl+Shift+↑'] },
+                { name: 'Take session out of split', sub: 'Keeps it running; only while split', keys: ['Ctrl+Shift+/'] },
                 { name: 'Back to one terminal', keys: ['Ctrl+Shift+\\'] },
                 { name: 'Move focus to the pane in that direction', sub: 'Only while split, otherwise the keys reach the terminal', keys: ['Alt+←↑→↓'] },
                 { name: 'Resize panes', sub: 'Moves the divider in that direction, only while split', keys: ['Ctrl+Alt+←↑→↓'] }

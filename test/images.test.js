@@ -81,3 +81,21 @@ test('keeps the newest 20 and returns null for a missing file', async () => {
   assert.equal(blockAt(file, st.items[0]).source.data, 'I10');
   assert.equal(await scanImages(path.join(dir, 'missing.jsonl')), null);
 });
+
+test('collects markdown files written or edited, newest last, once each', async () => {
+  const file = transcript();
+  const use = (name, file_path) => line({ type: 'assistant', message: { content: [{ type: 'tool_use', id: `${name}${file_path}`, name, input: { file_path } }] } });
+  fs.writeFileSync(file, [
+    use('Write', '/p/PLAN.md'),
+    use('Edit', '/p/src/a.js'), // not markdown
+    use('MultiEdit', '/p/docs/notes.markdown'),
+    use('Read', '/p/README.md'), // read only
+    use('NotebookEdit', '/p/x.md'),
+    use('Edit', '/p/PLAN.md'), // again: moves to the end
+  ].join(''));
+  const st = await scanImages(file);
+  assert.deepEqual([...st.docs.keys()], ['/p/docs/notes.markdown', '/p/PLAN.md']);
+  assert.deepEqual(st.items, []);
+  fs.appendFileSync(file, use('Write', '/p/CLAUDE.md'));
+  assert.deepEqual([...(await scanImages(file)).docs.keys()], ['/p/docs/notes.markdown', '/p/PLAN.md', '/p/CLAUDE.md']);
+});

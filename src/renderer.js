@@ -2,6 +2,7 @@
 
 /* global Terminal, FitAddon, WebLinksAddon, WebglAddon, api */
 /* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions -- lib/ui.js */
+/* global parseMarkdown -- lib/md.js */
 
 // ------------------------------------------------------------- helpers ----
 
@@ -74,6 +75,8 @@ const ICONS = {
   fork: '<circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/>',
   arrowUp: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  fileText: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>',
+  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
   box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
 };
 const ico = (name) =>
@@ -127,7 +130,10 @@ const SHORTCUTS = [
   { id: 'gotoSession', group: 'Sessions', label: 'Go to session 1–9', pattern: 'Digits', keys: [`${JUMP}+Digits`],
     run: (n) => { const id = [...tabs.keys()][n - 1]; if (id) activate(id); } },
   { id: 'splitRight', group: 'Split view', label: 'New session beside', keys: [`${M}+Shift+ArrowRight`], run: () => splitHere(false) },
-  { id: 'splitDown', group: 'Split view', label: 'New session below', keys: [`${M}+Shift+ArrowDown`, `${M}+Shift+ArrowUp`], run: () => splitHere(true) },
+  { id: 'splitDown', group: 'Split view', label: 'New session below', keys: [`${M}+Shift+ArrowDown`], run: () => splitHere(true) },
+  { id: 'splitUp', group: 'Split view', label: 'New session above', keys: [`${M}+Shift+ArrowUp`], run: () => splitHere(true, true) },
+  { id: 'minimizePane', group: 'Split view', label: 'Take session out of split', hint: 'Keeps it running; only while split',
+    keys: [`${M}+Shift+Slash`], run: () => (curSplit() ? minimizePane(activeId) : false) },
   { id: 'unsplit', group: 'Split view', label: 'Back to one terminal', keys: [`${M}+Shift+Backslash`], run: () => unsplit() },
   { id: 'focusPane', group: 'Split view', label: 'Move focus to the pane in that direction', hint: 'Only while split, otherwise the keys reach the terminal',
     pattern: 'Arrows', keys: [`${JUMP}+Arrows`], run: (dir) => focusPane(dir) },
@@ -802,7 +808,12 @@ function fileLinks(tab) {
           range: { start: { x: cells.col[m.index] + 1, y }, end: { x: cells.col[last] + 1, y } },
           text: m[0],
           decorations: { underline: true, pointerCursor: true },
-          activate: (e) => mod(e) && api.openFile(abs, Number(m[1]) || null, Number(m[2]) || null),
+          activate: (e) => {
+            if (!mod(e)) return;
+            if (!DOC_RE.test(abs)) { api.openFile(abs, Number(m[1]) || null, Number(m[2]) || null); return; }
+            if (activeId !== tab.id) activate(tab.id); // the file tab belongs to this terminal's project
+            openDoc(tab.project, abs);
+          },
         };
       }).filter(Boolean);
       callback(links.length ? links : undefined);
@@ -1207,8 +1218,9 @@ function fitTab(tab) {
   } catch { /* not measurable yet */ }
 }
 
-/** Fit every visible pane (just the active tab when not split). */
+/** Fit every visible pane (just the active tab when not split). Held while the right sidebar slides (slideRside fits after). */
 function fitActive() {
+  if (slideTimer) return;
   for (const id of visibleIds()) {
     const tab = tabs.get(id);
     if (tab?.host.offsetWidth) fitTab(tab);
@@ -1342,12 +1354,12 @@ function syncVisible() {
   });
 }
 
-/** A new session of the active tab's project beside it (`below`: under it, for a new split). */
-function splitHere(below = false) {
+/** A new session of the active tab's project beside it (`below`: under it, for a new split; `above`: stacked, placed first). */
+function splitHere(below = false, above = false) {
   const tab = activeTab();
   if (!tab) return newSessionHere();
   if (visibleIds().length >= SPLIT_MAX) return;
-  openSession(tab.project, { beside: true, below });
+  openSession(tab.project, { beside: true, below, at: above ? 0 : undefined });
 }
 
 /**
@@ -1557,7 +1569,7 @@ function renderPanes() {
       h('span', { class: 's-mark' }, tabDot(t) ? h('i', { class: `dot ${tabDot(t)}` }) : null),
       h('span', { class: 'ph-title' }, paneTitle(t)),
       h('button', {
-        class: 'btn ghost icon sm', title: 'Take out of split',
+        class: 'btn ghost icon sm', title: tip('Take out of split', 'minimizePane'),
         onclick: (e) => { e.stopPropagation(); minimizePane(id); },
       }, ico('minus')),
       h('button', {
@@ -1591,8 +1603,9 @@ function autoRside() {
     const open = document.body.classList.contains('rside-open');
     const panes = visibleIds().map((id) => tabs.get(id)).filter((t) => t?.host.offsetWidth);
     const cramped = panes.length >= 2;
-    if (!cramped && rsideAuto) { rsideAuto = false; applyRside(ui.servers); return; }
-    if (!cramped || rsideForced) return;
+    const doc = !!activeDoc(); // a markdown tab on show counts as asked for: never hidden for room
+    if ((!cramped || doc) && rsideAuto) { rsideAuto = false; applyRside(ui.servers); return; }
+    if (!cramped || rsideForced || doc) return;
     const cols = Math.min(...panes.map((t) => t.term.cols));
     if (open && ui.servers && cols < RSIDE_MIN_COLS) {
       rsideAuto = true;
@@ -1995,14 +2008,25 @@ function openMenu(key, items, x, y, flipY = y) {
   menuFor = key;
 }
 
-function toggleMenu(p, anchor) {
+async function toggleMenu(p, anchor) {
   if (menuFor === p.path) { closeMenu(); return; }
+  // CLAUDE.md / README.md open as file tabs, which belong to the project's tabs: offered while one is open (its most
+  // recently used one is focused). A quick readdir in main.
+  const own = tabsOf(p.path).sort((a, b) => (b.lastActive || 0) - (a.lastActive || 0))[0];
+  const root = own ? (await api.docsList(p.path, null).catch(() => null))?.project || [] : [];
+  if (!anchor.isConnected) return; // the sidebar was redrawn meanwhile
+  const readDoc = (name) => {
+    const f = root.find((x) => docName(x).toLowerCase() === name.toLowerCase());
+    return f ? menuItem('fileText', `Open ${docName(f)}`, () => { if (tabs.has(own.id)) { activate(own.id); openDoc(p, f); } }) : null;
+  };
   const r = anchor.getBoundingClientRect();
   const top = realProjects()[0]; // Chats is pinned above it
   openMenu(p.path, [
     menuItem('redo', 'Continue last conversation', () => continueLast(p)),
     menuItem('terminal', `Open ${SHELL_LABEL} here`, () => openSession(p, { kind: 'shell' })),
     menuItem('folder', `Show in ${FILES_APP}`, () => api.openFolder(p.path)),
+    readDoc('CLAUDE.md'),
+    readDoc('README.md'),
     !p.chat && top && top.path !== p.path ? menuItem('arrowUp', 'Move to top', () => moveProject(p.path, top.path, false)) : null,
     h('div', { class: 'menu-sep' }),
     menuItem('trash', 'Remove from list', () => removeProject(p), true),
@@ -2653,6 +2677,7 @@ function toggleRsection(id) {
   api.setUi({ collapsed: ui.collapsed });
   renderRside(true);
   if (id === 'images') pollImages();
+  if (id === 'docs') pollDocs();
 }
 
 /** One tile per image; the thumbnail arrives later (pollImages sets src on the tile already on screen). */
@@ -2711,6 +2736,7 @@ function agentRows(proj, tab) {
 
 let lastRsideKey = '';
 function renderRside(force = false) {
+  syncDocs();
   const proj = currentProject();
   const ctx = contextInfo();
   const mcp = mcpBy.get(proj?.path || GLOBAL);
@@ -2720,8 +2746,9 @@ function renderRside(force = false) {
   const mine = (s) => s.owner?.type === 'session' && (!tab || s.owner.sessionId === tab.id);
   const servers = ports.ok ? ports.servers.filter(mine) : [];
   const imgs = tab?.kind === 'claude' && tab.sessionId && imagesBy.get(tab.id)?.session === tab.sessionId ? imagesBy.get(tab.id).items : null;
+  const docList = tab ? docListBy.get(tab.id) : null;
 
-  const key = JSON.stringify([ctx && [ctx.session?.ctx, ctx.pct, ctx.win], proj?.path, mcp, agents, ports.ok && servers, ports.error, ui.collapsed, copiedPort, mcpMore, [...rsideMore], tab?.id, imgs]);
+  const key = JSON.stringify([ctx && [ctx.session?.ctx, ctx.pct, ctx.win], proj?.path, mcp, agents, ports.ok && servers, ports.error, ui.collapsed, copiedPort, mcpMore, [...rsideMore], tab?.id, imgs, docList]);
   if (!force && key === lastRsideKey) return;
   lastRsideKey = key;
 
@@ -2785,11 +2812,13 @@ function renderRside(force = false) {
     : h('div', { class: 'img-grid' }, imgs.map((_, i) => imageTile(tab, tab.sessionId, imgs, i)));
 
   const working = agents.filter((a) => a.running).length;
-  // Home screen: Context and Images belong to one tab, so they're left out rather than asking for one.
-  $('#rside').replaceChildren(tab ? head : '',
+  const docCount = docList ? new Set([...docList.session, ...docList.project].map(docKey)).size : 0;
+  // Home screen: Context, Docs and Images belong to one tab, so they're left out rather than asking for one.
+  $('#rside-panel').replaceChildren(tab ? head : '',
     rsection('mcp', 'MCPs', mcp?.ok ? `${mcp.servers.filter((m) => m.status === 'connected').length}/${mcp.servers.length}` : null, mcpBody),
     rsection('agents', 'Subagents', working ? `${working} working` : agents.length || null, agentBody),
     rsection('running', 'Running', servers.length || null, runBody),
+    tab ? rsection('docs', 'Docs', docCount || null, docRows(tab, docList)) : '',
     tab ? rsection('images', 'Images', imgs?.length || null, imgBody) : '');
 }
 
@@ -2858,7 +2887,7 @@ function renderInfo() {
 const infoBusy = new Set(); // per tab, so a slow poll of one tab never drops the poll of the tab just focused
 async function pollInfo() {
   const tab = activeTab();
-  if (!tab || tab.kind !== 'claude') { renderInfo(); return; }
+  if (!tab || tab.kind !== 'claude') { renderInfo(); pollDocs(); return; }
   if (infoBusy.has(tab.id) || document.hidden) return;
   infoBusy.add(tab.id);
   try {
@@ -2871,6 +2900,7 @@ async function pollInfo() {
     infoBusy.delete(tab.id);
   }
   pollImages();
+  pollDocs();
 }
 
 /** Images of the active session: only while the panel is open and the section expanded. Thumbnails only for new ids. */
@@ -2900,6 +2930,357 @@ async function pollImages() {
   } finally {
     imagesBusy.delete(tab.id);
   }
+}
+
+// ----------------------------------------------------------- markdown tabs ----
+// The right sidebar has tabs: its own content (#rside-panel) and one per open markdown file (#rside-doc), kept per project
+// (docsBy, saved for the next launch). The pill floating at its bottom switches them; it is shown while the active tab's
+// project has a file open (the home screen has none). A file tab widens the sidebar to ui.rsideDocPct % of the window
+// (--rside-doc-w, see docWidth) and the sidebar's own tab narrows it back to ui.rsideW, animated (`rside-sliding`).
+// Terminals are refitted once the slide has settled, not on every frame: each resize makes Claude repaint its screen.
+// Files are read and watched by main (md:read, md:watch) and parsed here (lib/md.js); text only becomes text nodes.
+
+const docsBy = new Map(); // project path -> { files: [absolute path], active: index into files | -1 (the sidebar's own tab) }
+const docPages = new Map(); // docKey -> { ok, doc | error } as last read, dropped when the file changes on disk
+const docLoads = new Map(); // docKey -> pending read
+const docScroll = new Map(); // docKey -> scroll position of its page (runtime only)
+const docImgs = new Map(); // `${file}\n${src}` -> data URL | null (an image a page shows, read by main)
+const docListBy = new Map(); // tab id -> { session: [path], project: [path] } for the Docs section
+const DOC_RE = /\.(?:md|markdown)$/i;
+const DOC_MIN_W = 320; // px: the narrowest a file tab makes the sidebar
+const DOC_MIN_MAIN = 360; // px the terminal keeps beside a file tab
+const DOC_PCT = { min: 20, max: 75, def: 40 }; // ui.rsideDocPct, % of the window
+const SLIDE_MS = 280; // styles.css: body.rside-sliding #rside
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const ALERT_TITLES = { note: 'Note', tip: 'Tip', important: 'Important', warning: 'Warning', caution: 'Caution' };
+
+const docKey = (f) => f.toLowerCase(); // Windows and macOS (APFS by default) paths are case-insensitive
+const docName = (f) => f.split(/[\\/]/).pop();
+const docProject = () => activeTab()?.project || null;
+const docsOf = (p) => (p ? docsBy.get(p.path) : null);
+/** The file whose tab is active in the right sidebar, else null (its own tab, or no file open). */
+function activeDoc() {
+  const d = docsOf(docProject());
+  return d && d.active >= 0 ? d.files[d.active] : null;
+}
+/** The file's path inside the project ("docs/PLAN.md"), else its full path. */
+function docRel(p, f) {
+  const root = p.path.replace(/[\\/]+$/, '');
+  return docKey(f).startsWith(docKey(root)) && /[\\/]/.test(f[root.length] || '') ? f.slice(root.length + 1) : f;
+}
+
+/** Under a page's title: "proj\docs\PLAN.md" inside the project, else the full path. */
+function docWhere(p, f) {
+  if (!p) return f;
+  const rel = docRel(p, f);
+  return rel === f ? f : `${projName(p)}${IS_MAC ? '/' : '\\'}${rel}`;
+}
+
+function saveDocs() {
+  api.saveDocs(Object.fromEntries(docsBy));
+  api.watchDocs([...new Set([...docsBy.values()].flatMap((d) => d.files))]);
+}
+
+/** Open a markdown file as a tab of its project's right sidebar (or switch to it if it is open). */
+function openDoc(project, file, anchor = null) {
+  let d = docsBy.get(project.path);
+  if (!d) docsBy.set(project.path, (d = { files: [], active: -1 }));
+  let i = d.files.findIndex((f) => docKey(f) === docKey(file));
+  if (i < 0) i = d.files.push(file) - 1;
+  d.active = i;
+  docAnchor = anchor;
+  saveDocs();
+  syncDocs();
+  if (!rsideShown()) setServers(true); // slides open at the doc width; also when a cramped split had hidden it
+}
+
+/** Switch the active project's sidebar to one of its file tabs (index), or to its own tab (-1). */
+function selectDoc(i) {
+  const d = docsOf(docProject());
+  if (!d || d.active === i) return;
+  d.active = i;
+  saveDocs();
+  syncDocs();
+}
+
+/** Close a file tab. The active one hands over to its neighbour (right, else left), the last one to the sidebar's own tab. */
+function closeDoc(project, file) {
+  const d = docsOf(project);
+  const i = d ? d.files.findIndex((f) => docKey(f) === docKey(file)) : -1;
+  if (i < 0) return;
+  d.files.splice(i, 1);
+  if (d.active === i) d.active = d.files.length ? Math.min(i, d.files.length - 1) : -1;
+  else if (d.active > i) d.active--;
+  if (!d.files.length) docsBy.delete(project.path);
+  pillEls.delete(`${project.path}\n${docKey(file)}`);
+  if (![...docsBy.values()].some((x) => x.files.some((f) => docKey(f) === docKey(file)))) {
+    docPages.delete(docKey(file));
+    docScroll.delete(docKey(file));
+  }
+  saveDocs();
+  syncDocs();
+}
+
+/** The doc tab width in px: ui.rsideDocPct of the window, leaving the terminal DOC_MIN_MAIN beside the left sidebar. */
+function docWidth() {
+  const room = window.innerWidth - (sidebarShown() ? ui.sidebarW : 0) - DOC_MIN_MAIN;
+  return Math.round(Math.max(DOC_MIN_W, Math.min((window.innerWidth * (ui.rsideDocPct || DOC_PCT.def)) / 100, room)));
+}
+const applyDocW = () => document.documentElement.style.setProperty('--rside-doc-w', `${docWidth()}px`);
+
+/**
+ * Animate the right sidebar's width: `change` makes the new width apply (a class, or opening it), with the transition
+ * on (body.rside-sliding). Terminals keep their size until it has settled, then refit once (fitActive is held meanwhile).
+ */
+let slideTimer = 0;
+function slideRside(change) {
+  document.body.classList.add('rside-sliding');
+  change();
+  clearTimeout(slideTimer);
+  slideTimer = setTimeout(() => {
+    slideTimer = 0;
+    document.body.classList.remove('rside-sliding');
+    fitActive();
+    autoRside();
+  }, (reducedMotion.matches ? 0 : SLIDE_MS) + 30);
+}
+
+let docBoot = false; // the launch's restore is activating its tabs: a saved file tab shows at once, without sliding
+let docAnchor = null; // heading to scroll to once the next page is shown (a link to "other.md#section")
+let docShown = null; // the file whose page is in #rside-doc
+/** Bring the right sidebar in line with the active project's tabs: width, which content shows, the pill. Cheap; called from renderRside. */
+function syncDocs() {
+  const p = docProject();
+  const file = activeDoc();
+  const body = document.body;
+  if (!file && docShown) { keepDocScroll(); docShown = null; } // before it hides: a hidden page has no scroll position
+  if (body.classList.contains('rside-doc') !== !!file) {
+    const set = () => body.classList.toggle('rside-doc', !!file);
+    if (rsideShown() && !docBoot) slideRside(set);
+    else { set(); requestAnimationFrame(fitActive); }
+    autoRside();
+  }
+  $('#rside-panel').hidden = !!file;
+  $('#rside-doc').hidden = !file;
+  renderPill(p, docsOf(p));
+  const k = file && docKey(file);
+  if (file && (!docShown || k !== docKey(docShown) || (!docPages.has(k) && !docLoads.has(k)))) showDocPage(file);
+}
+
+const docBody = () => $('#rside-doc .doc-body');
+function keepDocScroll() {
+  if (docShown && docBody()) docScroll.set(docKey(docShown), docBody().scrollTop);
+}
+
+function loadDoc(file) {
+  const k = docKey(file);
+  if (docPages.has(k)) return Promise.resolve(docPages.get(k));
+  if (!docLoads.has(k)) {
+    docLoads.set(k, api.readDoc(file)
+      .then((r) => (r.ok ? { ok: true, doc: parseMarkdown(r.text) } : { ok: false, error: r.error }), () => ({ ok: false, error: 'Could not read the file.' }))
+      .then((v) => { docLoads.delete(k); docPages.set(k, v); return v; }));
+  }
+  return docLoads.get(k);
+}
+
+/** Show a file's page in #rside-doc: its own last scroll position, or the current one when it is re-read after a change. */
+let docSeq = 0;
+async function showDocPage(file, reread = false) {
+  const seq = ++docSeq;
+  const host = $('#rside-doc');
+  const same = docShown && docKey(docShown) === docKey(file);
+  if (!same) keepDocScroll();
+  const top = same ? docBody()?.scrollTop || 0 : docScroll.get(docKey(file)) || 0;
+  docShown = file;
+  const p = docProject();
+  if (!same && !docPages.has(docKey(file))) host.replaceChildren(docHead(p, file), h('div', { class: 'doc-body' }, h('div', { class: 'rnote' }, 'Loading…')));
+  const v = await loadDoc(file);
+  if (seq !== docSeq) return; // another page was asked for meanwhile
+  const page = h('div', { class: 'doc-body', tabindex: '-1', onclick: (e) => docClick(e, file), onkeydown: (e) => { if (e.key === 'Enter') docClick(e, file); } },
+    v.ok ? h('article', { class: 'md' }, mdPage(v.doc, file))
+      : h('div', { class: 'doc-missing' }, h('div', {}, v.error), h('div', { class: 'doc-missing-path' }, file)));
+  host.replaceChildren(docHead(p, file), page);
+  page.scrollTop = reread || !docAnchor ? top : 0;
+  if (docAnchor) { scrollToAnchor(docAnchor); docAnchor = null; }
+}
+
+function docHead(p, file) {
+  return h('div', { class: 'doc-head' },
+    h('div', { class: 'doc-titles', title: file },
+      h('div', { class: 'doc-title' }, docName(file)),
+      h('div', { class: 'doc-path' }, docWhere(p, file))),
+    h('button', { class: 'btn ghost icon sm', title: 'Open in VS Code', onclick: () => api.openFile(file) }, ico('code')),
+    h('button', { class: 'btn ghost icon sm', title: `Show in ${FILES_APP}`, onclick: () => api.revealDoc(file) }, ico('folder')),
+    h('button', { class: 'btn ghost icon sm', title: 'Close', onclick: () => { if (p) closeDoc(p, file); } }, ico('x')));
+}
+
+function scrollToAnchor(id) {
+  const want = id.toLowerCase();
+  const el = [...document.querySelectorAll('#rside-doc [data-anchor]')].find((x) => x.dataset.anchor === want);
+  el?.scrollIntoView({ block: 'start' });
+}
+
+/** Links in a page: #heading scrolls, web links open in the browser, other .md files open as tabs, other files in VS Code. */
+async function docClick(e, file) {
+  const a = e.target.closest('a[data-href]');
+  if (!a) return;
+  e.preventDefault();
+  const href = a.dataset.href;
+  if (href.startsWith('#')) { try { scrollToAnchor(decodeURIComponent(href.slice(1))); } catch { /* malformed */ } return; }
+  if (/^https?:/i.test(href)) { api.openExternal(href); return; }
+  if (/^[a-z][a-z0-9+.-]+:/i.test(href) && !/^file:/i.test(href)) return; // mailto: and other schemes: nothing to open here
+  const hash = href.indexOf('#');
+  const target = hash >= 0 ? href.slice(0, hash) : href;
+  if (!target) return;
+  const abs = await api.resolveDocLink(file, target);
+  if (!abs) { a.classList.add('broken'); a.title = `Not found: ${target}`; return; }
+  const p = docProject();
+  if (DOC_RE.test(abs) && p) openDoc(p, abs, hash >= 0 ? decodeURIComponent(href.slice(hash + 1)) : null);
+  else api.openFile(abs);
+}
+
+function mdPage(doc, file) {
+  const out = [];
+  if (doc.front) out.push(h('dl', { class: 'md-front' }, doc.front.flatMap((e) => [h('dt', {}, e.key), h('dd', {}, e.value)])));
+  out.push(...mdBlocks(doc.blocks, file, false));
+  return out.length ? out : [h('div', { class: 'rnote' }, 'This file is empty.')];
+}
+
+function mdBlocks(blocks, file, tight) {
+  const align = (a) => (a ? `text-align:${a}` : null);
+  return blocks.map((b) => {
+    if (b.t === 'h') return h(`h${b.level}`, { 'data-anchor': b.id }, mdInline(b.c, file));
+    if (b.t === 'p') return h('p', { class: tight ? 'tight' : null }, mdInline(b.c, file));
+    if (b.t === 'code') return h('pre', {}, h('code', {}, b.text));
+    if (b.t === 'hr') return h('hr');
+    if (b.t === 'quote') {
+      return h('blockquote', { class: b.alert ? `alert ${b.alert}` : null },
+        b.alert ? h('div', { class: 'alert-title' }, ALERT_TITLES[b.alert]) : null, mdBlocks(b.blocks, file, false));
+    }
+    if (b.t === 'list') {
+      return h(b.ordered ? 'ol' : 'ul', { start: b.ordered && b.start !== 1 ? String(b.start) : null },
+        b.items.map((it) => h('li', { class: it.task != null ? 'task' : null },
+          it.task != null ? h('span', { class: `md-check${it.task ? ' on' : ''}`, role: 'img', 'aria-label': it.task ? 'Done' : 'Not done' }) : null,
+          mdBlocks(it.blocks, file, !b.loose))));
+    }
+    if (b.t === 'table') {
+      return h('div', { class: 'md-table' }, h('table', {},
+        h('thead', {}, h('tr', {}, b.head.map((c, k) => h('th', { style: align(b.aligns[k]) }, mdInline(c, file))))),
+        h('tbody', {}, b.rows.map((r) => h('tr', {}, r.map((c, k) => h('td', { style: align(b.aligns[k]) }, mdInline(c, file))))))));
+    }
+    return null;
+  });
+}
+
+function mdInline(nodes, file) {
+  return nodes.map((n) => {
+    if (typeof n === 'string') return n;
+    if (n.t === 'b') return h('strong', {}, mdInline(n.c, file));
+    if (n.t === 'i') return h('em', {}, mdInline(n.c, file));
+    if (n.t === 's') return h('del', {}, mdInline(n.c, file));
+    if (n.t === 'code') return h('code', {}, n.text);
+    if (n.t === 'br') return h('br');
+    if (n.t === 'a') return h('a', { 'data-href': n.href, title: n.href, role: 'link', tabindex: '0' }, mdInline(n.c, file));
+    if (n.t === 'img') return mdImage(n, file);
+    return null;
+  });
+}
+
+/** Local images are read by main (any size limit there); remote ones are never fetched, they show as a link. */
+function mdImage(n, file) {
+  if (/^(?:https?:)?\/\//i.test(n.src)) return h('a', { class: 'md-img-link', 'data-href': n.src, title: n.src, role: 'link', tabindex: '0' }, n.alt || 'Image');
+  const missing = () => h('span', { class: 'md-img-missing', title: n.src }, n.alt || n.src);
+  if (/^data:image\//i.test(n.src)) return h('img', { src: n.src, alt: n.alt });
+  const key = `${file}\n${n.src}`;
+  if (docImgs.has(key)) return docImgs.get(key) ? h('img', { src: docImgs.get(key), alt: n.alt, title: n.alt || null }) : missing();
+  const img = h('img', { alt: n.alt, title: n.alt || null });
+  api.docImage(file, n.src).then((url) => {
+    if (docImgs.size > 100) docImgs.clear();
+    docImgs.set(key, url);
+    if (url) img.src = url;
+    else img.replaceWith(missing());
+  }, () => img.replaceWith(missing()));
+  return img;
+}
+
+/** A file changed on disk: drop what was read; the page on screen is re-read in place (scroll kept). */
+function onDocChanged(file) {
+  const k = docKey(file);
+  docPages.delete(k);
+  for (const key of docImgs.keys()) if (docKey(key.split('\n')[0]) === k) docImgs.delete(key);
+  if (docShown && docKey(docShown) === k && !$('#rside-doc').hidden) showDocPage(docShown, true);
+}
+
+// The pill: the sidebar's own tab (an icon), then a dot per file; the active dot stretches into a bar. Elements are kept
+// per project and file (pillEls), so only a new dot animates in and the active bar's width can transition.
+const pillEls = new Map(); // `${project}\n${docKey}` (or `${project}\n` for the icon) -> element
+let lastPillKey = '';
+function renderPill(p, d) {
+  const pill = $('#rside-pill');
+  const files = d?.files || [];
+  const key = JSON.stringify([p?.path, files, d?.active]);
+  if (key === lastPillKey) return;
+  lastPillKey = key;
+  if (!files.length) { pill.hidden = true; return; }
+  if (pill.hidden) {
+    pill.hidden = false;
+    pill.classList.remove('enter');
+    void pill.offsetWidth; // restart the animation
+    pill.classList.add('enter');
+  }
+  const el = (k, make) => { if (!pillEls.has(k)) pillEls.set(k, make()); return pillEls.get(k); };
+  const items = [el(`${p.path}\n`, () => h('button', { class: 'pill-home', onclick: () => selectDoc(-1) }, ico('panelRight')))];
+  items[0].classList.toggle('on', d.active < 0);
+  items[0].title = 'Context, MCPs, subagents and running servers';
+  items[0].setAttribute('aria-current', d.active < 0 ? 'true' : 'false');
+  files.forEach((f, i) => {
+    const dot = el(`${p.path}\n${docKey(f)}`, () => {
+      const b = h('button', {
+        class: 'pill-dot enter', 'aria-label': docName(f), title: docName(f),
+        onclick: () => selectDoc(docsOf(docProject())?.files.findIndex((x) => docKey(x) === docKey(f)) ?? -1),
+        onanimationend: () => b.classList.remove('enter'),
+      }, h('i'), h('span', { class: 'pill-x', role: 'button', title: `Close ${docName(f)}`, onclick: (e) => { e.stopPropagation(); closeDoc(docProject(), f); } }, ico('x')));
+      return b;
+    });
+    dot.classList.toggle('on', i === d.active);
+    dot.setAttribute('aria-current', i === d.active ? 'true' : 'false');
+    items.push(dot);
+  });
+  // Move only what changed: a re-inserted element restarts its transitions.
+  for (const c of [...pill.children]) if (!items.includes(c)) c.remove();
+  items.forEach((x, i) => { if (pill.children[i] !== x) pill.insertBefore(x, pill.children[i] || null); });
+}
+
+/** The Docs section's lists for the active tab: only while the panel is open and the section expanded. */
+const docsBusy = new Set();
+async function pollDocs() {
+  const tab = activeTab();
+  if (!tab || !rsideShown() || ui.collapsed.includes('docs') || document.hidden || docsBusy.has(tab.id)) return;
+  docsBusy.add(tab.id);
+  try {
+    const next = await api.docsList(tab.project.path, tab.kind === 'claude' ? tab.sessionId : null);
+    if (tabs.has(tab.id) && JSON.stringify(next) !== JSON.stringify(docListBy.get(tab.id))) { docListBy.set(tab.id, next); renderRside(); }
+  } finally {
+    docsBusy.delete(tab.id);
+  }
+}
+
+/** Docs section rows: files this session wrote or edited, then the project's top-level ones not already listed. */
+function docRows(tab, list) {
+  if (!list) return h('div', { class: 'rnote' }, 'Loading…');
+  const seen = new Set(list.session.map(docKey));
+  const root = list.project.filter((f) => !seen.has(docKey(f)));
+  if (!list.session.length && !root.length) return h('div', { class: 'rnote' }, 'No markdown files yet.');
+  const row = (f) => {
+    const rel = docRel(tab.project, f);
+    const dir = rel.slice(0, Math.max(0, rel.length - docName(f).length - 1));
+    return h('div', { class: 'rrow copy', title: `${f}\nClick to read it here`, onclick: () => openDoc(tab.project, f) },
+      ico('fileText'), h('span', { class: 'name' }, docName(f)), dir ? h('span', { class: 'meta' }, dir) : null);
+  };
+  return [
+    ...(list.session.length ? [h('div', { class: 'rsub' }, 'Written in this session'), ...foldRows('docs', list.session.map(row))] : []),
+    ...(root.length ? [h('div', { class: 'rsub' }, 'Project'), ...root.map(row)] : []),
+  ];
 }
 
 function renderAll() {
@@ -2977,19 +3358,33 @@ function wireResizer(el, key, widthAt) {
     el.classList.add('drag');
     document.body.classList.add('resizing');
   });
+  // The right sidebar showing a file tab has its own width, a share of the window (ui.rsideDocPct).
+  const doc = () => key === 'rsideW' && document.body.classList.contains('rside-doc');
   el.addEventListener('pointermove', (e) => {
-    if (el.hasPointerCapture(e.pointerId)) applyPanelW(key, widthAt(e.clientX));
+    if (!el.hasPointerCapture(e.pointerId)) return;
+    if (doc()) setDocPct((widthAt(e.clientX) / window.innerWidth) * 100);
+    else applyPanelW(key, widthAt(e.clientX));
   });
+  const save = () => api.setUi(doc() ? { rsideDocPct: ui.rsideDocPct } : { [key]: ui[key] });
   const end = (e) => {
     if (!el.hasPointerCapture(e.pointerId)) return;
     el.releasePointerCapture(e.pointerId);
     el.classList.remove('drag');
     document.body.classList.remove('resizing');
-    api.setUi({ [key]: ui[key] });
+    save();
   };
   el.addEventListener('pointerup', end);
   el.addEventListener('pointercancel', end);
-  el.addEventListener('dblclick', () => { applyPanelW(key, PANEL_W[key].def); api.setUi({ [key]: ui[key] }); });
+  el.addEventListener('dblclick', () => {
+    if (doc()) setDocPct(DOC_PCT.def);
+    else applyPanelW(key, PANEL_W[key].def);
+    save();
+  });
+}
+
+function setDocPct(pct) {
+  ui.rsideDocPct = Math.round(Math.min(DOC_PCT.max, Math.max(DOC_PCT.min, pct)) * 10) / 10;
+  applyDocW();
 }
 
 /** Shown in the layout: pinned (ui.sidebar), or on the home screen, which always shows it (a collapsed sidebar only applies with a tab open). */
@@ -3018,6 +3413,7 @@ function placeBrand() {
   if (shown) $('.search-row').append(nt);
   else $('#brand').after(nt);
   placeUpdatePop(); // the footer (its anchor) hides while collapsed
+  applyDocW(); // the room a file tab may take depends on the left sidebar
 }
 
 /* Collapsed sidebar (Zen browser's compact mode): the pointer reaching the window's left edge floats it in over the
@@ -3133,7 +3529,11 @@ const rsideShown = () => document.body.classList.contains('rside-open');
 
 /** Show or hide the right sidebar without touching the saved choice (autoRside uses this directly). */
 function applyRside(open) {
-  document.body.classList.toggle('rside-open', open);
+  const el = $('#rside');
+  if (open && !rsideShown() && document.body.classList.contains('rside-doc') && !docBoot) {
+    // opening onto a file tab slides it out from the edge (a plain open is instant, as it always was)
+    slideRside(() => { document.body.classList.add('rside-open'); el.style.width = '0px'; void el.offsetWidth; el.style.width = ''; });
+  } else document.body.classList.toggle('rside-open', open);
   $('#toggle-rside').classList.toggle('on', open);
   if (open) { renderRside(); pollPorts(); pollMcp(); pollDefinedAgents(); pollInfo(); }
   requestAnimationFrame(fitActive);
@@ -3540,6 +3940,8 @@ function wireGlobalEvents() {
   window.addEventListener('blur', closeMenu);
   window.addEventListener('resize', closeMenu);
   window.addEventListener('resize', placeUpdatePop);
+  window.addEventListener('resize', applyDocW); // a file tab's width is a share of the window
+  api.onDocChanged(onDocChanged);
   $('#projects').addEventListener('scroll', closeMenu);
 
   const search = $('#session-search');
@@ -3615,6 +4017,9 @@ async function init() {
   loadKeys(ui.keys);
   applyKeyTitles();
   for (const key of Object.keys(PANEL_W)) applyPanelW(key, ui[key]);
+  applyDocW();
+  for (const [p, d] of Object.entries(state.docs || {})) docsBy.set(p, d);
+  if (docsBy.size) api.watchDocs([...docsBy.values()].flatMap((d) => d.files));
   for (const p of ui.expanded || []) expanded.add(p);
   restoring = !!state.restore?.tabs?.length;
   placeBrand();
@@ -3623,7 +4028,9 @@ async function init() {
 
   wireGlobalEvents();
   renderAll();
+  docBoot = true; // restoreTabs activates its first tab before its first await: a saved file tab shows without sliding
   restoreTabs(state.restore).catch(() => {});
+  docBoot = false;
 
   pollGit();
   pollPorts();

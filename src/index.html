@@ -56,7 +56,11 @@
           <div id="settings" tabindex="-1" aria-label="Settings"></div>
         </main>
         <div class="rz" id="rz-right" title="Drag to resize (double-click resets)"></div>
-        <aside id="rside"></aside>
+        <aside id="rside">
+          <div id="rside-panel"></div>
+          <div id="rside-doc" hidden></div>
+          <nav id="rside-pill" aria-label="Sidebar tabs" hidden></nav>
+        </aside>
       </div>
 
       <footer id="statusbar">
@@ -78,6 +82,7 @@
   <script src="../node_modules/@xterm/addon-web-links/lib/addon-web-links.js"></script>
   <script src="../node_modules/@xterm/addon-webgl/lib/addon-webgl.js"></script>
   <script src="lib/ui.js"></script>
+  <script src="lib/md.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>
